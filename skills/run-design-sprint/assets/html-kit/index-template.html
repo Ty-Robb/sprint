@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Living dashboard for {{SPRINT_TITLE}}">
+    <title>{{SPRINT_TITLE}} — Design Sprint</title>
+    <link rel="stylesheet" href="assets/sprint.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="shell hero-grid">
+        <div>
+          <p class="eyebrow">Design Sprint for One</p>
+          <h1>{{SPRINT_TITLE}}</h1>
+          <p class="lede">{{SPRINT_CHALLENGE}}</p>
+          <div class="meta-row" role="group" aria-label="Sprint metadata">
+            <span class="status status--active">{{SPRINT_STATUS}}</span>
+            <span class="tag">Route: {{SPRINT_ROUTE}}</span>
+            <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
+          </div>
+        </div>
+
+        <div class="metric" role="group" aria-label="Sprint progress">
+          <span class="metric__label">Overall progress</span>
+          <span class="metric__value">{{PROGRESS_PERCENT}}%</span>
+          <!-- Set the value attribute to the current numeric percentage. -->
+          <progress class="progress" value="0" max="100">
+            {{PROGRESS_PERCENT}}%
+          </progress>
+          <p>{{CURRENT_STEP}}</p>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="shell">
+      <section class="section section--accent" aria-labelledby="next-action-title">
+        <div class="next-action">
+          <div class="next-action__number" aria-hidden="true">→</div>
+          <div>
+            <p class="eyebrow">Next action</p>
+            <h2 id="next-action-title">{{NEXT_ACTION_TITLE}}</h2>
+            <p>{{NEXT_ACTION_BODY}}</p>
+            <p><strong>Needed from the Decider:</strong> {{HUMAN_INPUT_NEEDED}}</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="two-column">
+        <section class="section" aria-labelledby="progress-title">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Workflow</p>
+              <h2 id="progress-title">Sprint progress</h2>
+            </div>
+          </div>
+          <ol class="step-list">
+            {{SPRINT_STEPS}}
+          </ol>
+        </section>
+
+        <section class="section" aria-labelledby="testing-title">
+          <p class="eyebrow">Reality check</p>
+          <h2 id="testing-title">Customer testing</h2>
+          <div class="three-column">
+            <div class="metric">
+              <span class="metric__label">Status</span>
+              <span class="metric__value">{{TEST_STATUS}}</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Planned</span>
+              <span class="metric__value">{{SESSIONS_PLANNED}}</span>
+            </div>
+            <div class="metric">
+              <span class="metric__label">Completed</span>
+              <span class="metric__value">{{SESSIONS_COMPLETED}}</span>
+            </div>
+          </div>
+          <div class="callout">
+            <strong>Evidence rule:</strong> synthetic personas and AI role-play are rehearsal only. They never count as customer evidence.
+          </div>
+        </section>
+      </div>
+
+      <section class="section" aria-labelledby="artifacts-title">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Working record</p>
+            <h2 id="artifacts-title">Sprint artifacts</h2>
+          </div>
+          <span class="tag">{{ARTIFACT_COUNT}} created</span>
+        </div>
+        <ul class="artifact-list">
+          {{ARTIFACT_LINKS}}
+        </ul>
+      </section>
+
+      <div class="two-column">
+        <section class="section" aria-labelledby="decisions-title">
+          <p class="eyebrow">Human-owned</p>
+          <h2 id="decisions-title">Decision log</h2>
+          <ol class="decision-list">
+            {{DECISION_SUMMARY}}
+          </ol>
+        </section>
+
+        <section class="section" aria-labelledby="questions-title">
+          <p class="eyebrow">Still unresolved</p>
+          <h2 id="questions-title">Open questions</h2>
+          <ul>
+            {{OPEN_QUESTIONS}}
+          </ul>
+        </section>
+      </div>
+
+      <section class="section" aria-labelledby="legend-title">
+        <p class="eyebrow">Provenance</p>
+        <h2 id="legend-title">Evidence-status legend</h2>
+        <div class="tag-row">
+          <span class="status status--observed">Observed</span>
+          <span class="status status--assumption">Assumption</span>
+          <span class="status status--inference">Inference</span>
+          <span class="status status--decision">Decision</span>
+          <span class="status status--unknown">Unknown</span>
+          <span class="status status--synthetic">Synthetic rehearsal</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">
+        <p>Generated by the Design Sprint for One workflow. The human is the Decider; customer evidence comes from real customers.</p>
+      </div>
+    </footer>
+  </body>
+</html>

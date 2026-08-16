@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{ARTIFACT_PURPOSE}}">
+    <title>{{ARTIFACT_TITLE}} — {{SPRINT_TITLE}}</title>
+    <link rel="stylesheet" href="../assets/sprint.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="shell">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="../index.html">{{SPRINT_TITLE}}</a>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">{{ARTIFACT_TITLE}}</span>
+        </nav>
+        <p class="eyebrow">{{SPRINT_PHASE}}</p>
+        <h1>{{ARTIFACT_TITLE}}</h1>
+        <p class="lede">{{ARTIFACT_PURPOSE}}</p>
+        <div class="meta-row" role="group" aria-label="Artifact metadata">
+          <span class="status {{STATUS_CLASS}}">{{ARTIFACT_STATUS}}</span>
+          <span class="tag">Owner: Sprint Orchestrator</span>
+          <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="shell">
+      <section class="section section--accent" aria-labelledby="summary-title">
+        <p class="eyebrow">At a glance</p>
+        <h2 id="summary-title">Summary</h2>
+        {{SUMMARY_HTML}}
+      </section>
+
+      {{PRIMARY_CONTENT_HTML}}
+
+      <section class="section" aria-labelledby="evidence-title">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Traceability</p>
+            <h2 id="evidence-title">Evidence and provenance</h2>
+          </div>
+        </div>
+        {{EVIDENCE_HTML}}
+      </section>
+
+      <div class="two-column">
+        <section class="section" aria-labelledby="unknowns-title">
+          <p class="eyebrow">Not established</p>
+          <h2 id="unknowns-title">Assumptions and unknowns</h2>
+          {{UNKNOWNS_HTML}}
+        </section>
+
+        <section class="section section--accent" aria-labelledby="artifact-next-title">
+          <p class="eyebrow">Continue</p>
+          <h2 id="artifact-next-title">Next action</h2>
+          {{NEXT_ACTION_HTML}}
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">
+        <p><a href="../index.html">Return to the sprint dashboard</a></p>
+      </div>
+    </footer>
+  </body>
+</html>

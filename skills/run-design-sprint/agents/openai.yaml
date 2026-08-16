@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Sprint for One"
+  short_description: "Run a solo design sprint with an AI team"
+  default_prompt: "Use $run-design-sprint to guide me step by step through a complete one-person-plus-AI sprint with HTML artifacts."
