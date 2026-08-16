@@ -1,0 +1,43 @@
+name: Validate skill
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check Python and JSON
+        run: |
+          python -m py_compile skills/run-design-sprint/scripts/sprint_workspace.py
+          python -m json.tool skills/run-design-sprint/references/artifact-specs.json > /dev/null
+          python -m json.tool skills/run-design-sprint/references/role-contracts.json > /dev/null
+
+      - name: Run workspace tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate generated HTML
+        run: |
+          workspace="$RUNNER_TEMP/generated-sprint"
+          python skills/run-design-sprint/scripts/sprint_workspace.py init \
+            --title "CI Sprint" \
+            --challenge "Validate generated HTML" \
+            --output "$workspace"
+          npx --yes html-validate@11.6.2 \
+            "$workspace/index.html" \
+            "$workspace/artifacts/01-sprint-brief.html"

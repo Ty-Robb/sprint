@@ -38,6 +38,23 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 - A real-customer test plan and traceable synthesis
 - A final proceed, iterate, pivot, investigate, or stop decision
 
+## How it runs
+
+The skill includes a dependency-free Python workspace engine. It creates the sprint state, safely renders structured artifact data into HTML, generates bounded specialist role packets, enforces stage and human gates, tracks real-customer sessions, and validates the final bundle.
+
+The generated sprint directory contains:
+
+```text
+index.html          Living sprint dashboard
+sprint-state.json   Resumable machine state
+artifact-data/      Structured canonical content
+artifacts/          Generated HTML documents
+working/            Isolated specialist packets and memos
+prototype/          The customer-test prototype
+```
+
+Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
+
 ## Status
 
 The skill supports a research-first route, a foundation-plus-design route, full and focused design sprints, and an explicit no-sprint recommendation. AI-generated customer reactions may be used only as rehearsal and never count as validation.

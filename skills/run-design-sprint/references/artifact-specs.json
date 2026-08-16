@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "1.0",
+  "artifacts": {
+    "01-sprint-brief": {
+      "step": "01-intake",
+      "filename": "01-sprint-brief.html",
+      "title": "Sprint Brief",
+      "phase": "Intake",
+      "purpose": "Define the challenge, intended outcome, constraints, available evidence, and initial unknowns.",
+      "requiredSections": ["Challenge", "Desired outcome", "Constraints", "Available evidence", "Unknowns"]
+    },
+    "02-evidence-ledger": {
+      "step": "03-evidence",
+      "filename": "02-evidence-ledger.html",
+      "title": "Evidence Ledger",
+      "phase": "Understand",
+      "purpose": "Keep observed evidence, interpretations, assumptions, synthetic rehearsal, and unknowns visibly separate.",
+      "requiredSections": ["Evidence inventory", "Contradictions", "Evidence gaps"]
+    },
+    "03-foundation": {
+      "step": "04-foundation",
+      "filename": "03-foundation.html",
+      "title": "Foundation Hypothesis",
+      "phase": "Foundation",
+      "purpose": "State the target customer, problem, advantage, alternatives, differentiation, approach, and testable founding hypothesis.",
+      "requiredSections": ["Target customer", "Important problem", "Advantage", "Alternatives", "Differentiation", "Approach", "Founding hypothesis"]
+    },
+    "04-journey-map": {
+      "step": "05-map",
+      "filename": "04-journey-map.html",
+      "title": "Journey and System Map",
+      "phase": "Understand",
+      "purpose": "Map the current journey, relevant actors, target moments, dependencies, and failure points.",
+      "requiredSections": ["Actors", "Current journey", "Target moment", "Dependencies", "Failure points"]
+    },
+    "05-sprint-questions": {
+      "step": "06-questions",
+      "filename": "05-sprint-questions.html",
+      "title": "Sprint Questions",
+      "phase": "Define",
+      "purpose": "Turn the long-term goal and riskiest assumptions into answerable sprint questions with signals and failure criteria.",
+      "requiredSections": ["Long-term goal", "Target", "Ranked assumptions", "Sprint questions", "Signals", "Failure criteria"]
+    },
+    "06-solution-directions": {
+      "step": "07-explore",
+      "filename": "06-solution-directions.html",
+      "title": "Solution Directions",
+      "phase": "Explore",
+      "purpose": "Present meaningfully different independently generated directions without hiding trade-offs or dissent.",
+      "requiredSections": ["Decision criteria", "Directions", "Cross-role critique", "Unresolved trade-offs"]
+    },
+    "07-decision": {
+      "step": "08-decide",
+      "filename": "07-decision.html",
+      "title": "Direction Decision",
+      "phase": "Decide",
+      "purpose": "Record the human-selected direction, rationale, dissent, rejected alternatives, and unresolved risks.",
+      "requiredSections": ["Selected direction", "Decision criteria", "Rationale", "Dissent", "Rejected alternatives", "Unresolved risks"]
+    },
+    "08-experiment": {
+      "step": "09-experiment",
+      "filename": "08-experiment.html",
+      "title": "Experiment Card",
+      "phase": "Experiment",
+      "purpose": "Define the hypothesis, test audience, scorecard, observable signals, and decision thresholds.",
+      "requiredSections": ["Hypothesis", "Audience", "Sprint-question scorecard", "Observable signals", "Decision thresholds"]
+    },
+    "09-storyboard": {
+      "step": "09-experiment",
+      "filename": "09-storyboard.html",
+      "title": "Prototype Storyboard",
+      "phase": "Experiment",
+      "purpose": "Specify the minimum sequence of realistic scenes required to test the selected hypothesis.",
+      "requiredSections": ["Entry context", "Test scenes", "Mocked behaviour", "Prototype boundaries"]
+    },
+    "10-test-plan": {
+      "step": "11-customer-sessions",
+      "filename": "10-test-plan.html",
+      "title": "Customer Test Plan",
+      "phase": "Validate",
+      "purpose": "Define recruitment, consent, tasks, neutral interview prompts, evidence capture, and session logistics.",
+      "requiredSections": ["Recruitment criteria", "Screener", "Consent", "Tasks", "Interview guide", "Evidence capture", "Logistics"]
+    },
+    "11-customer-evidence": {
+      "step": "11-customer-sessions",
+      "filename": "11-customer-evidence.html",
+      "title": "Customer Evidence",
+      "phase": "Validate",
+      "purpose": "Record anonymised observed behaviour and quotations from real customer sessions before interpretation.",
+      "requiredSections": ["Session register", "Observed behaviour", "Customer quotations", "Per-session sprint-question evidence", "Data limitations"]
+    },
+    "12-synthesis": {
+      "step": "12-synthesis",
+      "filename": "12-synthesis.html",
+      "title": "Evidence Synthesis",
+      "phase": "Synthesis",
+      "purpose": "Compare customer evidence with sprint questions and show patterns, contradictions, outliers, confidence, and gaps.",
+      "requiredSections": ["Question-by-question findings", "Patterns", "Contradictions", "Outliers", "Confidence", "Evidence gaps"]
+    },
+    "13-outcome": {
+      "step": "13-outcome",
+      "filename": "13-outcome.html",
+      "title": "Sprint Outcome",
+      "phase": "Decision",
+      "purpose": "Record the human's final outcome, supporting evidence, confidence, unresolved risks, and owned next actions.",
+      "requiredSections": ["Outcome decision", "Supporting evidence", "Confidence", "Unresolved risks", "Next actions"]
+    }
+  }
+}

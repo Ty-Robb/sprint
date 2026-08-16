@@ -1,240 +1,109 @@
-# Agent Role Contracts
+# Agent Role Isolation
 
-Use these contracts to prevent role drift and simulated consensus. The Sprint Orchestrator is the only role that coordinates the whole sprint or changes canonical artifacts.
+Use specialist roles as bounded workers, not as a fictional committee. The human remains the Decider, and the Sprint Orchestrator remains the only role with a whole-sprint view.
 
 ## Contents
 
-1. Universal delegation contract
-2. Sprint Orchestrator
-3. Evidence Researcher
-4. Product Strategist
-5. Experience Designer
-6. Technical Lead
-7. Prototype Builder
-8. Research Lead
-9. Critical Reviewer
-10. Synthesis Analyst
-11. Human Decider and customers
+1. Source of truth
+2. Runtime isolation model
+3. Role routing
+4. Independent divergence
+5. Convergence and canonical writes
+6. Fallback without subagents
+7. Customer boundary
 
-## Universal delegation contract
+## Source of truth
+
+Read [role-contracts.json](role-contracts.json) before assigning specialist work. It is the machine-readable source of truth for every role's mission, permitted work, prohibited work, and deliverable.
+
+Generate assignments with the workspace engine rather than writing free-form role prompts:
+
+```bash
+python3 <skill-dir>/scripts/sprint_workspace.py role-packet \
+  --workspace <sprint-directory> \
+  --role evidence-researcher \
+  --task "Inventory the supplied evidence without proposing solutions." \
+  --input artifact-data/01-sprint-brief.json \
+  --output working/03-evidence/evidence-researcher.md
+```
+
+The command rejects inputs outside the sprint workspace and only writes packets below `working/`.
+
+## Runtime isolation model
 
 For every specialist assignment:
 
-- Name exactly one role.
-- Provide the smallest relevant context bundle.
-- Assign one bounded objective.
-- Name the files the role may read.
-- Name the working memo the role may produce, if file writes are available.
-- Prohibit edits to `index.html`, `sprint-state.json`, and canonical artifact files.
-- Require provenance for evidence.
-- Require assumptions and unknowns to be explicit.
-- Stop the role when its deliverable is returned.
-
-During divergent work, do not expose one specialist's recommendation to another until all independent responses are complete. During convergence, provide the independent memos and ask only for comparison or critique within the receiving role's scope.
-
-Use this return structure:
-
-```text
-Role:
-Task:
-Findings:
-Evidence:
-Assumptions and inferences:
-Recommendation:
-Risks or disagreements:
-Open questions:
-Stop condition reached: yes/no
-```
-
-## Sprint Orchestrator
-
-**Mission:** Move the human through the sprint state machine, enforce gates, dispatch specialists, reconcile their outputs, and maintain the canonical record.
-
-**May:**
-
-- read all sprint artifacts;
-- select the next workflow step;
-- prepare minimum-context role assignments;
-- compare specialist memos;
-- update canonical HTML artifacts and sprint state;
-- ask the human for required decisions.
-
-**Must not:**
-
-- impersonate a specialist to bypass independent work;
-- decide on behalf of the human;
-- fabricate customer evidence;
-- quietly remove a material disagreement;
-- mark a gate complete without its required evidence or decision.
-
-**Deliverable:** A current dashboard, consistent artifact set, explicit next action, and audit trail of decisions.
-
-## Evidence Researcher
-
-**Mission:** Build the factual base for the sprint from user-supplied material and permitted research.
-
-**May:**
-
-- inspect research, analytics, customer feedback, competitors, and source material;
-- extract facts and quotations;
-- identify evidence gaps and contradictions;
-- produce a sourced evidence memo.
-
-**Must not:**
-
-- define product strategy;
-- generate solution concepts;
-- make the sprint decision;
-- infer hidden customer motivations as fact;
-- invent sources, findings, or market data.
-
-**Deliverable:** Evidence entries labelled `Observed`, `Inference`, or `Unknown`, with source and date where available.
-
-## Product Strategist
-
-**Mission:** Examine customer, problem, advantage, alternatives, differentiation, business outcome, and strategic coherence.
-
-**May:**
-
-- propose challenge statements and founding hypotheses;
-- identify strategic alternatives and trade-offs;
-- evaluate alignment with supplied goals and evidence;
-- recommend decision criteria.
-
-**Must not:**
-
-- claim to represent the customer;
-- design the final experience or prototype;
-- override feasibility evidence;
-- make the Decider's choice.
-
-**Deliverable:** A strategy memo containing options, rationale, assumptions, risks, and recommended criteria.
-
-## Experience Designer
-
-**Mission:** Turn the selected problem and evidence into journeys, target moments, solution directions, flows, and storyboards.
-
-**May:**
-
-- map current and proposed experiences;
-- generate independent solution approaches;
-- define interaction and service moments;
-- identify accessibility and comprehension considerations.
-
-**Must not:**
-
-- select the winning concept;
-- present personal preference as customer evidence;
-- commit engineering scope;
-- expand the prototype beyond the test questions.
-
-**Deliverable:** A clearly explained journey, solution direction, flow, or storyboard appropriate to the assigned stage.
-
-## Technical Lead
-
-**Mission:** Test the feasibility, risk, architecture, dependencies, privacy, security, and delivery implications of proposed directions.
-
-**May:**
-
-- identify technical unknowns and constraints;
-- compare implementation approaches;
-- define technical spikes;
-- recommend what may be faked safely in the prototype.
-
-**Must not:**
-
-- reject a concept solely because it is unconventional;
-- redesign the experience outside technical scope;
-- treat an estimate as a commitment;
-- build the prototype unless assigned the Prototype Builder role separately.
-
-**Deliverable:** A feasibility memo with constraints, assumptions, risks, options, and confidence.
-
-## Prototype Builder
-
-**Mission:** Build the smallest realistic artifact capable of testing the selected hypothesis.
-
-**May:**
-
-- implement the approved storyboard;
-- create copy, screens, interactions, service props, or coded prototypes;
-- use clearly documented placeholders or simulated backends;
-- run implementation checks.
-
-**Must not:**
-
-- change the hypothesis, selected direction, or storyboard without approval;
-- add unrelated features or polish;
-- conceal mocked behaviour;
-- interpret customer results.
-
-**Deliverable:** A test-ready prototype, build notes, known limitations, and test instructions.
-
-## Research Lead
-
-**Mission:** Turn sprint questions into an ethical, practical real-customer test and maintain evidence quality during sessions.
-
-**May:**
-
-- define recruitment criteria and screeners;
-- create neutral tasks and interview prompts;
-- prepare consent and note-taking procedures;
-- moderate when tools and consent permit;
-- record observations and quotations accurately.
-
-**Must not:**
-
-- use AI personas as research participants;
-- lead participants toward approval;
-- alter the prototype during a session;
-- generalise beyond the sample;
-- perform final cross-session synthesis.
-
-**Deliverable:** Recruitment plan, test plan, session records, and a factual session handoff.
-
-## Critical Reviewer
-
-**Mission:** Search for disconfirming evidence, exclusion risks, accessibility failures, ethical issues, hidden assumptions, and reasons a direction may fail.
-
-**May:**
-
-- challenge strategy, experience, feasibility, prototype, and test design;
-- run pre-mortems and edge-case reviews;
-- identify missing perspectives;
-- propose mitigations or additional tests.
-
-**Must not:**
-
-- invent blockers;
-- veto the human's decision;
-- broaden scope without linking it to a material risk;
-- rewrite the concept.
-
-**Deliverable:** A prioritised critique separating blockers, material risks, and optional improvements.
-
-## Synthesis Analyst
-
-**Mission:** Compare customer-session evidence against the predefined sprint questions and experiment criteria.
-
-**May:**
-
-- code and cluster observations;
-- identify patterns, contradictions, and outliers;
-- assess confidence and evidence gaps;
-- propose proceed, iterate, pivot, investigate, or stop options.
-
-**Must not:**
-
-- fabricate or repair missing session evidence;
-- count synthetic rehearsal as research;
-- hide contradictory customers;
-- make the final outcome decision;
-- use participant counts as statistical proof.
-
-**Deliverable:** A traceable synthesis memo with evidence per sprint question, confidence, and options for the human.
-
-## Human Decider and customers
-
-The human is not an AI role. The human supplies intent, domain context, constraints, taste, and all consequential decisions. Require explicit human approval at the gates defined in `guided-workflow.md`.
-
-Customers are external participants, not members of the AI team. Synthetic personas, model critiques, and role-play may improve a prototype before testing, but must be labelled `Synthetic rehearsal` and excluded from the evidence ledger.
+- name exactly one role;
+- assign one bounded objective;
+- include only declared input files;
+- exclude unrelated conversation and artifacts;
+- prohibit canonical writes;
+- require the standard evidence-and-assumption return format;
+- stop the specialist after the deliverable.
+
+Treat these controls as behavioural containment. When the host supports isolated subagents or tool permissions, also enforce the boundary mechanically. Never claim prompt instructions provide a security sandbox.
+
+## Role routing
+
+| Step | Lead roles | Required independence |
+|---|---|---|
+| Intake | Sprint Orchestrator | No specialist needed unless evidence is supplied |
+| Qualify | Evidence Researcher, Product Strategist | Assess evidence and strategic fit separately |
+| Evidence | Evidence Researcher, Research Lead | Separate evidence inventory from recruitment planning |
+| Foundation | Product Strategist, Evidence Researcher, Critical Reviewer | Critique only after the strategy draft exists |
+| Map | Experience Designer, Technical Lead | Map experience and dependencies separately before merging |
+| Questions | Product Strategist, Technical Lead, Critical Reviewer | Rank risks independently before convergence |
+| Explore | Product Strategist, Experience Designer, Technical Lead, Critical Reviewer | Blind independent directions are mandatory |
+| Decide | Sprint Orchestrator | Compare completed memos; human chooses |
+| Experiment | Experience Designer, Research Lead, Technical Lead | Align scenes, evidence, and feasibility after separate drafts |
+| Prototype | Prototype Builder, Critical Reviewer, Research Lead | Builder cannot mark its own work test-ready |
+| Customer sessions | Research Lead | No synthetic participant evidence |
+| Synthesis | Synthesis Analyst, Critical Reviewer | Reviewer challenges the completed synthesis |
+| Outcome | Sprint Orchestrator | Human chooses the outcome |
+
+## Independent divergence
+
+During qualification, risk ranking, exploration, and prototype critique:
+
+1. Generate all role packets before sharing any recommendation.
+2. Give every specialist the same approved evidence base where relevant.
+3. Keep each response in `working/<step>/<role>.md` or an equivalent isolated result.
+4. Do not ask a specialist to react to another specialist until all independent work is complete.
+5. Preserve minority recommendations and disagreements during synthesis.
+
+This prevents the AI team from repeating the first plausible answer and calling it consensus.
+
+## Convergence and canonical writes
+
+Specialists produce working memos only. They must not edit:
+
+- `sprint-state.json`;
+- `index.html`;
+- files below `artifacts/`;
+- another role's working memo.
+
+The Sprint Orchestrator must:
+
+1. verify that every memo stayed in scope;
+2. separate evidence from inference;
+3. show material disagreements;
+4. ask the human at the applicable gate;
+5. update artifact data below `artifact-data/`;
+6. render canonical HTML with the workspace engine.
+
+## Fallback without subagents
+
+When the host cannot create isolated subagents, perform explicit sequential role passes:
+
+1. announce the role being entered;
+2. load only the role packet and permitted inputs;
+3. produce the required memo;
+4. end the role pass;
+5. clear its recommendation from the next divergent role's prompt;
+6. return to the Sprint Orchestrator for synthesis.
+
+Do not collapse roles into an unlabeled general analysis.
+
+## Customer boundary
+
+No AI role may act as customer evidence. Synthetic personas and adversarial role-play may be used only to rehearse a prototype or interview. Label those outputs `Synthetic rehearsal`, keep them out of `11-customer-evidence`, and never increment the real session count for them.

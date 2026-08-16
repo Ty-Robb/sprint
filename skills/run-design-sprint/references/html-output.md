@@ -5,24 +5,70 @@ Create every user-facing sprint artifact as a portable, accessible HTML document
 ## Contents
 
 1. Start from the kit
-2. Required document structure
-3. Dashboard requirements
-4. Artifact requirements
-5. Evidence presentation
-6. Accessibility and safety
-7. Completion checks
+2. Artifact data schema
+3. Required document structure
+4. Dashboard requirements
+5. Artifact requirements
+6. Evidence presentation
+7. Accessibility and safety
+8. Completion checks
 
 ## Start from the kit
 
-Copy the files from `assets/html-kit/` into the sprint output directory:
+Use `scripts/sprint_workspace.py` to initialise and render the workspace. The engine uses the files from `assets/html-kit/`:
 
 - use `index-template.html` to create the living `index.html` dashboard;
 - use `artifact-template.html` for each sprint artifact;
 - copy `sprint.css` to `assets/sprint.css` and preserve its class names.
 
-Replace all `{{TOKEN}}` placeholders. Remove unused example blocks instead of leaving empty UI. Update `index.html` after every material change.
+Write structured content to JSON below `artifact-data/` and run `render`. The renderer escapes text, replaces template tokens, registers artifacts, copies the stylesheet, and updates `index.html`.
 
-Set the dashboard `<progress>` element's numeric `value` attribute to the same percentage shown in its visible text.
+Do not edit generated HTML below `artifacts/` directly. Do not insert raw HTML into artifact data.
+
+The renderer sets the dashboard `<progress>` element's numeric value from sprint state.
+
+## Artifact data schema
+
+Create an artifact with `new-artifact`, then replace its draft values. Keep this top-level shape:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "id": "05-sprint-questions",
+  "status": "draft",
+  "updatedAt": "2026-01-01T12:00:00Z",
+  "summary": ["A concise conclusion."],
+  "sections": [],
+  "evidence": [],
+  "unknowns": [],
+  "nextActions": []
+}
+```
+
+Use the exact required section titles from `artifact-specs.json`. The renderer supports:
+
+- `paragraphs`: `{"type":"paragraphs","paragraphs":["..."]}`
+- `list`: `{"type":"list","items":["..."]}`
+- `ordered-list`: `{"type":"ordered-list","items":["..."]}`
+- `table`: `{"type":"table","columns":["A","B"],"rows":[["...","..."]]}`
+- `cards`: `{"type":"cards","cards":[{"title":"...","body":"...","status":"Assumption"}]}`
+- `key-value`: `{"type":"key-value","items":[{"label":"...","value":"..."}]}`
+
+Every section also needs a `title` and may include a short `eyebrow`. Do not place HTML in values; the renderer treats all content as text.
+
+Use evidence entries shaped as:
+
+```json
+{
+  "status": "Observed",
+  "claim": "What the evidence supports",
+  "source": "Source name or participant ID",
+  "sourceUrl": "https://example.com/optional",
+  "date": "2026-01-01"
+}
+```
+
+Only use the evidence statuses defined below. Mark an artifact `ready-for-decision` or `complete` only after every required section contains meaningful content; the renderer rejects completed draft placeholders.
 
 ## Required document structure
 

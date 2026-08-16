@@ -5,11 +5,12 @@ Run the sprint as a resumable state machine. Do not make the user understand the
 ## Contents
 
 1. Interaction contract
-2. Sprint state
-3. Output structure
-4. End-to-end workflow
-5. Human decision gates
-6. Resuming and stopping
+2. Workspace engine
+3. Sprint state
+4. Output structure
+5. End-to-end workflow
+6. Human decision gates
+7. Resuming and stopping
 
 ## Interaction contract
 
@@ -26,6 +27,18 @@ Ask one focused question when possible. Offer a draft recommendation when the us
 
 Do not ask the user for information that can be derived safely from supplied material or public evidence. Do not advance through a human gate using an assumed answer.
 
+## Workspace engine
+
+Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
+
+```bash
+python3 <skill-dir>/scripts/sprint_workspace.py --help
+```
+
+The key commands are `init`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `status`, and `validate`.
+
+Edit structured files below `artifact-data/`, then run `render`. Do not edit `index.html`, `sprint-state.json`, or generated files below `artifacts/` manually.
+
 ## Sprint state
 
 Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this minimum shape:
@@ -39,7 +52,10 @@ Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this m
   "status": "active",
   "currentStep": "01-intake",
   "completedSteps": [],
+  "skippedSteps": [],
+  "pendingGate": null,
   "humanGates": [],
+  "decisions": [],
   "artifacts": [],
   "customerTesting": {
     "status": "not-planned",
@@ -48,7 +64,11 @@ Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this m
     "sessionsCompleted": 0
   },
   "openQuestions": [],
-  "nextAction": ""
+  "nextAction": {
+    "title": "",
+    "body": "",
+    "humanInput": ""
+  }
 }
 ```
 
@@ -64,6 +84,8 @@ design-sprint-<slug>/
 ├── sprint-state.json
 ├── assets/
 │   └── sprint.css
+├── artifact-data/
+│   └── 01-sprint-brief.json
 ├── artifacts/
 │   ├── 01-sprint-brief.html
 │   ├── 02-evidence-ledger.html
@@ -78,6 +100,8 @@ design-sprint-<slug>/
 │   ├── 11-customer-evidence.html
 │   ├── 12-synthesis.html
 │   └── 13-outcome.html
+├── working/
+│   └── <step>/<role>.md
 └── prototype/
     └── index.html
 ```

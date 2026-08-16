@@ -12,8 +12,11 @@ Act as the Sprint Orchestrator. Guide one human from the initial challenge to a 
 Read the following references before running a sprint:
 
 - [references/guided-workflow.md](references/guided-workflow.md) for the state machine, human gates, and resumable interaction pattern.
-- [references/agent-roles.md](references/agent-roles.md) before assigning any specialist work.
+- [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
+- [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
+
+Read [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.
 
 ## Enforce the non-negotiables
 
@@ -33,13 +36,20 @@ Prompt boundaries are behavioural controls, not a security sandbox. When the run
 
 On a new sprint:
 
-1. Create a dedicated output directory named `design-sprint-<short-slug>/`.
-2. Copy the HTML kit from `assets/html-kit/` into the output directory.
-3. Create the internal `sprint-state.json` described in the guided workflow.
-4. Create `index.html` as the living sprint dashboard.
-5. Begin at Step 1 and ask only for the information needed to progress.
+1. Run the workspace engine:
 
-On an existing sprint, read `sprint-state.json` and `index.html`, state the current phase and next action, then continue without repeating completed work.
+   ```bash
+   python3 <skill-dir>/scripts/sprint_workspace.py init \
+     --title "<sprint title>" \
+     --challenge "<initial challenge>" \
+     --output "<parent>/design-sprint-<short-slug>"
+   ```
+
+2. Open the generated `index.html` path for the human.
+3. Read `sprint-state.json` and begin the current step from the facilitation playbook.
+4. Ask only for the information needed to progress.
+
+On an existing sprint, run `status --workspace <sprint-directory>`, read the named artifact data, state the current phase and next action, then continue without repeating completed work.
 
 ## Guide instead of dumping
 
@@ -54,7 +64,7 @@ Ask one focused question when possible. Continue all safe work that does not req
 
 ## Delegate through role contracts
 
-Assign work using the exact role names in `agent-roles.md`. Every assignment must include:
+Generate work packets with `sprint_workspace.py role-packet` using the exact role identifiers in `role-contracts.json`. Every assignment must include:
 
 - role name and mission;
 - permitted inputs;
@@ -74,9 +84,22 @@ Require specialists to return:
 
 Specialists submit working memos. The Orchestrator reconciles conflicts, asks the human at decision gates, and updates the canonical HTML artifacts.
 
+Keep divergent role packets and results separate below `working/<step>/` until every assigned specialist has returned.
+
 ## Maintain the sprint record
 
-Update `sprint-state.json` and `index.html` after every completed step, human decision, customer session, or material change. Keep artifact links, status, provenance, and next actions current.
+Use the workspace engine instead of editing generated HTML or sprint state manually:
+
+- `new-artifact` creates a structured artifact-data draft from [references/artifact-specs.json](references/artifact-specs.json).
+- `set-challenge` and `question` keep the dashboard challenge and open-question state current.
+- `render` safely escapes artifact data and rebuilds all HTML.
+- `artifact-status` changes an artifact from draft through completion.
+- `complete-step` enforces required artifacts and pauses at human gates.
+- `gate` records the human's decision and rationale.
+- `customer` records real-session status and counts.
+- `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
+
+Update artifact JSON below `artifact-data/`, then run `render`. Never edit files below `artifacts/` directly; they are generated outputs.
 
 Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
 
@@ -97,3 +120,5 @@ If no real customer evidence is available, complete the sprint only to `Ready fo
 ## Complete the sprint
 
 Finish only after the human makes a recorded outcome decision: `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`. Publish the final HTML outcome report with evidence, confidence, unresolved risks, owners, and dated next actions. Mark customer testing truthfully as complete, partial, or not conducted.
+
+Run `validate --workspace <sprint-directory>` before handoff. Do not call the sprint complete while validation errors remain.
