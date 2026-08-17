@@ -59,6 +59,7 @@ ownership; it is not a complete schema-valid record because `init` supplies all
   "methodProfile": "adaptive-design-sprint",
   "executionMode": "live",
   "route": "undecided",
+  "routeHistory": [],
   "methodProfileSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
   "executionModeSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
   "fidelity": {
@@ -103,6 +104,12 @@ ownership; it is not a complete schema-valid record because `init` supplies all
 ```
 
 Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity.
+
+Follow the normative [transition model](transition-model.md) for every route
+change, step disposition, skip, gate, artifact-readiness state, customer-session
+update, and terminal transition. `routeHistory` is append-only: select the
+initial route during qualification, and allow one further transition only after
+a completed research-first stage.
 
 ## Assignment manifest
 

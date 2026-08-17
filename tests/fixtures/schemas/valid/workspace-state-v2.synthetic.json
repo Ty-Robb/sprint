@@ -377,6 +377,7 @@
     ],
     "pendingGate": null,
     "route": "undecided",
+    "routeHistory": [],
     "schemaVersion": "2.0",
     "skipReasons": {},
     "skippedSteps": [],

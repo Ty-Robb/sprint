@@ -37,6 +37,7 @@
           "methodProfileSelection",
           "executionModeSelection",
           "fidelity",
+          "routeHistory",
           "notApplicableSteps"
         ]
       }
@@ -62,6 +63,11 @@
     "executionModeSelection": {"$ref": "#/$defs/selectionRecord"},
     "fidelity": {"$ref": "#/$defs/fidelity"},
     "route": {"$ref": "#/$defs/route"},
+    "routeHistory": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {"$ref": "#/$defs/routeTransition"}
+    },
     "routeRationale": {"type": "string"},
     "selectedConcept": {"type": "string", "minLength": 1},
     "selectedConceptRationale": {"type": "string"},
@@ -212,6 +218,17 @@
       "required": ["selectedBy", "reason", "selectedAt"],
       "properties": {
         "selectedBy": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "selectedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "routeTransition": {
+      "type": "object",
+      "required": ["from", "to", "reason", "selectedAt"],
+      "properties": {
+        "from": {"$ref": "#/$defs/route"},
+        "to": {"$ref": "#/$defs/route"},
         "reason": {"type": "string", "minLength": 1},
         "selectedAt": {"$ref": "#/$defs/timestamp"}
       },

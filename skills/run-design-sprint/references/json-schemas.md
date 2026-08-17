@@ -49,9 +49,10 @@ legacy version or migration path.
   migration to `2.0` changes only `schemaVersion`. State migration also makes
   the formerly implicit one-human-plus-AI method explicit: it classifies the
   legacy run as `adaptive-design-sprint` and `live`, creates canonical fidelity
-  records, translates route exclusions into `notApplicableSteps`, and records
+  records, records any already-selected route in `routeHistory`, translates
+  route exclusions into `notApplicableSteps`, and records
   a compatibility note for human review. Existing user content, decisions,
-  timestamps, and workflow history remain unchanged. Migration also creates an
+  timestamps, and completed workflow history remain unchanged. Migration also creates an
   empty assignment manifest when one is absent, allowing pre-manifest
   workspaces to resume with explicit provenance for new assignments. Migration-derived
   timestamps reuse the source state's `updatedAt`, and object keys are
@@ -79,8 +80,10 @@ release. Cross-record assignment validation additionally enforces immutable
 digests, freshness, required memo sections, uniqueness, lifecycle linkage, and
 independent-run boundaries. Cross-record session checks additionally enforce isolation, unique
 counting, immutable version bindings, trace pointers, packet budgets, and stale
-synthesis detection. Route-history and skip-policy invariants are intentionally
-not changed here.
+synthesis detection. The [transition model](transition-model.md) adds the
+remaining cross-record rules that JSON Schema cannot express cleanly,
+including route history, step ordering, skip eligibility, artifact readiness,
+customer-session status consistency, and terminal invariants.
 
 ## Migrating a workspace
 
