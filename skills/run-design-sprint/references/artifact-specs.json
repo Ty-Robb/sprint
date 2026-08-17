@@ -86,7 +86,7 @@
       "filename": "11-customer-evidence.html",
       "title": "Customer Evidence",
       "phase": "Validate",
-      "purpose": "Record anonymised observed behaviour and quotations from real customer sessions before interpretation.",
+      "purpose": "Present anonymised observed behaviour and quote/source pointers from isolated customer-session summaries before interpretation.",
       "requiredSections": ["Session register", "Observed behaviour", "Customer quotations", "Per-session sprint-question evidence", "Data limitations"]
     },
     "12-synthesis": {
@@ -94,7 +94,7 @@
       "filename": "12-synthesis.html",
       "title": "Evidence Synthesis",
       "phase": "Synthesis",
-      "purpose": "Compare customer evidence with sprint questions and show patterns, contradictions, outliers, confidence, and gaps.",
+      "purpose": "Compare structured customer-session summaries with sprint questions and show traceable patterns, contradictions, outliers, confidence, and gaps.",
       "requiredSections": ["Question-by-question findings", "Patterns", "Contradictions", "Outliers", "Confidence", "Evidence gaps"]
     },
     "13-outcome": {

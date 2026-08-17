@@ -121,7 +121,11 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `artifact-status` changes an artifact from draft through completion.
 - `complete-step` enforces required artifacts and pauses at human gates.
 - `gate` records the human's decision and rationale.
-- `customer` records real-session status and counts.
+- `customer` records the suitable audience, target, rationale, and planning status; completed counts are manifest-derived.
+- `session-init` creates one isolated, version-bound participant record and anonymized summary draft.
+- `session-packet` generates that participant's bounded fresh-chat handoff from declared inputs only.
+- `session-checkpoint`, `session-complete`, and `session-reopen` persist resumable state and derive counted completion from the canonical manifest.
+- `synthesis-packet` creates a separate bounded fresh-chat input from the shared scorecard and structured summaries, excluding raw transcripts by default.
 - `set-method-profile` and `set-execution-mode` record selector changes before work begins.
 - `record-fidelity` records the selected method, human and AI participants, actual timebox, and any deviation with its reason and impacts.
 - `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
@@ -150,6 +154,12 @@ Never:
 In live mode, if no real customer evidence is available, complete the sprint only to `Ready for customer testing` and make the blocker visible on the dashboard. A self-test or planning/rehearsal may close only as an explicitly unvalidated `Investigate` or `Stop` outcome after customer activity is skipped and labelled truthfully.
 
 For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, skip the live customer-session step explicitly and use only `Synthetic rehearsal` labels; never complete a customer-evidence artifact.
+
+For every live participant, follow the full command sequence in
+`references/customer-testing.md`. Never set a completed count directly: the
+session manifest derives it from unique validated records. Start the participant
+and synthesis packets in fresh chats, respect their recorded character budgets,
+and preserve immutable files for every prototype/questions version.
 
 ## Complete the sprint
 

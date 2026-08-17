@@ -61,7 +61,8 @@ artifact-data/      Canonical structured artifact content
 artifacts/          Disposable generated HTML documents
 assets/sprint.css   Disposable generated stylesheet
 working/            Isolated specialist packets and memos
-prototype/          Human-authored customer-test prototype
+prototype/          Versioned human-authored customer-test prototypes
+customer-testing/   Canonical manifest, isolated sessions, and bounded packets
 ```
 
 The whole generated directory is private by default, including its HTML and structured data.
@@ -71,6 +72,13 @@ fail when those views do not match the current JSON and templates. Engine-writte
 shareable files use mode `0644` where the platform supports POSIX permissions.
 
 Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
+
+Customer testing uses one versioned record and one generated minimal handoff
+per participant, intended for a fresh chat. Sessions persist checkpoints and
+anonymized structured summaries, while synthesis receives a separate bounded
+packet without raw transcripts by default. See the
+[real-customer testing protocol](skills/run-design-sprint/references/customer-testing.md)
+for operating commands, context budgets, usage fields, and audit traceability.
 
 Before publishing changes to this repository, run:
 

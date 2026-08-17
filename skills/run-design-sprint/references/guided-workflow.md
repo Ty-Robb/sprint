@@ -35,7 +35,7 @@ Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
 python3 <skill-dir>/scripts/sprint_workspace.py --help
 ```
 
-The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `render --check`, `status`, `validate`, and `migrate`.
+The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `session-init`, `session-packet`, `session-checkpoint`, `session-complete`, `session-reopen`, `synthesis-packet`, `next-action`, `role-packet`, `render`, `render --check`, `status`, `validate`, and `migrate`.
 
 Read [json-schemas.md](json-schemas.md) when a workspace reports a legacy or unsupported schema version. Do not render or mutate legacy JSON before a protected migration.
 
@@ -155,11 +155,20 @@ design-sprint-<slug>/
 │   └── 13-outcome.html
 ├── working/
 │   └── <step>/<role>.md
-└── prototype/
-    └── index.html
+├── prototype/
+│   └── index.html
+└── customer-testing/
+    ├── session-manifest.json
+    ├── sessions/
+    │   └── S01/
+    │       ├── session.json
+    │       ├── summary.json
+    │       └── handoff.md
+    └── synthesis/
+        └── synthesis-packet.md
 ```
 
-Create only artifacts required by the selected route. Omit `03-foundation.html` when a foundation stage is unnecessary. Store identity/contact maps, raw transcripts, recordings, account evidence, and usage-dashboard captures in separately access-controlled source storage, not in the workspace. The generated `.gitignore` is a fallback for common sensitive paths, not permission to put the workspace in a public repository.
+Create only artifacts required by the selected route. Omit `03-foundation.html` when a foundation stage is unnecessary. Store identity/contact maps, raw transcripts, recordings, account evidence, and usage-dashboard captures in separately access-controlled source storage, not in the workspace. Session records keep opaque audit references to those sources. Keep every version-bound prototype, context, guide, and scorecard file immutable; create a new path and version rather than overwriting it. The generated `.gitignore` is a fallback for common sensitive paths, not permission to put the workspace in a public repository.
 
 ## End-to-end workflow
 
@@ -267,6 +276,15 @@ Confirm recruitment criteria, consent, tasks, neutral prompts, note capture, and
 
 **Artifacts:** `10-test-plan.html`, `11-customer-evidence.html`
 
+Use the canonical session workflow in [customer-testing.md](customer-testing.md):
+plan the target with `customer`, create one `session-init` record per test,
+generate one `session-packet` per participant, persist checkpoints when needed,
+then use `session-complete` only after its structured summary, consent, and
+redaction metadata pass validation. A generated handoff is the complete input
+to one fresh session chat; it must not be supplemented with earlier participant
+chats or unrelated sprint history. `sessionsCompleted` is derived from unique
+complete manifest entries and cannot be set directly.
+
 If sessions cannot occur, set the state to `waiting-for-customers`. Do not skip forward to a customer-tested conclusion.
 
 For a live Sprint-book profile, five suitable one-to-one sessions are the default target. A different target requires a reason and a fidelity/evidence/readiness impact record. Self-test and planning/rehearsal modes cannot complete this step or the customer-evidence artifact; they may skip it explicitly and may only rehearse later mechanics with synthetic material clearly labelled `Synthetic rehearsal`.
@@ -278,6 +296,14 @@ Compare all session evidence against the sprint questions and scorecard. Show pa
 **Primary roles:** Synthesis Analyst, Critical Reviewer
 
 **Artifact:** `12-synthesis.html`
+
+Run `synthesis-packet` before synthesis. Use the generated packet in a separate
+fresh chat. Its default inputs are the shared scorecard and complete anonymized
+summaries; raw evidence and raw-reference locations are excluded. Require every
+synthesized claim to cite included trace IDs such as `S01/OBS1`, and record each
+claim in the synthesis artifact's `evidence` list with those IDs in `source`.
+Any session completion, reopen, or summary edit makes an earlier synthesis
+packet stale.
 
 ### Step 13: Decide and hand off
 
@@ -309,6 +335,6 @@ Completing a sprint does not approve its artifacts for public release. Before pu
 
 ## Resuming and stopping
 
-On resume, read state and artifacts, verify that linked files exist, and continue from `nextAction`. Do not reopen approved gates unless new evidence materially challenges them or the human asks.
+On resume, read state and artifacts, verify that linked files exist, and continue from `nextAction`. For an interrupted customer session, read its canonical checkpoint and regenerate `session-packet`; do not replay the chat. Do not reopen approved gates unless new evidence materially challenges them or the human asks.
 
 The sprint may end early when the route is `no-sprint`, evidence disproves the premise, recruitment is impossible, a material safety issue emerges, or the human chooses `Stop`. Produce an honest outcome artifact explaining why.
