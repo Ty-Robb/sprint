@@ -44,6 +44,10 @@ PRIVATE_DIRECTORY_NAMES = {
 PRIVATE_PATH_SEQUENCES = {
     ("usage-evidence", "private"),
 }
+PRIVATE_SESSION_PATH_SEQUENCES = {
+    ("customer-testing", "sessions"),
+    ("customer-testing", "synthesis"),
+}
 PRIVATE_MEDIA_MARKERS = {
     "account-screenshot",
     "billing-dashboard",
@@ -166,10 +170,15 @@ def path_findings(path: Path, base: Path) -> list[Finding]:
     for sequence in PRIVATE_PATH_SEQUENCES:
         if any(parts[index : index + len(sequence)] == sequence for index in range(len(parts))):
             findings.append(Finding(path, "private usage/account evidence must not be published"))
+    for sequence in PRIVATE_SESSION_PATH_SEQUENCES:
+        if any(parts[index : index + len(sequence)] == sequence for index in range(len(parts))):
+            findings.append(Finding(path, "private customer-session material must not be published"))
     if any(part.startswith(GENERATED_WORKSPACE_PREFIXES) for part in parts[:-1]):
         findings.append(Finding(path, "generated sprint workspace must remain private"))
     if path.name.lower() == "sprint-state.json":
         findings.append(Finding(path, "generated sprint state must remain private"))
+    if path.name.lower() == "session-manifest.json":
+        findings.append(Finding(path, "generated customer-session manifest must remain private"))
     if (
         path.name == ".env"
         or (path.name.startswith(".env.") and path.name != ".env.example")

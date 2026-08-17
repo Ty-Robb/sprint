@@ -79,16 +79,20 @@ claims or sources do not count as content.
 | `not-planned` | `sessionsCompleted == 0`; a Sprint-book live target may already be configured |
 | `recruiting` | `sessionsPlanned > 0` and `sessionsCompleted == 0` |
 | `scheduled` | `sessionsPlanned > 0` and `sessionsCompleted == 0` |
-| `in-progress` | `0 < sessionsCompleted < sessionsPlanned` |
+| `in-progress` | `0 <= sessionsCompleted < sessionsPlanned`; the manifest has a packet-generated, active, or reopened session |
 | `complete` | `sessionsPlanned > 0` and both counts are equal |
 | `partial` | `0 < sessionsCompleted < sessionsPlanned` |
 | `blocked` | completed sessions remain below the planned count; zero/zero is allowed before a target is secured |
 
 Positive plans require a non-blank audience and rationale. Counts cannot be
 negative or exceed the plan. Non-live modes require `not-planned` and zero/zero.
-Every completed live session must have one unique, non-blank participant ID and
-non-empty recorded evidence in the `11-customer-evidence` Session register; the
-row count must equal `sessionsCompleted`.
+Every completed live session must be a counted entry in the canonical session
+manifest with an isolated session record and a complete anonymized summary.
+Completed records require granted consent, completed or unnecessary redaction,
+immutable prototype/question version bindings, a unique participant/session
+identity, and non-empty traceable evidence. The manifest count must equal
+`sessionsCompleted`; the rendered `11-customer-evidence` artifact presents the
+evidence but is not the source of truth for completion.
 
 ## Terminal states
 
