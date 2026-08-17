@@ -63,6 +63,7 @@
       "properties": {
         "prototypeArtifact": {"$ref": "#/$defs/sourceDescriptor"},
         "prototypeContext": {"$ref": "#/$defs/sourceDescriptor"},
+        "testedVersion": {"$ref": "#/$defs/sourceDescriptor"},
         "interviewGuide": {"$ref": "#/$defs/sourceDescriptor"},
         "scorecard": {"$ref": "#/$defs/sourceDescriptor"},
         "priorDecisions": {"type": "array", "items": {"$ref": "#/$defs/sourceDescriptor"}},

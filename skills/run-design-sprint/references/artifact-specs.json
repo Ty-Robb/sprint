@@ -73,8 +73,16 @@
       "purpose": "Specify the minimum sequence of realistic scenes required to test the selected hypothesis.",
       "requiredSections": ["Entry context", "Test scenes", "Mocked behaviour", "Prototype boundaries"]
     },
+    "10-prototype-brief": {
+      "step": "09-experiment",
+      "filename": "10-prototype-brief.html",
+      "title": "Prototype / MVP Brief",
+      "phase": "Experiment",
+      "purpose": "Choose the smallest test artifact that can answer the sprint questions and record its approved build, tool, safety, trial, deployment, and version boundaries.",
+      "requiredSections": ["Structured prototype/MVP brief"]
+    },
     "10-test-plan": {
-      "step": "11-customer-sessions",
+      "step": "10-prototype",
       "filename": "10-test-plan.html",
       "title": "Customer Test Plan",
       "phase": "Validate",

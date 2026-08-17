@@ -52,7 +52,7 @@ ownership; it is not a complete schema-valid record because `init` supplies all
 
 ```json
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "4.0",
   "title": "Example Sprint",
   "slug": "example-sprint",
   "challenge": "Improve the example journey",
@@ -60,8 +60,8 @@ ownership; it is not a complete schema-valid record because `init` supplies all
   "executionMode": "live",
   "route": "undecided",
   "routeHistory": [],
-  "methodProfileSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
-  "executionModeSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
+  "methodProfileSelection": {"selectedBy": "Human Decider", "reason": "The adaptive profile fits the challenge.", "selectedAt": "2026-08-17T12:00:00Z"},
+  "executionModeSelection": {"selectedBy": "Human Decider", "reason": "Suitable real customers are available.", "selectedAt": "2026-08-17T12:00:00Z"},
   "fidelity": {
     "schemaVersion": "1.0",
     "teamModel": "one-human-plus-AI",
@@ -71,11 +71,13 @@ ownership; it is not a complete schema-valid record because `init` supplies all
     "summary": {}
   },
   "status": "active",
+  "terminalState": "not-terminal",
   "currentStep": "01-intake",
   "completedSteps": [],
   "skippedSteps": [],
   "notApplicableSteps": [],
   "skipReasons": {},
+  "skipRecords": [],
   "pendingGate": null,
   "humanGates": [
     {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
@@ -108,7 +110,7 @@ ownership; it is not a complete schema-valid record because `init` supplies all
 }
 ```
 
-Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity.
+Use only these process statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep the separate `terminalState` truthful: `not-terminal`, `live-customer-tested`, `self-test-complete-unvalidated`, `planning-rehearsal-complete-unvalidated`, or `closed-unvalidated`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity. Each skip has a matching `skipRecords` audit entry.
 
 Follow the normative [transition model](transition-model.md) for every route
 change, step disposition, skip, gate, artifact-readiness state, customer-session
@@ -168,6 +170,7 @@ design-sprint-<slug>/
 │   ├── 07-decision.html
 │   ├── 08-experiment.html
 │   ├── 09-storyboard.html
+│   ├── 10-prototype-brief.html
 │   ├── 10-test-plan.html
 │   ├── 11-customer-evidence.html
 │   ├── 12-synthesis.html
@@ -176,7 +179,10 @@ design-sprint-<slug>/
 │   ├── <step>/<role>.packet.md       # immutable bounded assignment
 │   └── <step>/<role>.result.md       # private specialist memo
 ├── prototype/
-│   └── index.html
+│   └── <version>/
+│       ├── index.html
+│       ├── context.md
+│       └── tested-version.json
 └── customer-testing/
     ├── session-manifest.json
     ├── sessions/
@@ -274,17 +280,30 @@ Define decision criteria before revealing recommendations. Compare directions us
 
 Translate the selected direction into a hypothesis, scorecard, four-to-six test scenes, storyboard, prototype fidelity, and explicit success and failure signals.
 
+Choose the lowest rung on the test-artifact ladder capable of producing
+authentic evidence. Complete the typed prototype/MVP brief, provider-neutral
+tool assessment, safety and simulation boundaries, deployment/cleanup/rollback
+plan, and explicit human approvals before any AI build packet is generated.
+Read [prototype-mvp-testing.md](prototype-mvp-testing.md).
+
 **Primary roles:** Experience Designer, Research Lead, Technical Lead
 
-**Artifacts:** `08-experiment.html`, `09-storyboard.html`
+**Artifacts:** `08-experiment.html`, `09-storyboard.html`, `10-prototype-brief.html`
 
 ### Step 10: Build and review the prototype
 
-Build only what is required for the experiment. Review it for fidelity, broken paths, accessibility, feasibility, bias, and interview readiness. Record mocked behaviour and limitations.
+Generate the bounded build packet from only the approved brief and assets, then
+build only what is required for the experiment. Review it for fidelity, broken
+paths, accessibility, feasibility, bias, security, data exposure, and interview
+readiness. Record mocked behaviour and limitations. Complete the canonical test
+plan, conduct a moderated trial using its actual interview script, and freeze a
+trial-passed version with deployment, expiry, cleanup, rollback, experiment,
+storyboard, and test-plan links. A live URL is neither validation nor production
+readiness.
 
 **Primary roles:** Prototype Builder, Critical Reviewer, Research Lead
 
-**Artifact:** `prototype/index.html` or another suitable prototype linked from the dashboard
+**Artifacts:** `10-test-plan.html`, `prototype/<version>/index.html`, and `prototype/<version>/tested-version.json`, all linked from the dashboard
 
 **Human gate:** Gate 4 — approve the prototype for customer testing.
 
@@ -294,7 +313,7 @@ Confirm recruitment criteria, consent, tasks, neutral prompts, note capture, and
 
 **Primary role:** Research Lead
 
-**Artifacts:** `10-test-plan.html`, `11-customer-evidence.html`
+**Artifact:** `11-customer-evidence.html`
 
 Use the canonical session workflow in [customer-testing.md](customer-testing.md):
 plan the target with `customer`, create one `session-init` record per test,
@@ -361,3 +380,9 @@ Completing a sprint does not approve its artifacts for public release. Before pu
 On resume, read state, the assignment manifest, artifacts, and, when testing has begun, the customer-session manifest; verify that linked files and digests are current; then continue from `nextAction`. For an interrupted customer session, read its canonical checkpoint and regenerate `session-packet`; do not replay the chat. Do not reopen approved gates unless new evidence materially challenges them or the human asks. Use the route/concept commands for material changes so the superseded and replacement decisions remain traceable.
 
 The sprint may end early when the route is `no-sprint`, evidence disproves the premise, recruitment is impossible, a material safety issue emerges, or the human chooses `Stop`. Produce an honest outcome artifact explaining why.
+
+Do not relabel a progressed self-test or planning/rehearsal as live. Follow the
+early-conversion or new-workspace restart procedure in
+[execution-modes.md](execution-modes.md). A new live workspace may carry
+reviewed hypotheses and plans forward only with their original non-observed
+provenance; it must re-run gates and real-customer work.

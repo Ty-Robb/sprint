@@ -34,7 +34,8 @@
     },
     "outcomeAssessment": {"$ref": "#/$defs/outcomeAssessment"},
     "unknowns": {"$ref": "#/$defs/stringList"},
-    "nextActions": {"$ref": "#/$defs/stringList"}
+    "nextActions": {"$ref": "#/$defs/stringList"},
+    "prototypeBrief": {"$ref": "prototype-brief-v1.schema.json"}
   },
   "additionalProperties": false,
   "allOf": [
@@ -129,6 +130,16 @@
       ]}}}
     },
     {
+      "if": {"properties": {"id": {"const": "10-prototype-brief"}}, "required": ["id"]},
+      "then": {
+        "required": ["prototypeBrief"],
+        "properties": {"sections": {"allOf": [
+          {"$ref": "#/$defs/sectionStructuredPrototypeBrief"}
+        ]}}
+      },
+      "else": {"not": {"required": ["prototypeBrief"]}}
+    },
+    {
       "if": {"properties": {"id": {"const": "10-test-plan"}}, "required": ["id"]},
       "then": {"properties": {"sections": {"allOf": [
         {"$ref": "#/$defs/sectionRecruitmentCriteria"},
@@ -177,7 +188,7 @@
       "enum": [
         "01-sprint-brief", "02-evidence-ledger", "03-foundation",
         "04-journey-map", "05-sprint-questions", "06-solution-directions",
-        "07-decision", "08-experiment", "09-storyboard", "10-test-plan",
+        "07-decision", "08-experiment", "09-storyboard", "10-prototype-brief", "10-test-plan",
         "11-customer-evidence", "12-synthesis", "13-outcome"
       ]
     },
@@ -397,6 +408,7 @@
     "sectionTestScenes": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Test scenes"}}, "required": ["title"]}, "minContains": 1},
     "sectionMockedBehaviour": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Mocked behaviour"}}, "required": ["title"]}, "minContains": 1},
     "sectionPrototypeBoundaries": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Prototype boundaries"}}, "required": ["title"]}, "minContains": 1},
+    "sectionStructuredPrototypeBrief": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Structured prototype/MVP brief"}}, "required": ["title"]}, "minContains": 1},
     "sectionRecruitmentCriteria": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Recruitment criteria"}}, "required": ["title"]}, "minContains": 1},
     "sectionScreener": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Screener"}}, "required": ["title"]}, "minContains": 1},
     "sectionConsent": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Consent"}}, "required": ["title"]}, "minContains": 1},

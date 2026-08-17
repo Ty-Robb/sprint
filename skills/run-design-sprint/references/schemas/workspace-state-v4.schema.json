@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/workspace-state-v4.schema.json",
+  "title": "Design Sprint workspace state 4.0",
+  "allOf": [
+    {"$ref": "workspace-state.schema.json"},
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {"const": "4.0"},
+        "customerTesting": {
+          "type": "object",
+          "required": [
+            "sessionsPlanned",
+            "sessionsInvited",
+            "sessionsAttempted",
+            "sessionsCompleted",
+            "sessionsQualified",
+            "sessionsExcluded",
+            "sessionsUsable"
+          ]
+        }
+      },
+      "required": ["schemaVersion"]
+    }
+  ]
+}

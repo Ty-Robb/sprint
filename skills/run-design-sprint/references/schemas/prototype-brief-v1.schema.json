@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/prototype-brief-v1.schema.json",
+  "title": "Prototype or MVP brief 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "artifactLevel",
+    "selection",
+    "customer",
+    "experience",
+    "signals",
+    "realityBoundary",
+    "content",
+    "environment",
+    "capabilities",
+    "safety",
+    "evidenceCapture",
+    "build",
+    "toolSelection",
+    "deploymentPlan",
+    "approvals",
+    "buildPackets",
+    "trialRuns",
+    "versions",
+    "currentVersion"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "artifactLevel": {"$ref": "#/$defs/artifactLevel"},
+    "selection": {
+      "type": "object",
+      "required": ["sprintQuestions", "hypothesis", "rationale", "whyHigherFidelityIsUnnecessary"],
+      "properties": {
+        "sprintQuestions": {"$ref": "#/$defs/nonEmptyStringList"},
+        "hypothesis": {"$ref": "#/$defs/nonEmptyString"},
+        "rationale": {"$ref": "#/$defs/nonEmptyString"},
+        "whyHigherFidelityIsUnnecessary": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "customer": {
+      "type": "object",
+      "required": ["target", "entryContext"],
+      "properties": {
+        "target": {"$ref": "#/$defs/nonEmptyString"},
+        "entryContext": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "experience": {
+      "type": "object",
+      "required": ["task", "journey", "criticalScenes"],
+      "properties": {
+        "task": {"$ref": "#/$defs/nonEmptyString"},
+        "journey": {"$ref": "#/$defs/nonEmptyStringList"},
+        "criticalScenes": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 6,
+          "items": {"$ref": "#/$defs/scene"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "signals": {
+      "type": "object",
+      "required": ["success", "ambiguity", "failure"],
+      "properties": {
+        "success": {"$ref": "#/$defs/nonEmptyStringList"},
+        "ambiguity": {"$ref": "#/$defs/nonEmptyStringList"},
+        "failure": {"$ref": "#/$defs/nonEmptyStringList"}
+      },
+      "additionalProperties": false
+    },
+    "realityBoundary": {
+      "type": "object",
+      "required": ["mustBeReal", "simulated", "manuallyOperated", "delayed", "omitted"],
+      "properties": {
+        "mustBeReal": {"$ref": "#/$defs/nonEmptyStringList"},
+        "simulated": {"$ref": "#/$defs/stringList"},
+        "manuallyOperated": {"$ref": "#/$defs/stringList"},
+        "delayed": {"$ref": "#/$defs/stringList"},
+        "omitted": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "object",
+      "required": ["required", "sampleData", "states"],
+      "properties": {
+        "required": {"$ref": "#/$defs/nonEmptyStringList"},
+        "sampleData": {"$ref": "#/$defs/nonEmptyStringList"},
+        "states": {
+          "type": "object",
+          "required": ["empty", "loading", "error"],
+          "properties": {
+            "empty": {"$ref": "#/$defs/stringList"},
+            "loading": {"$ref": "#/$defs/stringList"},
+            "error": {"$ref": "#/$defs/stringList"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["devices", "browsers", "languages", "accessibility", "conditions"],
+      "properties": {
+        "devices": {"$ref": "#/$defs/nonEmptyStringList"},
+        "browsers": {"$ref": "#/$defs/nonEmptyStringList"},
+        "languages": {"$ref": "#/$defs/nonEmptyStringList"},
+        "accessibility": {"$ref": "#/$defs/nonEmptyStringList"},
+        "conditions": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "required": [
+        "realData",
+        "authentication",
+        "payments",
+        "integrations",
+        "notifications",
+        "dataPersistence",
+        "backgroundJobs",
+        "repeatedUse",
+        "notes"
+      ],
+      "properties": {
+        "realData": {"type": "boolean"},
+        "authentication": {"type": "boolean"},
+        "payments": {"type": "boolean"},
+        "integrations": {"type": "boolean"},
+        "notifications": {"type": "boolean"},
+        "dataPersistence": {"type": "boolean"},
+        "backgroundJobs": {"type": "boolean"},
+        "repeatedUse": {"type": "boolean"},
+        "notes": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "safety": {
+      "type": "object",
+      "required": ["privacy", "consent", "security", "regulatory", "dataClassification"],
+      "properties": {
+        "privacy": {"$ref": "#/$defs/nonEmptyStringList"},
+        "consent": {"$ref": "#/$defs/nonEmptyStringList"},
+        "security": {"$ref": "#/$defs/nonEmptyStringList"},
+        "regulatory": {"$ref": "#/$defs/stringList"},
+        "dataClassification": {"enum": ["synthetic-only", "participant-provided", "approved-non-production"]}
+      },
+      "additionalProperties": false
+    },
+    "evidenceCapture": {
+      "type": "object",
+      "required": ["methods", "analytics"],
+      "properties": {
+        "methods": {"$ref": "#/$defs/nonEmptyStringList"},
+        "analytics": {
+          "type": "object",
+          "required": ["enabled", "rationale"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "rationale": {"$ref": "#/$defs/nonEmptyString"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "required": ["timeboxMinutes", "owner", "budgetCeiling", "approvalPoints"],
+      "properties": {
+        "timeboxMinutes": {"type": "integer", "minimum": 1},
+        "owner": {"$ref": "#/$defs/nonEmptyString"},
+        "budgetCeiling": {"$ref": "#/$defs/nonEmptyString"},
+        "approvalPoints": {"$ref": "#/$defs/nonEmptyStringList"}
+      },
+      "additionalProperties": false
+    },
+    "toolSelection": {
+      "type": "object",
+      "required": [
+        "route",
+        "category",
+        "selectedTool",
+        "rationale",
+        "constraints",
+        "criteria",
+        "supportingTools",
+        "requiresExternalAccount",
+        "estimatedCost",
+        "exportSelfHosting"
+      ],
+      "properties": {
+        "route": {
+          "enum": [
+            "no-external-tool",
+            "interaction-design",
+            "portable-coded-facade",
+            "ai-assisted-app-builder",
+            "existing-product-slice",
+            "live-service-pilot"
+          ]
+        },
+        "category": {
+          "enum": ["none", "native-repository", "interaction-design", "ai-app-builder", "existing-application-stack"]
+        },
+        "selectedTool": {"$ref": "#/$defs/nonEmptyString"},
+        "rationale": {"$ref": "#/$defs/nonEmptyString"},
+        "constraints": {"$ref": "#/$defs/nonEmptyStringList"},
+        "criteria": {
+          "type": "object",
+          "required": [
+            "timeToTestableArtifact",
+            "fidelity",
+            "realCapabilities",
+            "stackCompatibility",
+            "exportability",
+            "collaborationVersionControl",
+            "privacyDataProcessing",
+            "accessibilityDeviceSupport",
+            "costApproval",
+            "maintainability"
+          ],
+          "properties": {
+            "timeToTestableArtifact": {"$ref": "#/$defs/nonEmptyString"},
+            "fidelity": {"$ref": "#/$defs/nonEmptyString"},
+            "realCapabilities": {"$ref": "#/$defs/nonEmptyString"},
+            "stackCompatibility": {"$ref": "#/$defs/nonEmptyString"},
+            "exportability": {"$ref": "#/$defs/nonEmptyString"},
+            "collaborationVersionControl": {"$ref": "#/$defs/nonEmptyString"},
+            "privacyDataProcessing": {"$ref": "#/$defs/nonEmptyString"},
+            "accessibilityDeviceSupport": {"$ref": "#/$defs/nonEmptyString"},
+            "costApproval": {"$ref": "#/$defs/nonEmptyString"},
+            "maintainability": {"$ref": "#/$defs/nonEmptyString"}
+          },
+          "additionalProperties": false
+        },
+        "supportingTools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "selectedTool", "rationale"],
+            "properties": {
+              "category": {"enum": ["static-host", "backend-data-service", "version-control", "analytics", "other"]},
+              "selectedTool": {"$ref": "#/$defs/nonEmptyString"},
+              "rationale": {"$ref": "#/$defs/nonEmptyString"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "requiresExternalAccount": {"type": "boolean"},
+        "estimatedCost": {"$ref": "#/$defs/nonEmptyString"},
+        "exportSelfHosting": {
+          "type": "object",
+          "required": ["available", "strategy"],
+          "properties": {
+            "available": {"type": "boolean"},
+            "strategy": {"$ref": "#/$defs/nonEmptyString"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "deploymentPlan": {"$ref": "#/$defs/deployment"},
+    "approvals": {
+      "type": "object",
+      "required": ["experimentBoundary", "toolChoice", "externalAccount", "cost", "dataExposure", "publicDeployment"],
+      "properties": {
+        "experimentBoundary": {"$ref": "#/$defs/approval"},
+        "toolChoice": {"$ref": "#/$defs/approval"},
+        "externalAccount": {"$ref": "#/$defs/approval"},
+        "cost": {"$ref": "#/$defs/approval"},
+        "dataExposure": {"$ref": "#/$defs/approval"},
+        "publicDeployment": {"$ref": "#/$defs/approval"}
+      },
+      "additionalProperties": false
+    },
+    "buildPackets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "briefSha256", "assets", "generatedAt"],
+        "properties": {
+          "path": {"$ref": "#/$defs/relativePath"},
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "briefSha256": {"$ref": "#/$defs/sha256"},
+          "assets": {"type": "array", "items": {"$ref": "#/$defs/sourceDescriptor"}},
+          "generatedAt": {"$ref": "#/$defs/timestamp"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "trialRuns": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/trialRun"}
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "recordPath", "recordSha256", "prototypePath", "trialRunId", "deploymentUrl", "frozenAt"],
+        "properties": {
+          "version": {"$ref": "#/$defs/version"},
+          "recordPath": {"$ref": "#/$defs/relativePath"},
+          "recordSha256": {"$ref": "#/$defs/sha256"},
+          "prototypePath": {"$ref": "#/$defs/relativePath"},
+          "trialRunId": {"$ref": "#/$defs/identifier"},
+          "deploymentUrl": {"anyOf": [{"type": "null"}, {"type": "string", "format": "uri", "pattern": "^https?://"}]},
+          "frozenAt": {"$ref": "#/$defs/timestamp"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "currentVersion": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/version"}]}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "artifactLevel": {
+      "enum": ["copy-concept", "concierge", "clickable", "coded-facade", "live-mvp", "limited-pilot"]
+    },
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "stringList": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "nonEmptyStringList": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "version": {"$ref": "#/$defs/identifier"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^[^/]"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "scene": {
+      "type": "object",
+      "required": ["id", "title", "sprintQuestion", "description"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "title": {"$ref": "#/$defs/nonEmptyString"},
+        "sprintQuestion": {"$ref": "#/$defs/nonEmptyString"},
+        "description": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "approval": {
+      "type": "object",
+      "required": ["status", "deciderLabel", "rationale", "decidedAt"],
+      "properties": {
+        "status": {"enum": ["pending", "approved", "not-required", "declined"]},
+        "deciderLabel": {"type": "string"},
+        "rationale": {"type": "string"},
+        "decidedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]}
+      },
+      "additionalProperties": false
+    },
+    "sourceDescriptor": {
+      "type": "object",
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "deployment": {
+      "type": "object",
+      "required": ["required", "target", "accessModel", "public", "url", "expiresAt", "cleanupPlan", "rollbackPlan"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "target": {"$ref": "#/$defs/nonEmptyString"},
+        "accessModel": {"enum": ["private-local", "private-preview", "invite-only", "public"]},
+        "public": {"type": "boolean"},
+        "url": {"anyOf": [{"type": "null"}, {"type": "string", "format": "uri", "pattern": "^https?://"}]},
+        "expiresAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "cleanupPlan": {"$ref": "#/$defs/nonEmptyString"},
+        "rollbackPlan": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "trialRun": {
+      "type": "object",
+      "required": ["id", "status", "moderator", "interviewScript", "testedArtifact", "findings", "issues", "ranAt"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "status": {"enum": ["passed", "failed"]},
+        "moderator": {"$ref": "#/$defs/nonEmptyString"},
+        "interviewScript": {"$ref": "#/$defs/sourceDescriptor"},
+        "testedArtifact": {"$ref": "#/$defs/sourceDescriptor"},
+        "findings": {"$ref": "#/$defs/nonEmptyStringList"},
+        "issues": {"$ref": "#/$defs/stringList"},
+        "ranAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

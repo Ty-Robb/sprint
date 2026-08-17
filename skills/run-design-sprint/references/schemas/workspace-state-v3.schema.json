@@ -6,21 +6,7 @@
     {"$ref": "workspace-state.schema.json"},
     {
       "type": "object",
-      "properties": {
-        "schemaVersion": {"const": "3.0"},
-        "customerTesting": {
-          "type": "object",
-          "required": [
-            "sessionsPlanned",
-            "sessionsInvited",
-            "sessionsAttempted",
-            "sessionsCompleted",
-            "sessionsQualified",
-            "sessionsExcluded",
-            "sessionsUsable"
-          ]
-        }
-      },
+      "properties": {"schemaVersion": {"const": "3.0"}},
       "required": ["schemaVersion"]
     }
   ]

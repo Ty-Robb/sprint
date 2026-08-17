@@ -28,7 +28,10 @@ The ownership boundary is deliberate:
 - `index.html`, HTML below `artifacts/`, and `assets/sprint.css` are disposable
   generated views. Never edit or review them as an independent source of truth.
 - `working/` contains non-canonical specialist material. `prototype/` is separately
-  authored test material and is not overwritten by the renderer.
+  authored test material and is not overwritten by the renderer. The typed
+  `prototypeBrief` within `artifact-data/10-prototype-brief.json` is canonical;
+  `prototype/<version>/tested-version.json` is an immutable canonical record,
+  while `artifacts/10-prototype-brief.html` is its accessible generated view.
 
 If a view is missing or stale, repair it with `render`; do not copy changes back
 from HTML into JSON. Rendering never advances a workflow or artifact timestamp.
@@ -137,7 +140,8 @@ Include a unique page title, UTF-8 charset, responsive viewport, link to the loc
 
 Make `index.html` the control centre, not a decorative cover. Show:
 
-- sprint title, method profile, execution mode, route, status, and current step;
+- sprint title, method profile, execution mode and its selector/reason, route,
+  process status, truthful terminal state, and current step;
 - process status with completed, skipped, blocked, not-applicable, and not-started stages;
 - method fidelity as a separate assessment with adaptations and limitations;
 - descriptive evidence strength based on usable sessions, participant fit, protocol fidelity, tested versions, segment/scenario coverage, contradiction, directness, and uncertainty;
@@ -147,12 +151,17 @@ Make `index.html` the control centre, not a decorative cover. Show:
 - human decisions and unresolved questions;
 - customer-testing status plus separate planned, invited, attempted, completed, qualified, excluded, and usable counts;
 - links to every created artifact and prototype;
+- links to the approved prototype/MVP brief, current tested artifact, and
+  immutable deployment/version record without implying that a live URL is
+  validated or production-ready;
 - prominent blockers;
+- a prominent customer-validation banner that says `UNVALIDATED` on every
+  self-test, planning/rehearsal, blocked-live, and no-sprint export;
 - evidence-status legend.
 
 Never show a later stage as complete merely because a placeholder file exists.
 
-Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same four-dimensional assessment and automatically generated limitations in the final outcome artifact so exported conclusions cannot lose their method or evidence boundaries. Five suitable usable sessions means the book target was met; it never means statistically validated or representative.
+Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same four-dimensional assessment, execution mode, terminal state, validation notice, and automatically generated limitations in the final outcome artifact so exported conclusions cannot lose their method or evidence boundaries. Five suitable usable sessions means the book target was met; it never means statistically validated or representative. Separately sanitized exports must preserve those labels rather than copying conclusions without their boundary.
 
 ## Artifact requirements
 

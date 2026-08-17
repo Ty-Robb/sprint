@@ -36,6 +36,7 @@
     "sessionDate": {"type": "string", "format": "date"},
     "prototypeVersion": {"$ref": "#/$defs/version"},
     "questionsVersion": {"$ref": "#/$defs/version"},
+    "testedVersion": {"$ref": "#/$defs/sourceDescriptor"},
     "status": {"enum": ["draft", "complete"]},
     "anonymized": {"const": true},
     "containsDirectIdentifiers": {"const": false},
@@ -137,6 +138,18 @@
     "sessionIdentifier": {"type": "string", "minLength": 3, "maxLength": 32, "pattern": "^S[0-9][A-Z0-9-]*$"},
     "participantIdentifier": {"type": "string", "minLength": 3, "maxLength": 32, "pattern": "^P[0-9][A-Z0-9-]*$"},
     "evidenceId": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^[^/]"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sourceDescriptor": {
+      "type": "object",
+      "required": ["path", "sha256", "characters"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "characters": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
     "stringList": {"type": "array", "items": {"type": "string", "minLength": 1}}
   }
 }

@@ -14,10 +14,12 @@ Read the following references before running a sprint:
 - [references/privacy-and-publication.md](references/privacy-and-publication.md) before choosing a workspace location, handling private evidence, or publishing any sprint material.
 - [references/guided-workflow.md](references/guided-workflow.md) for the state machine, human gates, and resumable interaction pattern.
 - [references/transition-model.md](references/transition-model.md) for the executable route/step matrix, skip policy, readiness rules, and terminal invariants.
+- [references/execution-modes.md](references/execution-modes.md) for mode selection, audited customer-step skips, truthful closure labels, and rehearsal-to-live restart rules.
 - [references/method-profiles.json](references/method-profiles.json) for method profiles, execution modes, canonical purposes, default methods, timeboxes, substitutions, and non-negotiable principles.
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
+- [references/prototype-mvp-testing.md](references/prototype-mvp-testing.md) before selecting, briefing, building, trialling, deploying, or versioning a test artifact.
 - [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
 - [references/usage-reporting.md](references/usage-reporting.md) before measuring, calculating, or publishing usage, cost, subscription, or capacity evidence.
 
@@ -122,6 +124,10 @@ Keep divergent role packets and results separate below `working/<step>/` until e
 Use the workspace engine instead of editing generated HTML or sprint state manually:
 
 - `new-artifact` creates a structured artifact-data draft from [references/artifact-specs.json](references/artifact-specs.json).
+- `prototype-recommend` recommends the lowest-cost test-artifact rung and a provider-neutral tool route from the declared reality needs.
+- `prototype-approve` records the human's experiment, tool, account, cost, data, and deployment boundary decisions without performing any external action.
+- `prototype-build-packet` creates an immutable packet from only the approved structured brief and explicitly approved assets.
+- `prototype-trial` records a moderated run using the actual canonical interview script; `prototype-freeze` writes the immutable trial-passed deployment/version record.
 - `set-challenge` and `question` keep the dashboard challenge and open-question state current.
 - `render` safely escapes artifact data and rebuilds all HTML.
 - `render --check` fails without writing when generated HTML or CSS is stale.
@@ -131,7 +137,7 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `set-concept` records the selected concept; changing an attested route or concept supersedes the prior gate decision and requires a new decision event.
 - `role-packet` registers bounded assignments; `role-result` and `assignment-status` validate returned memos and advance lifecycle state.
 - `customer` records the suitable audience, target, rationale, and planning status; completed counts are manifest-derived.
-- `session-init` creates one isolated, version-bound participant record and anonymized summary draft.
+- `session-init` creates one isolated participant record and anonymized summary draft bound to an immutable trial-passed tested-version record.
 - `session-packet` generates that participant's bounded fresh-chat handoff from declared inputs only.
 - `session-checkpoint`, `session-complete`, and `session-reopen` persist resumable state and derive counted completion from the canonical manifest.
 - `synthesis-packet` creates a separate bounded fresh-chat input from the shared scorecard and structured summaries, excluding raw transcripts by default.
@@ -170,9 +176,9 @@ Never:
 - expose unnecessary personal information in artifacts;
 - call directional evidence universal validation.
 
-In live mode, if no real customer evidence is available, complete the sprint only to `Ready for customer testing` and make the blocker visible on the dashboard. A self-test or planning/rehearsal may close only as an explicitly unvalidated `Investigate` or `Stop` outcome after customer activity is skipped and labelled truthfully.
+In live mode, if no real customer evidence is available, stop at `Ready for customer testing` when testing can still proceed. If testing is genuinely blocked or the route is `no-sprint`, Gate 5 may close only as `closed-unvalidated` with an `Investigate` or `Stop` outcome. A self-test or planning/rehearsal may close only in its explicit unvalidated terminal state, also as `Investigate` or `Stop`, after both customer sessions and customer-evidence synthesis are skipped and audited truthfully.
 
-For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, skip the live customer-session step explicitly and use only `Synthetic rehearsal` labels; never complete a customer-evidence artifact.
+For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, auditably skip the live customer-session and customer-evidence synthesis steps, use only `Synthetic rehearsal` labels for role-play, and never complete a customer-evidence artifact.
 
 Keep planned, invited, attempted, completed, qualified, excluded, and usable counts separate. Report zero usable as not tested, one or two as early/limited, three or four as partial directional, five as the book target met, and more than five as extended. These are method-coverage descriptions, never statistical confidence or population validation. A completed session enters synthesis only when participant fit, protocol fidelity, critical-scenario coverage, and explicit usability support it.
 
@@ -186,7 +192,7 @@ and preserve immutable files for every prototype/questions version.
 
 Finish only after the human makes a recorded outcome decision: `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`. Publish the final HTML outcome report with process status, method fidelity, descriptive evidence strength, decision readiness, limitations, unresolved risks, owners, and dated next actions. Mark customer testing truthfully as complete, partial, or not conducted; never translate participant count into statistical confidence.
 
-The dashboard and final outcome must show process completion separately from the generated method-fidelity assessment. The fidelity summary must list the one-human-plus-AI team-model adaptation, every material deviation, and the limitations those choices place on evidence and decision readiness.
+The dashboard, every rendered artifact, status output, and any sanitized export must show process completion separately from `terminalState`, customer validation, and the generated method-fidelity assessment. The fidelity summary must list the one-human-plus-AI team-model adaptation, every material deviation, and the limitations those choices place on evidence and decision readiness.
 
 Every material finding must retain `n/N` support, contradictions, anonymized participant/session IDs, prototype and question versions, exact observation/inference IDs, limitations, remaining uncertainty, and an action-specific next decision with the smallest next learning action. Keep mixed segments, mixed versions, moderator deviations, excluded sessions, and automatic partial-evidence limitations visible.
 

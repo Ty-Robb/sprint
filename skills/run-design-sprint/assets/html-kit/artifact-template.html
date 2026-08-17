@@ -25,6 +25,7 @@
           <span class="tag">Method: {{METHOD_PROFILE}}</span>
           <span class="tag">Mode: {{EXECUTION_MODE}}</span>
           <span class="tag">Route: {{SPRINT_ROUTE}}</span>
+          <span class="tag">Terminal: {{TERMINAL_STATE}}</span>
           <span class="tag">Owner: Sprint Orchestrator</span>
           <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
         </div>
@@ -32,6 +33,13 @@
     </header>
 
     <main id="main" class="shell">
+      <section class="section {{VALIDATION_SECTION_CLASS}}" aria-labelledby="validation-title">
+        <p class="eyebrow">Validation status</p>
+        <h2 id="validation-title">{{VALIDATION_LABEL}}</h2>
+        <p>{{VALIDATION_NOTICE}}</p>
+        <p><strong>Mode selected by:</strong> {{MODE_SELECTED_BY}} · <strong>Reason:</strong> {{MODE_SELECTION_REASON}}</p>
+      </section>
+
       <section class="section section--accent" aria-labelledby="summary-title">
         <p class="eyebrow">At a glance</p>
         <h2 id="summary-title">Summary</h2>
@@ -47,6 +55,7 @@
 {{METHOD_FIDELITY_HTML}}
 
 {{MATERIAL_FINDINGS_HTML}}
+{{PROTOTYPE_TRACEABILITY_HTML}}
 
       <section class="section" aria-labelledby="evidence-title">
         <div class="section-header">
