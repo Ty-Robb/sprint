@@ -79,6 +79,7 @@ Specialists produce working memos only. They must not edit:
 
 - `sprint-state.json`;
 - `index.html`;
+- files below `artifact-data/`;
 - files below `artifacts/`;
 - another role's working memo.
 
@@ -89,7 +90,7 @@ The Sprint Orchestrator must:
 3. show material disagreements;
 4. ask the human at the applicable gate;
 5. update artifact data below `artifact-data/`;
-6. render canonical HTML with the workspace engine.
+6. render disposable HTML views with the workspace engine.
 
 ## Fallback without subagents
 
