@@ -118,7 +118,15 @@ Use distinct measurement contexts:
 
 Never combine those contexts into one runtime or capacity claim. Customer-session and synthesis measurements may be split further, but they must still remain distinguishable from internal development. Subscription counters are not API billing line items unless reproducible evidence establishes that mapping.
 
-The repository's [synthetic usage fixture](../../../tests/fixtures/hypothetical.synthetic.usage-evidence.json) demonstrates the `hypothetical-unverified` record shape, which is declared by the strict [usage-evidence JSON Schema](schemas/usage-evidence-v1.schema.json). It contains invented numbers and cannot substantiate a production claim. An observed record may use `sanitized-observed` only after account IDs, organisation IDs, private plan details, dashboard captures, private URLs, customer context, and credentials have been removed.
+The repository's [synthetic usage fixture](../../../tests/fixtures/hypothetical.synthetic.usage-evidence.json) demonstrates the original `hypothetical-unverified` claim envelope. The full [usage reporting process](usage-reporting.md) adds strict per-run redacted records, an immutable dated pricing snapshot, and a reproducible report that separates internal development, customer-only runtime, individual sessions, and synthesis. All public examples contain invented run data and cannot substantiate a production claim. An observed record may use `sanitized-observed` only after account and organisation identifiers, private plan details, dashboard captures, request identifiers, private URLs, customer context, and credentials have been removed.
+
+The report must keep observations, base-rate equivalents, excluded charges, and
+hypothetical planning scenarios separate. Missing request-level data, reasoning
+token inclusion, long-context tiers, cache writes, tool charges, credits, model
+mix, and subscription/API differences must be explicit. Never assume an
+unavailable field is zero, add reasoning tokens to output twice, call an API
+equivalent an invoice, map a subscription counter one-to-one to API line items,
+or publish a permanent "minimum plan" claim.
 
 ## Publication checklist
 

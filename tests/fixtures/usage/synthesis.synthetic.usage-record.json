@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "redacted-usage-record",
+  "recordId": "SYN-SYNTHESIS-01",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "evidenceClassification": "hypothetical-unverified",
+  "measurement": {
+    "measuredAt": "2026-08-17T15:00:00Z",
+    "periodStart": "2026-08-17T14:30:00Z",
+    "periodEnd": "2026-08-17T15:00:00Z",
+    "timezone": "UTC"
+  },
+  "context": {
+    "skillVersion": "synthetic-fixture-1",
+    "route": "focused-design-sprint",
+    "scope": "synthesis",
+    "phase": "synthesis",
+    "runKind": "customer-facing",
+    "sessionLabel": null,
+    "billing": {
+      "mode": "api",
+      "subscriptionCounterMapping": "not-applicable-api",
+      "subscriptionCounters": [],
+      "notes": [
+        "Synthetic API metadata; no source summaries or customer material exist."
+      ]
+    }
+  },
+  "provenance": {
+    "sourceType": "synthetic",
+    "sourceReference": "Purpose-written synthesis fixture; no observed source exists.",
+    "redactions": []
+  },
+  "coverage": {
+    "requestLevel": "complete",
+    "missingRequestLevelReason": "",
+    "longContextPricing": "known-zero",
+    "cacheWrites": "known-zero",
+    "tools": "known-zero",
+    "credits": "known-zero",
+    "modelMix": "single-model"
+  },
+  "observations": [
+    {
+      "observationId": "SYNTHESIS-REQ-01",
+      "granularity": "request",
+      "phase": "synthesis",
+      "model": "gpt-5.6-luna",
+      "requestCount": 1,
+      "contextTier": "short",
+      "usage": {
+        "inputTokens": 8000,
+        "cachedInputTokens": 1000,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 2500,
+        "reasoningTokens": 800,
+        "totalTokens": 10500
+      },
+      "tools": [],
+      "source": "synthetic response metadata"
+    }
+  ],
+  "credits": [],
+  "excludedCharges": [
+    {
+      "category": "api-reconciliation",
+      "observationId": null,
+      "description": "No Costs endpoint or invoice line item exists for this synthetic fixture."
+    }
+  ],
+  "notes": [
+    "Synthesis is included once in customerOnly and also displayed as a non-additive subgroup."
+  ]
+}

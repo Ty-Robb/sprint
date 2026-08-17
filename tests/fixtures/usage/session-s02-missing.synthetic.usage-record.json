@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "redacted-usage-record",
+  "recordId": "SYN-SESSION-S02-MISSING",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "evidenceClassification": "hypothetical-unverified",
+  "measurement": {
+    "measuredAt": "2026-08-17T14:00:00Z",
+    "periodStart": "2026-08-17T13:30:00Z",
+    "periodEnd": "2026-08-17T14:00:00Z",
+    "timezone": "UTC"
+  },
+  "context": {
+    "skillVersion": "synthetic-fixture-1",
+    "route": "focused-design-sprint",
+    "scope": "customer-session",
+    "phase": "customer-session",
+    "runKind": "customer-facing",
+    "sessionLabel": "SYN-S02",
+    "billing": {
+      "mode": "mixed",
+      "subscriptionCounterMapping": "not-one-to-one",
+      "subscriptionCounters": [],
+      "notes": [
+        "The synthetic aggregate does not expose how subscription and API activity were divided."
+      ]
+    }
+  },
+  "provenance": {
+    "sourceType": "synthetic",
+    "sourceReference": "Purpose-written incomplete-data fixture; no participant or observed source exists.",
+    "redactions": []
+  },
+  "coverage": {
+    "requestLevel": "unavailable",
+    "missingRequestLevelReason": "The synthetic source exposes only one run aggregate, not per-request metadata.",
+    "longContextPricing": "unavailable",
+    "cacheWrites": "unavailable",
+    "tools": "unavailable",
+    "credits": "unavailable",
+    "modelMix": "unavailable"
+  },
+  "observations": [
+    {
+      "observationId": "SESSION-S02-AGGREGATE",
+      "granularity": "run",
+      "phase": "customer-session",
+      "model": null,
+      "requestCount": null,
+      "contextTier": "unknown",
+      "usage": {
+        "inputTokens": 5000,
+        "cachedInputTokens": null,
+        "cacheWriteInputTokens": null,
+        "outputTokens": 2000,
+        "reasoningTokens": null,
+        "totalTokens": 7000
+      },
+      "tools": [],
+      "source": "synthetic run aggregate"
+    }
+  ],
+  "credits": [],
+  "excludedCharges": [
+    {
+      "category": "cache-write",
+      "observationId": "SESSION-S02-AGGREGATE",
+      "description": "Cache-write tokens are unavailable and are not assumed to be zero."
+    },
+    {
+      "category": "long-context",
+      "observationId": "SESSION-S02-AGGREGATE",
+      "description": "Request boundaries and context tiers are unavailable, so long-context rates cannot be applied."
+    },
+    {
+      "category": "tool",
+      "observationId": "SESSION-S02-AGGREGATE",
+      "description": "Tool calls and tool-specific charges are unavailable and are not assumed to be zero."
+    },
+    {
+      "category": "credit",
+      "observationId": null,
+      "description": "Credits are unavailable and are not assumed to be zero."
+    },
+    {
+      "category": "subscription",
+      "observationId": null,
+      "description": "The mixed subscription/API aggregate cannot be reconciled to either billing system."
+    }
+  ],
+  "notes": [
+    "Known aggregate tokens remain observations, but the base-rate component is excluded rather than guessed."
+  ]
+}

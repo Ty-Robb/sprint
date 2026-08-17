@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "redacted-usage-record",
+  "recordId": "SYN-INTERNAL-01",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "evidenceClassification": "hypothetical-unverified",
+  "measurement": {
+    "measuredAt": "2026-08-17T09:00:00Z",
+    "periodStart": "2026-08-17T08:00:00Z",
+    "periodEnd": "2026-08-17T09:00:00Z",
+    "timezone": "UTC"
+  },
+  "context": {
+    "skillVersion": "synthetic-fixture-1",
+    "route": "undecided",
+    "scope": "internal-development",
+    "phase": "engine-rehearsal",
+    "runKind": "internal-rehearsal",
+    "sessionLabel": null,
+    "billing": {
+      "mode": "api",
+      "subscriptionCounterMapping": "not-applicable-api",
+      "subscriptionCounters": [],
+      "notes": [
+        "Synthetic API metadata; no invoice or account dashboard was used."
+      ]
+    }
+  },
+  "provenance": {
+    "sourceType": "synthetic",
+    "sourceReference": "Purpose-written parser and calculator fixture; no observed source exists.",
+    "redactions": []
+  },
+  "coverage": {
+    "requestLevel": "complete",
+    "missingRequestLevelReason": "",
+    "longContextPricing": "known-zero",
+    "cacheWrites": "recorded",
+    "tools": "recorded",
+    "credits": "recorded",
+    "modelMix": "single-model"
+  },
+  "observations": [
+    {
+      "observationId": "DEV-REQ-01",
+      "granularity": "request",
+      "phase": "schema-rehearsal",
+      "model": "gpt-5.6-luna",
+      "requestCount": 1,
+      "contextTier": "short",
+      "usage": {
+        "inputTokens": 10000,
+        "cachedInputTokens": 2000,
+        "cacheWriteInputTokens": 1000,
+        "outputTokens": 3000,
+        "reasoningTokens": 1000,
+        "totalTokens": 13000
+      },
+      "tools": [
+        {
+          "name": "web-search",
+          "quantity": "2",
+          "unit": "calls",
+          "pricingKey": "web-search",
+          "chargeTreatment": "included-in-base-rate-equivalent",
+          "excludedReason": ""
+        }
+      ],
+      "source": "synthetic response metadata"
+    },
+    {
+      "observationId": "DEV-REQ-02",
+      "granularity": "request",
+      "phase": "report-rehearsal",
+      "model": "gpt-5.6-luna",
+      "requestCount": 1,
+      "contextTier": "short",
+      "usage": {
+        "inputTokens": 5000,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 1000,
+        "reasoningTokens": 400,
+        "totalTokens": 6000
+      },
+      "tools": [],
+      "source": "synthetic response metadata"
+    }
+  ],
+  "credits": [
+    {
+      "amountUsd": "0.015",
+      "source": "synthetic credit example",
+      "treatment": "excluded-from-base-rate-equivalent",
+      "reason": "A credit changes a bill, not the uncredited API base-rate equivalent."
+    }
+  ],
+  "excludedCharges": [
+    {
+      "category": "api-reconciliation",
+      "observationId": null,
+      "description": "No Costs endpoint or invoice line item exists for this synthetic fixture."
+    }
+  ],
+  "notes": [
+    "Internal development is disjoint from customer-only runtime.",
+    "Reasoning tokens are included in outputTokens and totalTokens, not added again."
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "redacted-usage-record",
+  "recordId": "SYN-CUSTOMER-RUNTIME-01",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "evidenceClassification": "hypothetical-unverified",
+  "measurement": {
+    "measuredAt": "2026-08-17T12:00:00Z",
+    "periodStart": "2026-08-17T10:00:00Z",
+    "periodEnd": "2026-08-17T12:00:00Z",
+    "timezone": "UTC"
+  },
+  "context": {
+    "skillVersion": "synthetic-fixture-1",
+    "route": "focused-design-sprint",
+    "scope": "customer-runtime",
+    "phase": "orchestration",
+    "runKind": "customer-facing",
+    "sessionLabel": null,
+    "billing": {
+      "mode": "api",
+      "subscriptionCounterMapping": "not-applicable-api",
+      "subscriptionCounters": [],
+      "notes": [
+        "Synthetic API metadata; it is not an observed customer charge."
+      ]
+    }
+  },
+  "provenance": {
+    "sourceType": "synthetic",
+    "sourceReference": "Purpose-written customer-runtime fixture; no observed source exists.",
+    "redactions": []
+  },
+  "coverage": {
+    "requestLevel": "complete",
+    "missingRequestLevelReason": "",
+    "longContextPricing": "recorded",
+    "cacheWrites": "recorded",
+    "tools": "recorded",
+    "credits": "known-zero",
+    "modelMix": "recorded"
+  },
+  "observations": [
+    {
+      "observationId": "CUSTOMER-REQ-01",
+      "granularity": "request",
+      "phase": "qualification",
+      "model": "gpt-5.6-terra",
+      "requestCount": 1,
+      "contextTier": "short",
+      "usage": {
+        "inputTokens": 20000,
+        "cachedInputTokens": 5000,
+        "cacheWriteInputTokens": 2000,
+        "outputTokens": 4000,
+        "reasoningTokens": 1500,
+        "totalTokens": 24000
+      },
+      "tools": [],
+      "source": "synthetic response metadata"
+    },
+    {
+      "observationId": "CUSTOMER-REQ-02",
+      "granularity": "request",
+      "phase": "prototype-review",
+      "model": "gpt-5.6-luna",
+      "requestCount": 1,
+      "contextTier": "long",
+      "usage": {
+        "inputTokens": 300000,
+        "cachedInputTokens": 100000,
+        "cacheWriteInputTokens": 50000,
+        "outputTokens": 20000,
+        "reasoningTokens": 8000,
+        "totalTokens": 320000
+      },
+      "tools": [
+        {
+          "name": "web-search",
+          "quantity": "1",
+          "unit": "calls",
+          "pricingKey": "web-search",
+          "chargeTreatment": "included-in-base-rate-equivalent",
+          "excludedReason": ""
+        }
+      ],
+      "source": "synthetic response metadata"
+    }
+  ],
+  "credits": [],
+  "excludedCharges": [
+    {
+      "category": "api-reconciliation",
+      "observationId": null,
+      "description": "No Costs endpoint or invoice line item exists for this synthetic fixture."
+    }
+  ],
+  "notes": [
+    "The two requests deliberately exercise model mix and short- versus long-context rates."
+  ]
+}

@@ -19,6 +19,11 @@ if str(SKILL_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_SCRIPTS_DIR))
 
 from schema_validation import SchemaValidator, strict_json_loads
+from usage_report import (
+    UsageReportError,
+    validate_pricing_snapshot,
+    validate_usage_record,
+)
 
 
 USAGE_EVIDENCE_SCHEMA = (
@@ -30,6 +35,41 @@ USAGE_EVIDENCE_SCHEMA = (
     / "usage-evidence-v1.schema.json"
 )
 USAGE_EVIDENCE_VERSION = "1.0"
+USAGE_RECORD_SCHEMA = (
+    REPO_ROOT
+    / "skills"
+    / "run-design-sprint"
+    / "references"
+    / "schemas"
+    / "usage-record-v1.schema.json"
+)
+PRICING_SNAPSHOT_SCHEMA = (
+    REPO_ROOT
+    / "skills"
+    / "run-design-sprint"
+    / "references"
+    / "schemas"
+    / "pricing-snapshot-v1.schema.json"
+)
+USAGE_REPORT_SCHEMA = (
+    REPO_ROOT
+    / "skills"
+    / "run-design-sprint"
+    / "references"
+    / "schemas"
+    / "usage-report-v1.schema.json"
+)
+STRICT_PUBLICATION_JSON = (
+    (
+        ".usage-evidence.json",
+        "usage-evidence",
+        USAGE_EVIDENCE_SCHEMA,
+        USAGE_EVIDENCE_VERSION,
+    ),
+    (".usage-record.json", "usage record", USAGE_RECORD_SCHEMA, "1.0"),
+    (".pricing-snapshot.json", "pricing snapshot", PRICING_SNAPSHOT_SCHEMA, "1.0"),
+    (".usage-report.json", "usage report", USAGE_REPORT_SCHEMA, "1.0"),
+)
 SCHEMA_VALIDATOR = SchemaValidator()
 
 PRIVATE_DIRECTORY_NAMES = {
@@ -243,28 +283,42 @@ def fixture_findings(path: Path, base: Path) -> list[Finding]:
     return findings
 
 
-def usage_record_findings(path: Path) -> list[Finding]:
-    if not path.name.endswith(".usage-evidence.json"):
+def versioned_publication_json_findings(path: Path) -> list[Finding]:
+    family = next(
+        (item for item in STRICT_PUBLICATION_JSON if path.name.endswith(item[0])),
+        None,
+    )
+    if family is None:
         return []
+    _suffix, label, schema, current_version = family
     try:
         data = strict_json_loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
-        return [Finding(path, f"usage-evidence record is not valid JSON: {error}")]
+        return [Finding(path, f"{label} is not valid JSON: {error}")]
     if not isinstance(data, dict):
-        return [Finding(path, "usage-evidence record must be a JSON object")]
+        return [Finding(path, f"{label} must be a JSON object")]
     version = data.get("schemaVersion")
-    if version is not None and version != USAGE_EVIDENCE_VERSION:
+    if version is not None and version != current_version:
         return [
             Finding(
                 path,
                 f"$.schemaVersion: unsupported version {version!r}; "
-                f"supported current version: {USAGE_EVIDENCE_VERSION!r}",
+                f"supported current version: {current_version!r}",
             )
         ]
-    return [
-        Finding(path, str(issue))
-        for issue in SCHEMA_VALIDATOR.validate(data, USAGE_EVIDENCE_SCHEMA)
+    findings = [
+        Finding(path, str(issue)) for issue in SCHEMA_VALIDATOR.validate(data, schema)
     ]
+    if findings:
+        return findings
+    try:
+        if label == "usage record":
+            validate_usage_record(data, str(path))
+        elif label == "pricing snapshot":
+            validate_pricing_snapshot(data, str(path))
+    except UsageReportError as error:
+        findings.append(Finding(path, str(error)))
+    return findings
 
 
 def scan_files(files: Iterable[Path], base: Path = REPO_ROOT) -> list[Finding]:
@@ -273,7 +327,7 @@ def scan_files(files: Iterable[Path], base: Path = REPO_ROOT) -> list[Finding]:
         findings.extend(path_findings(path, base))
         findings.extend(content_findings(path))
         findings.extend(fixture_findings(path, base))
-        findings.extend(usage_record_findings(path))
+        findings.extend(versioned_publication_json_findings(path))
     return findings
 
 

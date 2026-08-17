@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/usage-record-v1.schema.json",
+  "title": "Redacted usage record 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "recordId",
+    "evidenceClassification",
+    "measurement",
+    "context",
+    "provenance",
+    "coverage",
+    "observations",
+    "credits",
+    "excludedCharges",
+    "notes"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "redacted-usage-record"},
+    "recordId": {"$ref": "#/$defs/safeIdentifier"},
+    "fixtureKind": {"const": "synthetic"},
+    "containsRealCustomerData": {"const": false},
+    "evidenceClassification": {
+      "enum": ["sanitized-observed", "hypothetical-unverified"]
+    },
+    "measurement": {"$ref": "#/$defs/measurement"},
+    "context": {"$ref": "#/$defs/context"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "coverage": {"$ref": "#/$defs/coverage"},
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/observation"}
+    },
+    "credits": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/credit"}
+    },
+    "excludedCharges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/excludedCharge"}
+    },
+    "notes": {"$ref": "#/$defs/stringList"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "evidenceClassification": {"const": "hypothetical-unverified"}
+        },
+        "required": ["evidenceClassification"]
+      },
+      "then": {
+        "required": ["fixtureKind", "containsRealCustomerData"],
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "properties": {"sourceType": {"const": "synthetic"}},
+            "required": ["sourceType"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidenceClassification": {"const": "sanitized-observed"}
+        },
+        "required": ["evidenceClassification"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "sourceType": {
+                "enum": ["sanitized-runtime-metadata", "sanitized-aggregate-export"]
+              },
+              "redactions": {"type": "array", "minItems": 1}
+            },
+            "required": ["sourceType", "redactions"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "date": {"type": "string", "format": "date"},
+    "safeIdentifier": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "nullableCount": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "integer", "minimum": 0}
+      ]
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "measurement": {
+      "type": "object",
+      "required": ["measuredAt", "periodStart", "periodEnd", "timezone"],
+      "properties": {
+        "measuredAt": {"$ref": "#/$defs/timestamp"},
+        "periodStart": {"$ref": "#/$defs/timestamp"},
+        "periodEnd": {"$ref": "#/$defs/timestamp"},
+        "timezone": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "required": [
+        "skillVersion",
+        "route",
+        "scope",
+        "phase",
+        "runKind",
+        "sessionLabel",
+        "billing"
+      ],
+      "properties": {
+        "skillVersion": {"type": "string", "minLength": 1},
+        "route": {
+          "enum": [
+            "undecided",
+            "research-first",
+            "foundation-plus-design",
+            "full-design-sprint",
+            "focused-design-sprint",
+            "no-sprint"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "internal-development",
+            "customer-runtime",
+            "customer-session",
+            "synthesis"
+          ]
+        },
+        "phase": {"type": "string", "minLength": 1},
+        "runKind": {"enum": ["internal-rehearsal", "customer-facing"]},
+        "sessionLabel": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/safeIdentifier"}
+          ]
+        },
+        "billing": {"$ref": "#/$defs/billing"}
+      },
+      "additionalProperties": false
+    },
+    "billing": {
+      "type": "object",
+      "required": ["mode", "subscriptionCounterMapping", "subscriptionCounters", "notes"],
+      "properties": {
+        "mode": {"enum": ["api", "subscription", "mixed", "unknown"]},
+        "subscriptionCounterMapping": {
+          "enum": ["not-applicable-api", "not-one-to-one", "unknown"]
+        },
+        "subscriptionCounters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "value", "unit"],
+            "properties": {
+              "label": {"type": "string", "minLength": 1},
+              "value": {"$ref": "#/$defs/decimal"},
+              "unit": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "notes": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["sourceType", "sourceReference", "redactions"],
+      "properties": {
+        "sourceType": {
+          "enum": [
+            "synthetic",
+            "sanitized-runtime-metadata",
+            "sanitized-aggregate-export"
+          ]
+        },
+        "sourceReference": {"type": "string", "minLength": 1},
+        "redactions": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "requestLevel",
+        "missingRequestLevelReason",
+        "longContextPricing",
+        "cacheWrites",
+        "tools",
+        "credits",
+        "modelMix"
+      ],
+      "properties": {
+        "requestLevel": {"enum": ["complete", "partial", "unavailable"]},
+        "missingRequestLevelReason": {"type": "string"},
+        "longContextPricing": {"enum": ["recorded", "known-zero", "unavailable"]},
+        "cacheWrites": {"enum": ["recorded", "known-zero", "unavailable"]},
+        "tools": {"enum": ["recorded", "known-zero", "unavailable"]},
+        "credits": {"enum": ["recorded", "known-zero", "unavailable"]},
+        "modelMix": {"enum": ["recorded", "single-model", "unavailable"]}
+      },
+      "additionalProperties": false
+    },
+    "tokenUsage": {
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "cachedInputTokens",
+        "cacheWriteInputTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "totalTokens"
+      ],
+      "properties": {
+        "inputTokens": {"$ref": "#/$defs/nullableCount"},
+        "cachedInputTokens": {"$ref": "#/$defs/nullableCount"},
+        "cacheWriteInputTokens": {"$ref": "#/$defs/nullableCount"},
+        "outputTokens": {"$ref": "#/$defs/nullableCount"},
+        "reasoningTokens": {"$ref": "#/$defs/nullableCount"},
+        "totalTokens": {"$ref": "#/$defs/nullableCount"}
+      },
+      "additionalProperties": false
+    },
+    "toolUsage": {
+      "type": "object",
+      "required": [
+        "name",
+        "quantity",
+        "unit",
+        "pricingKey",
+        "chargeTreatment",
+        "excludedReason"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "quantity": {"$ref": "#/$defs/decimal"},
+        "unit": {"type": "string", "minLength": 1},
+        "pricingKey": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/safeIdentifier"}
+          ]
+        },
+        "chargeTreatment": {
+          "enum": ["included-in-base-rate-equivalent", "excluded", "unknown"]
+        },
+        "excludedReason": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "observation": {
+      "type": "object",
+      "required": [
+        "observationId",
+        "granularity",
+        "phase",
+        "model",
+        "requestCount",
+        "contextTier",
+        "usage",
+        "tools",
+        "source"
+      ],
+      "properties": {
+        "observationId": {"$ref": "#/$defs/safeIdentifier"},
+        "granularity": {"enum": ["request", "phase", "run"]},
+        "phase": {"type": "string", "minLength": 1},
+        "model": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "string", "minLength": 1}
+          ]
+        },
+        "requestCount": {"$ref": "#/$defs/nullableCount"},
+        "contextTier": {"enum": ["short", "long", "unknown"]},
+        "usage": {"$ref": "#/$defs/tokenUsage"},
+        "tools": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/toolUsage"}
+        },
+        "source": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "credit": {
+      "type": "object",
+      "required": ["amountUsd", "source", "treatment", "reason"],
+      "properties": {
+        "amountUsd": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/decimal"}
+          ]
+        },
+        "source": {"type": "string", "minLength": 1},
+        "treatment": {"const": "excluded-from-base-rate-equivalent"},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "excludedCharge": {
+      "type": "object",
+      "required": ["category", "observationId", "description"],
+      "properties": {
+        "category": {
+          "enum": [
+            "cache-write",
+            "long-context",
+            "tool",
+            "credit",
+            "subscription",
+            "api-reconciliation",
+            "other"
+          ]
+        },
+        "observationId": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/safeIdentifier"}
+          ]
+        },
+        "description": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -19,6 +19,7 @@ Read the following references before running a sprint:
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
 - [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
+- [references/usage-reporting.md](references/usage-reporting.md) before measuring, calculating, or publishing usage, cost, subscription, or capacity evidence.
 
 Read [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.
 
@@ -148,6 +149,14 @@ Treat `assignment-manifest.json` and role packets as engine-owned canonical prov
 Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
 
 Do not copy a private workspace into this public skill repository. If the human wants to publish an example or a usage/cost claim, create a separate sanitized export, follow the [publication checklist](references/privacy-and-publication.md#publication-checklist), and keep the private source repository private.
+
+For a usage or cost claim, create one strict redacted usage record per internal,
+customer-runtime, customer-session, or synthesis scope and run
+`scripts/usage_report.py` with an immutable dated pricing snapshot. Keep
+observations, base-rate equivalents, excluded charges, and hypothetical planning
+scenarios separately labelled. Never add reasoning tokens twice, silently treat
+missing request/model/cache/tool/credit data as zero, map subscription counters
+to API line items, or describe an untested plan as a minimum.
 
 ## Protect customer integrity
 
