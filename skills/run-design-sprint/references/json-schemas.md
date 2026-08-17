@@ -18,6 +18,8 @@ dependency-free and reports instance locations as JSONPath, for example
 | Session manifest | `customer-testing/session-manifest.json` | `1.0` | Current only |
 | Customer session | `customer-testing/sessions/*/session.json` | `1.0` | Current only |
 | Session summary | `customer-testing/sessions/*/summary.json` | `1.0` | Current only |
+| Prototype/MVP brief | `artifact-data/10-prototype-brief.json` → `prototypeBrief` | `1.0` nested in artifact data `2.0` | Current only |
+| Immutable tested version | `prototype/*/tested-version.json` | `1.0` | Current only; records are never migrated in place |
 | Public usage evidence | `*.usage-evidence.json` publication records | `1.0` | Current only |
 | Redacted usage record | `*.usage-record.json` publication records | `1.0` | Current only |
 | Pricing snapshot | `*.pricing-snapshot.json` dated calculation inputs | `1.0` | Current only |
@@ -40,7 +42,20 @@ anonymized summary. Runtime validation reconciles version hashes, participant
 and session IDs, statuses, source pointers, packet hashes, synthesis inputs,
 and the aggregate count in workspace state. These three families deliberately
 start at `1.0` independently of workspace-state schema `2.0`; they have no
-legacy version or migration path.
+legacy version or migration path. New manifests carry the optional
+`testArtifactWorkflowVersion: "1.0"` capability marker. Under that marker,
+prototype catalogs and every session entry, record, and summary must link an
+immutable tested-version descriptor. Older `1.0` session documents without the
+marker remain schema-valid and retain their legacy hash-bound behavior.
+
+The prototype/MVP brief schema defines the ladder selection, four-to-six-scene
+experience, signals, real/simulated boundary, environments, capabilities,
+safety, evidence capture, build constraints, provider-neutral tool assessment,
+deployment/cleanup/rollback plan, approvals, build packets, trial runs, and
+version summaries. The tested-version schema freezes the approved brief
+snapshot, build packet, passed trial, linked experiment/storyboard/test plan,
+prototype/context, deployment record, and explicit non-validation/readiness
+claims.
 
 ## Compatibility policy
 
@@ -70,13 +85,17 @@ legacy version or migration path.
   public usage-evidence records, redacted usage records, pricing snapshots, and
   generated usage reports currently have no legacy line. Their loaders reject
   any version other than `1.0`.
-- Adding fields to a strict document requires a new compatible schema version;
-  undeclared properties are rejected instead of being silently ignored.
+- Adding required or otherwise incompatible fields to a strict document
+  requires a new schema version. An optional capability marker and optional
+  fields may extend a current schema only when every previously valid document
+  remains valid and runtime enforcement is activated by that marker;
+  undeclared properties are still rejected instead of being silently ignored.
 - Loaders accept standards-compliant JSON only; non-finite extensions such as
   `NaN` and `Infinity` are rejected before schema evaluation.
 
 Schema validation runs when state, assignment manifests, artifact specifications,
-role contracts, artifact data, customer-session manifests, session records, or summaries are loaded;
+role contracts, artifact data, customer-session manifests, session records,
+summaries, or immutable tested-version records are loaded;
 immediately before mutations are persisted; before gate logic; before any
 artifact or dashboard rendering; and as part of whole-workspace validation.
 The publication checker validates usage evidence, redacted usage records,

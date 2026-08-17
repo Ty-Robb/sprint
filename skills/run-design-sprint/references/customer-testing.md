@@ -135,17 +135,25 @@ Raw notes, transcripts, recordings, and consent documents should also remain
 in separately access-controlled source storage. `session.json` and
 `summary.json` retain opaque audit references, not the raw content.
 
-Prototype, prototype-context, interview-guide, and scorecard files become
-immutable when a version is catalogued: the manifest records each path,
-character count, and SHA-256 hash. After Gate 4, preserve the approved
-`prototype/index.html` at a stable test-version path such as
-`prototype/proto-v1/index.html`. Use similarly versioned paths such as
+Before Gate 4, follow [the prototype/MVP workflow](prototype-mvp-testing.md):
+approve the structured brief, generate the bounded build packet, pass a
+moderated trial with the actual interview script, and freeze the artifact at a
+stable path such as `prototype/proto-v1/index.html`. The freeze writes
+`prototype/proto-v1/tested-version.json`, which immutably links the approved
+brief, experiment, storyboard, test plan, build packet, trial, deployment,
+cleanup, rollback, prototype, and context hashes.
+
+Prototype, prototype-context, tested-version, interview-guide, and scorecard
+files become immutable when a version is catalogued: the manifest records each
+path, character count, and SHA-256 hash. Use similarly versioned paths such as
 `working/11-customer-sessions/versions/questions-v1/scorecard.md` for the guide
 and scorecard.
 Never overwrite a file already bound to a version. Create a new path and
 version ID, then use `session-init --activate-versions` for the first session
 on the new pair. A session cannot silently use content that differs from its
-recorded prototype or questions version.
+recorded tested artifact or questions version. Every manifest entry,
+`session.json`, `summary.json`, and handoff packet carries the immutable
+tested-version link so evidence from different versions cannot mix silently.
 
 ## Session lifecycle commands
 
@@ -172,7 +180,7 @@ python3 <skill-dir>/scripts/sprint_workspace.py session-init \
   --prototype-version proto-v1 \
   --questions-version questions-v1 \
   --prototype prototype/proto-v1/index.html \
-  --prototype-context working/11-customer-sessions/versions/proto-v1/context.md \
+  --prototype-context prototype/proto-v1/context.md \
   --interview-guide working/11-customer-sessions/versions/questions-v1/interview-guide.md \
   --scorecard working/11-customer-sessions/versions/questions-v1/scorecard.md \
   --prior-decision artifact-data/07-decision.json

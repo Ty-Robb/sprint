@@ -18,6 +18,7 @@
   "properties": {
     "schemaVersion": {"const": "1.0"},
     "recordType": {"const": "customer-session-manifest"},
+    "testArtifactWorkflowVersion": {"const": "1.0"},
     "workspaceSlug": {
       "type": "string",
       "minLength": 1,
@@ -92,6 +93,7 @@
         "version": {"$ref": "#/$defs/version"},
         "prototypeArtifact": {"$ref": "#/$defs/sourceDescriptor"},
         "prototypeContext": {"$ref": "#/$defs/sourceDescriptor"},
+        "testedVersion": {"$ref": "#/$defs/sourceDescriptor"},
         "recordedAt": {"$ref": "#/$defs/timestamp"}
       },
       "additionalProperties": false
@@ -130,6 +132,7 @@
         "participantId": {"$ref": "#/$defs/participantIdentifier"},
         "sessionDate": {"type": "string", "format": "date"},
         "prototypeVersion": {"$ref": "#/$defs/version"},
+        "testedVersion": {"$ref": "#/$defs/sourceDescriptor"},
         "questionsVersion": {"$ref": "#/$defs/version"},
         "status": {
           "enum": ["initialized", "packet-generated", "in-progress", "complete", "reopened", "blocked", "withdrawn"]

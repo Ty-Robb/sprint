@@ -226,17 +226,32 @@ Have the Experience Designer draft four to six scenes, the Research Lead map eac
 - success, ambiguity, and failure thresholds;
 - prototype boundary.
 
+Use the [prototype/MVP test-artifact workflow](prototype-mvp-testing.md) to
+choose the lowest ladder rung capable of answering the sprint questions. Draft
+the typed brief, assess provider-neutral tool categories, define real versus
+simulated behavior, and obtain explicit human decisions for experiment scope,
+tool, account, cost, data exposure, and any public deployment before generating
+the build packet.
+
 Ask:
 
 > If customers respond as predicted in these scenes, will we have enough evidence to make the next decision?
 
-**Definition of done:** Every scene maps to a sprint question, the scorecard is fixed before testing, and the storyboard contains only necessary moments.
+**Definition of done:** Every scene maps to a sprint question, the scorecard is
+fixed before testing, the storyboard contains only necessary moments, and the
+typed prototype/MVP brief and all applicable human approval boundaries are
+complete.
 
 ## Step 10 — Prototype
 
 **Purpose:** Build the smallest realistic experience capable of producing useful behaviour.
 
-The Prototype Builder implements only the approved storyboard. It must document simulated behaviour, incomplete paths, and known limitations. Then commission separate Critical Reviewer and Research Lead passes.
+The Prototype Builder receives only the immutable approved build packet and its
+explicit assets, and implements only the approved storyboard within the
+timebox. It must document simulated behaviour, incomplete paths, and known
+limitations. Then commission separate Critical Reviewer and Research Lead
+passes. Complete the canonical test plan and run a moderated trial with its
+actual interview script. A failed trial blocks freeze and customer sessions.
 
 The test-readiness review checks:
 
@@ -246,12 +261,22 @@ The test-readiness review checks:
 - accessibility permits the target customer to participate;
 - mocked behaviour is safe and documented;
 - the interview can be run without explaining the concept first.
+- no secrets, production customer data, private transcripts, or unapproved
+  proprietary material entered the build;
+- account, cost, data, analytics, production, and public-deployment boundaries
+  match the recorded human approvals;
+- the passed trial, deployment/access record, expiry, cleanup, rollback,
+  experiment, storyboard, and test plan are frozen in an immutable tested
+  version.
 
 Ask:
 
 > This prototype is ready to answer the agreed questions, with these limitations. Do you approve it for customer testing?
 
-**Definition of done:** The prototype exists, passes separate critique and research-readiness reviews, and the human approves Gate 4.
+**Definition of done:** The smallest approved artifact exists, the actual test
+script passes a moderated trial, an immutable tested version is frozen, separate
+critique and research-readiness reviews pass, and the human approves Gate 4. A
+live URL remains neither customer validation nor production readiness.
 
 ## Step 11 — Customer sessions
 
