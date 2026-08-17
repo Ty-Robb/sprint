@@ -1,2 +1,25 @@
 __pycache__/
 *.py[cod]
+
+# Generated sprint workspaces are private by default. These cover the documented
+# output locations; custom output paths still need to live outside this checkout.
+/design-sprint-*/
+/generated-sprints/
+/private-sprints/
+/sprint-workspaces/
+
+# Private source evidence must never be published from this repository.
+**/account-evidence/
+**/participant-data/
+**/private-evidence/
+**/raw-evidence/
+**/recordings/
+**/transcripts/
+**/usage-evidence/private/
+
+# Local credentials and account configuration.
+.env
+.env.*
+!.env.example
+*.key
+*.pem

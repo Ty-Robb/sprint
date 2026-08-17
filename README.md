@@ -4,6 +4,12 @@ An installable skill that gives one human a tightly scoped AI sprint team and gu
 
 The human remains the Decider. Specialist AI roles handle research, strategy, experience design, feasibility, prototyping, test preparation, critique, and synthesis. Customers are always real people rather than simulated personas.
 
+## Privacy boundary
+
+This public repository contains only the reusable engine, documentation, and synthetic or minimal test fixtures. Generated sprint workspaces, customer evidence, company context, transcripts, screenshots, account information, and private usage evidence are private by default and do not belong here.
+
+Before starting a sprint, choose an access-controlled workspace location outside this repository checkout. Read the [privacy and publication guide](skills/run-design-sprint/references/privacy-and-publication.md) for the storage pattern, safe examples, usage-evidence rules, and the [publication checklist](skills/run-design-sprint/references/privacy-and-publication.md#publication-checklist). A private case-study repository can remain private; it never needs to be copied into or exposed through this repository.
+
 ## Install
 
 ```bash
@@ -45,6 +51,7 @@ The skill includes a dependency-free Python workspace engine. It creates the spr
 The generated sprint directory contains:
 
 ```text
+.gitignore          Sensitive-source fallback rules
 index.html          Living sprint dashboard
 sprint-state.json   Resumable machine state
 artifact-data/      Structured canonical content
@@ -53,7 +60,13 @@ working/            Isolated specialist packets and memos
 prototype/          The customer-test prototype
 ```
 
-Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
+The whole generated directory is private by default, including its HTML and structured data. Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
+
+Before publishing changes to this repository, run:
+
+```bash
+python3 scripts/check_publication.py
+```
 
 ## Status
 

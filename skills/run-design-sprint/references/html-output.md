@@ -157,3 +157,4 @@ Before handing off an artifact:
 6. Confirm that observed evidence is not mixed with assumptions.
 7. Confirm that customer testing is labelled complete, partial, or not conducted.
 8. Confirm that the dashboard points to the latest artifact version.
+9. Before any public release, complete the [publication checklist](privacy-and-publication.md#publication-checklist); workspace validation alone is not publication approval.

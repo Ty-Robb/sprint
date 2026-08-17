@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "public-usage-evidence",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "evidenceClassification": "hypothetical-unverified",
+  "measurementDate": "2026-01-15",
+  "measuredPeriod": "One invented example run",
+  "measurementContext": "customer-facing-runtime",
+  "skillVersion": "synthetic-example",
+  "route": "focused-design-sprint",
+  "sourceRecord": {
+    "type": "synthetic",
+    "reference": "No observed source exists; all values are invented for this fixture."
+  },
+  "calculation": {
+    "formula": "input_tokens + output_tokens = total_tokens",
+    "inputs": {
+      "input_tokens": 1200,
+      "output_tokens": 300
+    },
+    "result": {
+      "total_tokens": 1500
+    },
+    "units": "tokens",
+    "rounding": "No rounding"
+  },
+  "assumptions": [
+    "Illustrative token counts only; no sprint was measured."
+  ],
+  "excluded": [
+    "Pricing, cache writes, tool charges, credits, and subscription allowances."
+  ],
+  "priceSources": [],
+  "claim": {
+    "label": "Hypothetical/unverified",
+    "text": "This invented example totals 1,500 tokens and must not be presented as observed usage."
+  }
+}
