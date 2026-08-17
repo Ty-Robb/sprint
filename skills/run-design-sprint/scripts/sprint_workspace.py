@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import html
 import json
 import os
 import re
+import shutil
 import stat
 import sys
 import tempfile
@@ -18,14 +20,57 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from schema_validation import SchemaValidator, ValidationIssue, strict_json_loads
+
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 REFERENCES_DIR = SKILL_DIR / "references"
 HTML_KIT_DIR = SKILL_DIR / "assets" / "html-kit"
+SCHEMAS_DIR = REFERENCES_DIR / "schemas"
 
 STATE_FILENAME = "sprint-state.json"
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
+LEGACY_SCHEMA_VERSION = "1.0"
+REFERENCE_SCHEMA_VERSION = "1.0"
 PORTABLE_FILE_MODE = 0o644
+
+SCHEMA_FAMILIES = {
+    "workspace-state": {
+        "label": "workspace state",
+        "current": SCHEMA_VERSION,
+        "schemas": {
+            LEGACY_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v1.schema.json",
+            SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v2.schema.json",
+        },
+        "migratable": {LEGACY_SCHEMA_VERSION},
+    },
+    "artifact-data": {
+        "label": "artifact data",
+        "current": SCHEMA_VERSION,
+        "schemas": {
+            LEGACY_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v1.schema.json",
+            SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v2.schema.json",
+        },
+        "migratable": {LEGACY_SCHEMA_VERSION},
+    },
+    "artifact-specs": {
+        "label": "artifact specifications",
+        "current": REFERENCE_SCHEMA_VERSION,
+        "schemas": {
+            REFERENCE_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-specs-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+    "role-contracts": {
+        "label": "role contracts",
+        "current": REFERENCE_SCHEMA_VERSION,
+        "schemas": {
+            REFERENCE_SCHEMA_VERSION: SCHEMAS_DIR / "role-contracts-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+}
+SCHEMA_VALIDATOR = SchemaValidator()
 
 ROUTES = {
     "undecided",
@@ -48,14 +93,6 @@ ARTIFACT_STATUSES = {
     "ready-for-decision",
     "complete",
     "blocked",
-}
-EVIDENCE_STATUSES = {
-    "Observed",
-    "Assumption",
-    "Inference",
-    "Decision",
-    "Unknown",
-    "Synthetic rehearsal",
 }
 CUSTOMER_STATUSES = {
     "not-planned",
@@ -163,7 +200,7 @@ def display_date(value: str) -> str:
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug[:64] or "sprint"
+    return slug[:64].rstrip("-") or "sprint"
 
 
 def escape(value: Any) -> str:
@@ -172,14 +209,78 @@ def escape(value: Any) -> str:
 
 def read_json(path: Path) -> dict[str, Any]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = strict_json_loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as error:
         raise SprintError(f"Missing required file: {path}") from error
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, ValueError) as error:
         raise SprintError(f"Invalid JSON in {path}: {error}") from error
     if not isinstance(data, dict):
         raise SprintError(f"Expected a JSON object in {path}")
     return data
+
+
+def schema_issues(
+    data: dict[str, Any], family: str, *, accept_legacy: bool = False
+) -> list[ValidationIssue]:
+    """Return version and schema failures for one persisted JSON document."""
+
+    config = SCHEMA_FAMILIES[family]
+    version = data.get("schemaVersion")
+    current = config["current"]
+    schemas = config["schemas"]
+    migratable = config["migratable"]
+    if not isinstance(version, str):
+        return [
+            ValidationIssue(
+                ("schemaVersion",),
+                f"must declare a string version; current {config['label']} version is {current!r}",
+            )
+        ]
+    if version != current and not (accept_legacy and version in migratable):
+        if version in migratable:
+            message = (
+                f"version {version!r} is legacy; current version is {current!r}. "
+                "Run `migrate --workspace <workspace> --dry-run`, then migrate with a backup."
+            )
+        else:
+            supported = [f"{current} (current)"] + [
+                f"{item} (migratable)" for item in sorted(migratable)
+            ]
+            message = (
+                f"unsupported version {version!r}; supported versions: "
+                + ", ".join(supported)
+            )
+        return [ValidationIssue(("schemaVersion",), message)]
+    schema_path = schemas.get(version)
+    if schema_path is None:
+        return [
+            ValidationIssue(
+                ("schemaVersion",),
+                f"unsupported version {version!r}; current version is {current!r}",
+            )
+        ]
+    return SCHEMA_VALIDATOR.validate(data, schema_path)
+
+
+def formatted_schema_errors(
+    data: dict[str, Any], family: str, path: Path, *, accept_legacy: bool = False
+) -> list[str]:
+    return [
+        f"{path}: {issue}"
+        for issue in schema_issues(data, family, accept_legacy=accept_legacy)
+    ]
+
+
+def require_valid_schema(
+    data: dict[str, Any], family: str, path: Path, *, accept_legacy: bool = False
+) -> None:
+    errors = formatted_schema_errors(
+        data, family, path, accept_legacy=accept_legacy
+    )
+    if errors:
+        label = SCHEMA_FAMILIES[family]["label"]
+        detail = "\n".join(f"- {item}" for item in errors)
+        raise SprintError(f"Invalid {label}:\n{detail}")
 
 
 def json_text(data: dict[str, Any]) -> str:
@@ -333,18 +434,20 @@ def ensure_portable_permissions(paths: list[Path]) -> None:
 
 
 def load_artifact_specs() -> dict[str, dict[str, Any]]:
-    data = read_json(REFERENCES_DIR / "artifact-specs.json")
+    path = REFERENCES_DIR / "artifact-specs.json"
+    data = read_json(path)
+    require_valid_schema(data, "artifact-specs", path)
     artifacts = data.get("artifacts")
-    if not isinstance(artifacts, dict):
-        raise SprintError("artifact-specs.json must contain an artifacts object")
+    assert isinstance(artifacts, dict)
     return artifacts
 
 
 def load_role_contracts() -> dict[str, dict[str, Any]]:
-    data = read_json(REFERENCES_DIR / "role-contracts.json")
+    path = REFERENCES_DIR / "role-contracts.json"
+    data = read_json(path)
+    require_valid_schema(data, "role-contracts", path)
     roles = data.get("roles")
-    if not isinstance(roles, dict):
-        raise SprintError("role-contracts.json must contain a roles object")
+    assert isinstance(roles, dict)
     return roles
 
 
@@ -357,14 +460,30 @@ def state_path(workspace: Path) -> Path:
 
 
 def load_state(workspace: Path) -> dict[str, Any]:
-    return read_json(state_path(workspace))
+    path = state_path(workspace)
+    state = read_json(path)
+    require_valid_schema(state, "workspace-state", path)
+    return state
+
+
+def load_artifact_data(path: Path) -> dict[str, Any]:
+    data = read_json(path)
+    require_valid_schema(data, "artifact-data", path)
+    return data
 
 
 def save_state(
     workspace: Path, state: dict[str, Any], timestamp: str | None = None
 ) -> None:
     state["updatedAt"] = timestamp or utc_now()
-    write_json(state_path(workspace), state)
+    path = state_path(workspace)
+    require_valid_schema(state, "workspace-state", path)
+    write_json(path, state)
+
+
+def save_artifact_data(path: Path, data: dict[str, Any]) -> None:
+    require_valid_schema(data, "artifact-data", path)
+    write_json(path, data)
 
 
 def next_step(current: str, skipped: set[str]) -> str | None:
@@ -584,23 +703,23 @@ def render_evidence(values: Any) -> str:
 def artifact_data_errors(
     data: dict[str, Any], specs: dict[str, dict[str, Any]]
 ) -> list[str]:
+    """Return artifact completion rules that are intentionally above schema shape."""
+
     errors: list[str] = []
     artifact_id = data.get("id")
     if artifact_id not in specs:
-        errors.append(f"Unknown artifact id: {artifact_id}")
+        errors.append(f"$.id: unknown artifact id {artifact_id!r}")
         return errors
-    if data.get("status") not in ARTIFACT_STATUSES:
-        errors.append(f"Invalid artifact status: {data.get('status')}")
-    if not isinstance(data.get("updatedAt"), str) or not data.get("updatedAt"):
-        errors.append("updatedAt must be a non-empty timestamp string")
     sections = data.get("sections")
-    if not isinstance(sections, list):
-        errors.append("sections must be a list")
-        sections = []
-    titles = {section.get("title") for section in sections if isinstance(section, dict)}
+    assert isinstance(sections, list)
+    section_indexes = {
+        section["title"]: index
+        for index, section in enumerate(sections)
+        if isinstance(section, dict) and isinstance(section.get("title"), str)
+    }
     for required in specs[artifact_id].get("requiredSections", []):
-        if required not in titles:
-            errors.append(f"Missing required section: {required}")
+        if required not in section_indexes:
+            errors.append(f"$.sections: missing required section {required!r}")
     if data.get("status") in {"ready-for-decision", "complete"}:
         for required in specs[artifact_id].get("requiredSections", []):
             section = next(
@@ -612,24 +731,16 @@ def artifact_data_errors(
                 None,
             )
             if section is None or not section_has_content(section):
-                errors.append(f"Required section is still empty: {required}")
-        if data.get("summary") == ["This artifact is in progress."]:
-            errors.append("Completed artifact still has the draft summary")
-    evidence = data.get("evidence", [])
-    if not isinstance(evidence, list):
-        errors.append("evidence must be a list")
-    else:
-        for index, item in enumerate(evidence, start=1):
-            if not isinstance(item, dict):
-                errors.append(f"Evidence entry {index} must be an object")
-                continue
-            if item.get("status") not in EVIDENCE_STATUSES:
-                errors.append(
-                    f"Evidence entry {index} has invalid status: {item.get('status')}"
+                section_path = (
+                    f"$.sections[{section_indexes[required]}]"
+                    if required in section_indexes
+                    else "$.sections"
                 )
-    for key in ("summary", "unknowns", "nextActions"):
-        if not isinstance(data.get(key, []), list):
-            errors.append(f"{key} must be a list")
+                errors.append(
+                    f"{section_path}: Required section is still empty: {required}"
+                )
+        if data.get("summary") == ["This artifact is in progress."]:
+            errors.append("$.summary: completed artifact still has the draft summary")
     return errors
 
 
@@ -660,6 +771,11 @@ def render_artifact(
     state: dict[str, Any],
     specs: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, Any], str]:
+    require_valid_schema(
+        data,
+        "artifact-data",
+        workspace / "artifact-data" / f"{data.get('id', 'unknown')}.json",
+    )
     errors = artifact_data_errors(data, specs)
     if errors:
         raise SprintError(f"Artifact {data.get('id')} is invalid: {'; '.join(errors)}")
@@ -827,20 +943,56 @@ def render_dashboard(
     return rendered
 
 
-def build_render_plan(workspace: Path) -> RenderPlan:
+def load_workspace_documents(
+    workspace: Path,
+) -> tuple[
+    dict[str, Any],
+    dict[str, dict[str, Any]],
+    list[tuple[Path, dict[str, Any]]],
+]:
+    """Validate all persisted workspace JSON before a mutation or render."""
+
     state = load_state(workspace)
     specs = load_artifact_specs()
+    data_dir = workspace / "artifact-data"
+    artifact_documents = (
+        [
+            (data_path, load_artifact_data(data_path))
+            for data_path in sorted(data_dir.glob("*.json"))
+        ]
+        if data_dir.exists()
+        else []
+    )
+    for data_path, data in artifact_documents:
+        errors = artifact_data_errors(data, specs)
+        if errors:
+            raise SprintError(
+                f"Artifact {data.get('id')} in {data_path} is invalid: "
+                + "; ".join(errors)
+            )
+    artifact_paths_by_id: dict[str, Path] = {}
+    for data_path, data in artifact_documents:
+        artifact_id = str(data["id"])
+        previous_path = artifact_paths_by_id.get(artifact_id)
+        if previous_path is not None:
+            raise SprintError(
+                f"Duplicate artifact id {artifact_id!r} in {previous_path} and {data_path}"
+            )
+        artifact_paths_by_id[artifact_id] = data_path
+    return state, specs, artifact_documents
+
+
+def build_render_plan(workspace: Path) -> RenderPlan:
+    state, specs, artifact_documents = load_workspace_documents(workspace)
     registrations: list[dict[str, Any]] = []
     generated_files: dict[Path, str] = {
         workspace / "assets" / "sprint.css": (
             HTML_KIT_DIR / "sprint.css"
         ).read_text(encoding="utf-8")
     }
-    data_dir = workspace / "artifact-data"
-    data_paths = sorted(data_dir.glob("*.json")) if data_dir.exists() else []
+    data_paths = [path for path, _data in artifact_documents]
     seen_ids: set[str] = set()
-    for data_path in data_paths:
-        data = read_json(data_path)
+    for data_path, data in artifact_documents:
         registration, rendered = render_artifact(workspace, data, state, specs)
         artifact_id = str(registration["id"])
         if artifact_id in seen_ids:
@@ -856,6 +1008,7 @@ def build_render_plan(workspace: Path) -> RenderPlan:
 
     normalized_state = dict(state)
     normalized_state["artifacts"] = registrations
+    require_valid_schema(normalized_state, "workspace-state", state_path(workspace))
     state_update = normalized_state if state.get("artifacts") != registrations else None
     expected_artifact_files = {
         path for path in generated_files if path.parent == workspace / "artifacts"
@@ -966,6 +1119,7 @@ def command_init(args: argparse.Namespace) -> None:
     challenge = args.challenge.strip()
     if not title or not challenge:
         raise SprintError("Both --title and --challenge are required")
+    load_artifact_specs()
     output = workspace_path(args.output or f"design-sprint-{slugify(title)}")
     if output.exists():
         if not output.is_dir():
@@ -1014,8 +1168,8 @@ def command_init(args: argparse.Namespace) -> None:
         "createdAt": now,
         "updatedAt": now,
     }
-    write_json(state_path(output), state)
-    write_json(
+    save_state(output, state, timestamp=now)
+    save_artifact_data(
         output / "artifact-data" / "01-sprint-brief.json",
         initial_brief_data(challenge, now),
     )
@@ -1026,30 +1180,39 @@ def command_init(args: argparse.Namespace) -> None:
 
 def command_new_artifact(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    specs = load_artifact_specs()
+    state, specs, artifacts = load_workspace_documents(workspace)
     if args.id not in specs:
         raise SprintError(f"Unknown artifact id: {args.id}")
     data_path = workspace / "artifact-data" / f"{args.id}.json"
     if data_path.exists():
         raise SprintError(f"Artifact data already exists: {data_path}")
+    existing = next(
+        (path for path, data in artifacts if data["id"] == args.id), None
+    )
+    if existing is not None:
+        raise SprintError(f"Artifact data for {args.id!r} already exists: {existing}")
     now = utc_now()
-    write_json(data_path, new_artifact_data(args.id, specs[args.id], now))
-    save_state(workspace, load_state(workspace), timestamp=now)
+    save_artifact_data(data_path, new_artifact_data(args.id, specs[args.id], now))
+    save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print(f"Created artifact draft: {data_path}")
 
 
 def command_set_artifact_status(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
+    state, specs, _artifacts = load_workspace_documents(workspace)
     if args.status not in ARTIFACT_STATUSES:
         raise SprintError(f"Invalid artifact status: {args.status}")
     data_path = workspace / "artifact-data" / f"{args.id}.json"
-    data = read_json(data_path)
+    data = load_artifact_data(data_path)
     now = utc_now()
     data["status"] = args.status
     data["updatedAt"] = now
-    write_json(data_path, data)
-    save_state(workspace, load_state(workspace), timestamp=now)
+    errors = artifact_data_errors(data, specs)
+    if errors:
+        raise SprintError(f"Artifact {args.id} is invalid: {'; '.join(errors)}")
+    save_artifact_data(data_path, data)
+    save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print(f"Updated {args.id} to {args.status}")
 
@@ -1058,7 +1221,7 @@ def command_set_route(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     if args.route not in ROUTES - {"undecided"}:
         raise SprintError(f"Invalid sprint route: {args.route}")
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     previous_route = state.get("route")
     apply_route(state, args.route)
     state["routeRationale"] = args.rationale.strip()
@@ -1094,10 +1257,10 @@ def command_set_challenge(args: argparse.Namespace) -> None:
     if not challenge:
         raise SprintError("Challenge cannot be empty")
     now = utc_now()
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     state["challenge"] = challenge
     brief_path = workspace / "artifact-data" / "01-sprint-brief.json"
-    brief = read_json(brief_path)
+    brief = load_artifact_data(brief_path)
     for section in brief.get("sections", []):
         if isinstance(section, dict) and section.get("title") == "Challenge":
             section["type"] = "paragraphs"
@@ -1109,7 +1272,7 @@ def command_set_challenge(args: argparse.Namespace) -> None:
     else:
         brief["summary"] = [challenge]
     brief["updatedAt"] = now
-    write_json(brief_path, brief)
+    save_artifact_data(brief_path, brief)
     save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print("Updated the sprint challenge")
@@ -1117,7 +1280,7 @@ def command_set_challenge(args: argparse.Namespace) -> None:
 
 def command_question(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     questions = state.setdefault("openQuestions", [])
     if args.add:
         question = args.add.strip()
@@ -1151,12 +1314,12 @@ def artifact_status(workspace: Path, artifact_id: str) -> str | None:
     path = workspace / "artifact-data" / f"{artifact_id}.json"
     if not path.exists():
         return None
-    return str(read_json(path).get("status"))
+    return str(load_artifact_data(path).get("status"))
 
 
 def command_complete_step(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     step_id = args.step
     if step_id not in STEP_INDEX:
         raise SprintError(f"Unknown step: {step_id}")
@@ -1224,7 +1387,7 @@ def command_complete_step(args: argparse.Namespace) -> None:
 
 def command_skip_step(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     step_id = args.step
     if state.get("currentStep") != step_id:
         raise SprintError(f"Only the current step may be skipped: {state.get('currentStep')}")
@@ -1249,7 +1412,7 @@ def command_skip_step(args: argparse.Namespace) -> None:
 
 def command_gate(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     gate_id = args.gate
     if gate_id not in GATE_NAMES:
         raise SprintError(f"Unknown gate: {gate_id}")
@@ -1323,7 +1486,7 @@ def command_gate(args: argparse.Namespace) -> None:
 
 def command_customer(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     if args.status not in CUSTOMER_STATUSES:
         raise SprintError(f"Invalid customer-testing status: {args.status}")
     planned = args.planned
@@ -1349,7 +1512,7 @@ def command_customer(args: argparse.Namespace) -> None:
 
 def command_next_action(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     state["nextAction"] = {
         "title": args.title.strip(),
         "body": args.body.strip(),
@@ -1366,7 +1529,7 @@ def command_next_action(args: argparse.Namespace) -> None:
 
 def command_role_packet(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
     roles = load_role_contracts()
     if args.role not in roles:
         raise SprintError(f"Unknown role: {args.role}")
@@ -1441,63 +1604,36 @@ Return exactly these sections:
 
 
 def validate_state(state: dict[str, Any]) -> list[str]:
+    """Return the pre-existing cross-record workflow checks.
+
+    JSON shape, types, enums, formats, and nested conditions are enforced by the
+    workspace-state schema before this function is called. Route-history and
+    transition policy intentionally remain outside this issue.
+    """
+
     errors: list[str] = []
-    required = {
-        "schemaVersion",
-        "title",
-        "slug",
-        "challenge",
-        "route",
-        "status",
-        "currentStep",
-        "completedSteps",
-        "skippedSteps",
-        "humanGates",
-        "artifacts",
-        "customerTesting",
-        "nextAction",
-        "updatedAt",
-    }
-    missing = sorted(required - state.keys())
-    if missing:
-        errors.append(f"State is missing keys: {', '.join(missing)}")
-    if state.get("schemaVersion") != SCHEMA_VERSION:
-        errors.append(f"Unsupported state schema: {state.get('schemaVersion')}")
-    if state.get("route") not in ROUTES:
-        errors.append(f"Invalid route: {state.get('route')}")
-    if state.get("status") not in WORKSPACE_STATUSES:
-        errors.append(f"Invalid workspace status: {state.get('status')}")
-    if state.get("currentStep") not in STEP_INDEX:
-        errors.append(f"Invalid current step: {state.get('currentStep')}")
-    completed = state.get("completedSteps", [])
-    skipped = state.get("skippedSteps", [])
-    if not isinstance(completed, list) or len(completed) != len(set(completed)):
-        errors.append("completedSteps must be a unique list")
-    if not isinstance(skipped, list) or len(skipped) != len(set(skipped)):
-        errors.append("skippedSteps must be a unique list")
-    if isinstance(completed, list) and isinstance(skipped, list) and set(completed) & set(skipped):
-        errors.append("A step cannot be both completed and skipped")
-    customer = state.get("customerTesting", {})
-    if not isinstance(customer, dict):
-        errors.append("customerTesting must be an object")
-    else:
-        if customer.get("status") not in CUSTOMER_STATUSES:
-            errors.append(f"Invalid customer-testing status: {customer.get('status')}")
-        planned = customer.get("sessionsPlanned")
-        completed_sessions = customer.get("sessionsCompleted")
-        if not isinstance(planned, int) or not isinstance(completed_sessions, int):
-            errors.append("Customer session counts must be integers")
-        elif planned and completed_sessions > planned:
-            errors.append("Completed customer sessions exceed planned sessions")
-        if "12-synthesis" in completed and completed_sessions < 1:
-            errors.append("Synthesis cannot be complete without a real customer session")
-    gates = state.get("humanGates", [])
-    if not isinstance(gates, list) or {item.get("id") for item in gates if isinstance(item, dict)} != set(GATE_NAMES):
-        errors.append("humanGates must contain gate-1 through gate-5")
+    completed = state["completedSteps"]
+    skipped = state["skippedSteps"]
+    if set(completed) & set(skipped):
+        errors.append(
+            "$.completedSteps and $.skippedSteps: a step cannot be both completed and skipped"
+        )
+    customer = state["customerTesting"]
+    planned = customer["sessionsPlanned"]
+    completed_sessions = customer["sessionsCompleted"]
+    if planned and completed_sessions > planned:
+        errors.append(
+            "$.customerTesting.sessionsCompleted: completed customer sessions exceed planned sessions"
+        )
+    if "12-synthesis" in completed and completed_sessions < 1:
+        errors.append(
+            "$.completedSteps: synthesis cannot be complete without a real customer session"
+        )
+    gates = state["humanGates"]
     if state.get("status") == "complete":
         gate_5 = next((gate for gate in gates if gate.get("id") == "gate-5"), {})
         if gate_5.get("status") != "complete":
-            errors.append("A complete sprint requires Gate 5")
+            errors.append("$.humanGates[4].status: a complete sprint requires Gate 5")
     return errors
 
 
@@ -1579,33 +1715,56 @@ def rendered_output_errors(workspace: Path) -> list[str]:
 def workspace_errors(workspace: Path) -> list[str]:
     errors: list[str] = []
     try:
-        state = load_state(workspace)
+        state = read_json(state_path(workspace))
     except SprintError as error:
         return [str(error)]
-    errors.extend(validate_state(state))
-    specs = load_artifact_specs()
-    registrations = {item.get("id"): item for item in state.get("artifacts", []) if isinstance(item, dict)}
+    state_schema_errors = formatted_schema_errors(
+        state, "workspace-state", state_path(workspace)
+    )
+    errors.extend(state_schema_errors)
+    state_is_valid = not state_schema_errors
+    workspace_json_is_valid = state_is_valid
+    if state_is_valid:
+        errors.extend(validate_state(state))
+    try:
+        specs = load_artifact_specs()
+    except SprintError as error:
+        return [*errors, str(error)]
+    registrations = (
+        {item["id"]: item for item in state["artifacts"]} if state_is_valid else {}
+    )
+    artifact_statuses: dict[str, str] = {}
     for data_path in sorted((workspace / "artifact-data").glob("*.json")):
         try:
             data = read_json(data_path)
         except SprintError as error:
             errors.append(str(error))
+            workspace_json_is_valid = False
             continue
-        errors.extend(f"{data_path.name}: {item}" for item in artifact_data_errors(data, specs))
-        artifact_id = data.get("id")
+        data_schema_errors = formatted_schema_errors(data, "artifact-data", data_path)
+        errors.extend(data_schema_errors)
+        if data_schema_errors:
+            workspace_json_is_valid = False
+            continue
+        content_errors = artifact_data_errors(data, specs)
+        errors.extend(f"{data_path}: {item}" for item in content_errors)
+        if content_errors:
+            workspace_json_is_valid = False
+        artifact_id = data["id"]
+        artifact_statuses[artifact_id] = data["status"]
         if artifact_id in specs:
             output = workspace / "artifacts" / specs[artifact_id]["filename"]
             if not output.exists():
                 errors.append(f"Missing rendered artifact: {output}")
             if artifact_id not in registrations:
                 errors.append(f"Artifact is not registered in state: {artifact_id}")
-    for step_id in state.get("completedSteps", []):
+    for step_id in state["completedSteps"] if state_is_valid else []:
         for artifact_id in required_artifacts_for_step(step_id):
-            status = artifact_status(workspace, artifact_id)
+            status = artifact_statuses.get(artifact_id)
             allowed = {"ready-for-decision", "complete"} if step_id in GATE_BY_STEP else {"complete"}
             if status not in allowed:
                 errors.append(f"Completed step {step_id} has incomplete artifact {artifact_id}")
-    if "10-prototype" in state.get("completedSteps", []) and not (workspace / "prototype" / "index.html").exists():
+    if state_is_valid and "10-prototype" in state["completedSteps"] and not (workspace / "prototype" / "index.html").exists():
         errors.append("Completed prototype step is missing prototype/index.html")
     html_files = [workspace / "index.html", *sorted((workspace / "artifacts").glob("*.html"))]
     if (workspace / "prototype" / "index.html").exists():
@@ -1618,13 +1777,130 @@ def workspace_errors(workspace: Path) -> list[str]:
         if re.search(r"\{\{[A-Z0-9_]+\}\}", text):
             errors.append(f"Unresolved template token in {html_path}")
         errors.extend(local_link_errors(html_path, workspace))
-    try:
-        errors.extend(rendered_output_errors(workspace))
-    except SprintError as error:
-        message = str(error)
-        if not any(message in existing for existing in errors):
-            errors.append(message)
+    if workspace_json_is_valid:
+        try:
+            errors.extend(rendered_output_errors(workspace))
+        except SprintError as error:
+            message = str(error)
+            if not any(message in existing for existing in errors):
+                errors.append(message)
     return errors
+
+
+def migrate_workspace_state_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a validated legacy state without inventing workflow history."""
+
+    migrated = copy.deepcopy(data)
+    migrated["schemaVersion"] = SCHEMA_VERSION
+    return migrated
+
+
+def migrate_artifact_data_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate validated legacy artifact content without changing its meaning."""
+
+    migrated = copy.deepcopy(data)
+    migrated["schemaVersion"] = SCHEMA_VERSION
+    return migrated
+
+
+MIGRATIONS = {
+    "workspace-state": {
+        (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION): migrate_workspace_state_v1_to_v2
+    },
+    "artifact-data": {
+        (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION): migrate_artifact_data_v1_to_v2
+    },
+}
+
+
+def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
+    """Build and validate a complete in-memory migration plan."""
+
+    documents = [(state_path(workspace), "workspace-state")]
+    data_dir = workspace / "artifact-data"
+    if data_dir.exists():
+        documents.extend(
+            (path, "artifact-data") for path in sorted(data_dir.glob("*.json"))
+        )
+    plan: list[tuple[Path, str, dict[str, Any]]] = []
+    errors: list[str] = []
+    for path, family in documents:
+        try:
+            data = read_json(path)
+        except SprintError as error:
+            errors.append(str(error))
+            continue
+        version = data.get("schemaVersion")
+        current = SCHEMA_FAMILIES[family]["current"]
+        if version == current:
+            errors.extend(formatted_schema_errors(data, family, path))
+            continue
+        legacy_errors = formatted_schema_errors(
+            data, family, path, accept_legacy=True
+        )
+        if legacy_errors:
+            errors.extend(legacy_errors)
+            continue
+        migration = MIGRATIONS.get(family, {}).get((version, current))
+        if migration is None:
+            errors.append(
+                f"{path}: $.schemaVersion: no migration path from {version!r} to {current!r}"
+            )
+            continue
+        migrated = migration(data)
+        migrated_errors = formatted_schema_errors(migrated, family, path)
+        if migrated_errors:
+            errors.extend(
+                f"Migration output error: {item}" for item in migrated_errors
+            )
+            continue
+        plan.append((path, family, migrated))
+    if errors:
+        detail = "\n".join(f"- {item}" for item in errors)
+        raise SprintError(f"Workspace cannot be migrated:\n{detail}")
+    return plan
+
+
+def default_backup_path(workspace: Path) -> Path:
+    return workspace.parent / f"{workspace.name}.backup-before-schema-{SCHEMA_VERSION}"
+
+
+def command_migrate(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    plan = migration_plan(workspace)
+    if not plan:
+        print(f"Workspace already uses schema version {SCHEMA_VERSION}; no migration needed")
+        return
+    print("Migration plan:")
+    for path, family, migrated in plan:
+        relative = path.relative_to(workspace)
+        old_version = read_json(path).get("schemaVersion")
+        print(
+            f"- {relative}: {SCHEMA_FAMILIES[family]['label']} "
+            f"{old_version} -> {migrated['schemaVersion']}"
+        )
+    if args.dry_run:
+        print("Dry run complete; no files or backups were written")
+        return
+
+    backup = workspace_path(args.backup) if args.backup else default_backup_path(workspace)
+    if backup == workspace:
+        raise SprintError("Backup path must differ from the workspace")
+    try:
+        backup.relative_to(workspace)
+    except ValueError:
+        pass
+    else:
+        raise SprintError("Backup path must be outside the workspace")
+    if backup.exists():
+        raise SprintError(f"Backup path already exists; refusing to overwrite it: {backup}")
+    try:
+        shutil.copytree(workspace, backup)
+    except OSError as error:
+        raise SprintError(f"Could not create migration backup {backup}: {error}") from error
+    write_texts_atomically({path: json_text(migrated) for path, _family, migrated in plan})
+    print(f"Untouched backup: {backup}")
+    print(f"Migrated {len(plan)} JSON file(s) to schema version {SCHEMA_VERSION}")
 
 
 def command_render(args: argparse.Namespace) -> None:
@@ -1780,6 +2056,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser = subparsers.add_parser("validate", help="Validate a sprint workspace")
     validate_parser.add_argument("--workspace", required=True)
     validate_parser.set_defaults(handler=command_validate)
+
+    migrate_parser = subparsers.add_parser(
+        "migrate", help="Migrate legacy persisted JSON to the current schema"
+    )
+    migrate_parser.add_argument("--workspace", required=True)
+    migrate_parser.add_argument(
+        "--dry-run", action="store_true", help="Validate and print the plan without writing"
+    )
+    migrate_parser.add_argument(
+        "--backup", help="Backup destination outside the workspace (must not exist)"
+    )
+    migrate_parser.set_defaults(handler=command_migrate)
 
     status_parser = subparsers.add_parser("status", help="Show sprint status")
     status_parser.add_argument("--workspace", required=True)

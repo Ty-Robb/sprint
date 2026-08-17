@@ -16,6 +16,7 @@ Read the following references before running a sprint:
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
+- [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
 
 Read [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.
 
@@ -52,7 +53,11 @@ On a new sprint:
 5. Read `sprint-state.json` and begin the current step from the facilitation playbook.
 6. Ask only for the information needed to progress.
 
-On an existing sprint, run `status --workspace <sprint-directory>`, read the named artifact data, state the current phase and next action, then continue without repeating completed work.
+On an existing sprint, run `status --workspace <sprint-directory>`. If it reports
+a supported legacy schema, preview and apply `migrate` as documented in
+`references/json-schemas.md`; never edit `schemaVersion` alone. Then read the
+named artifact data, state the current phase and next action, and continue
+without repeating completed work.
 
 ## Guide instead of dumping
 
@@ -102,6 +107,7 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `gate` records the human's decision and rationale.
 - `customer` records real-session status and counts.
 - `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
+- `migrate` previews or safely upgrades supported legacy state and artifact JSON while preserving an untouched backup.
 
 Update canonical artifact JSON below `artifact-data/`, including its `updatedAt`, then run `render`. Never edit `index.html`, `assets/sprint.css`, or files below `artifacts/` directly; they are disposable generated views. Rendering does not update workflow timestamps.
 

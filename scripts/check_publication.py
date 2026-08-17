@@ -14,6 +14,23 @@ from typing import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SKILL_SCRIPTS_DIR = REPO_ROOT / "skills" / "run-design-sprint" / "scripts"
+if str(SKILL_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SKILL_SCRIPTS_DIR))
+
+from schema_validation import SchemaValidator, strict_json_loads
+
+
+USAGE_EVIDENCE_SCHEMA = (
+    REPO_ROOT
+    / "skills"
+    / "run-design-sprint"
+    / "references"
+    / "schemas"
+    / "usage-evidence-v1.schema.json"
+)
+USAGE_EVIDENCE_VERSION = "1.0"
+SCHEMA_VALIDATOR = SchemaValidator()
 
 PRIVATE_DIRECTORY_NAMES = {
     "account-evidence",
@@ -92,15 +109,6 @@ SECRET_PATTERNS = (
         re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     ),
 )
-
-USAGE_CLASSIFICATIONS = {"sanitized-observed", "hypothetical-unverified"}
-MEASUREMENT_CONTEXTS = {
-    "customer-facing-runtime",
-    "customer-session",
-    "internal-development",
-    "synthesis",
-}
-
 
 @dataclass(frozen=True)
 class Finding:
@@ -214,8 +222,8 @@ def fixture_findings(path: Path, base: Path) -> list[Finding]:
         findings.append(Finding(path, "public fixture filename must include .synthetic."))
     if path.suffix.lower() == ".json":
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            data = strict_json_loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
             return findings
         if not isinstance(data, dict) or data.get("fixtureKind") != "synthetic":
             findings.append(Finding(path, "public JSON fixture must declare fixtureKind as synthetic"))
@@ -230,68 +238,24 @@ def usage_record_findings(path: Path) -> list[Finding]:
     if not path.name.endswith(".usage-evidence.json"):
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        data = strict_json_loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         return [Finding(path, f"usage-evidence record is not valid JSON: {error}")]
     if not isinstance(data, dict):
         return [Finding(path, "usage-evidence record must be a JSON object")]
-
-    findings: list[Finding] = []
-    required = {
-        "schemaVersion",
-        "recordType",
-        "evidenceClassification",
-        "measurementDate",
-        "measuredPeriod",
-        "measurementContext",
-        "sourceRecord",
-        "calculation",
-        "assumptions",
-        "excluded",
-        "priceSources",
-        "claim",
-    }
-    missing = sorted(required - data.keys())
-    if missing:
-        findings.append(Finding(path, f"usage-evidence record is missing: {', '.join(missing)}"))
-    if data.get("recordType") != "public-usage-evidence":
-        findings.append(Finding(path, "recordType must be public-usage-evidence"))
-    classification = data.get("evidenceClassification")
-    if classification not in USAGE_CLASSIFICATIONS:
-        findings.append(
-            Finding(path, "evidenceClassification must be sanitized-observed or hypothetical-unverified")
-        )
-    if data.get("measurementContext") not in MEASUREMENT_CONTEXTS:
-        findings.append(Finding(path, "measurementContext must identify the kind of run"))
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(data.get("measurementDate", ""))):
-        findings.append(Finding(path, "measurementDate must use YYYY-MM-DD"))
-
-    source = data.get("sourceRecord")
-    source_is_object = isinstance(source, dict)
-    if not source_is_object or not str(source.get("reference", "")).strip():
-        findings.append(Finding(path, "sourceRecord must include a non-empty reference"))
-    if classification == "sanitized-observed":
-        if not source_is_object or source.get("type") != "sanitized":
-            findings.append(Finding(path, "sanitized-observed evidence requires a sanitized source"))
-        if not source_is_object or not source.get("redactions"):
-            findings.append(Finding(path, "sanitized-observed evidence must list source redactions"))
-    elif classification == "hypothetical-unverified" and (
-        not source_is_object or source.get("type") != "synthetic"
-    ):
-        findings.append(Finding(path, "hypothetical-unverified evidence requires a synthetic source"))
-
-    calculation = data.get("calculation")
-    calculation_fields = {"formula", "inputs", "result", "units", "rounding"}
-    if not isinstance(calculation, dict) or not calculation_fields <= calculation.keys():
-        findings.append(
-            Finding(path, "calculation must include formula, inputs, result, units, and rounding")
-        )
-    claim = data.get("claim")
-    if classification == "hypothetical-unverified":
-        label = str(claim.get("label", "")).lower() if isinstance(claim, dict) else ""
-        if "hypothetical" not in label and "unverified" not in label:
-            findings.append(Finding(path, "hypothetical claim must be labelled at the point of use"))
-    return findings
+    version = data.get("schemaVersion")
+    if version is not None and version != USAGE_EVIDENCE_VERSION:
+        return [
+            Finding(
+                path,
+                f"$.schemaVersion: unsupported version {version!r}; "
+                f"supported current version: {USAGE_EVIDENCE_VERSION!r}",
+            )
+        ]
+    return [
+        Finding(path, str(issue))
+        for issue in SCHEMA_VALIDATOR.validate(data, USAGE_EVIDENCE_SCHEMA)
+    ]
 
 
 def scan_files(files: Iterable[Path], base: Path = REPO_ROOT) -> list[Finding]:

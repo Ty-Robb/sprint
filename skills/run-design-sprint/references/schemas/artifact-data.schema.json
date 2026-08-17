@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/artifact-data.schema.json",
+  "title": "Design Sprint artifact data",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "status",
+    "updatedAt",
+    "summary",
+    "sections",
+    "evidence",
+    "unknowns",
+    "nextActions"
+  ],
+  "properties": {
+    "schemaVersion": {"type": "string"},
+    "id": {"$ref": "#/$defs/artifactId"},
+    "status": {"$ref": "#/$defs/artifactStatus"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "summary": {"$ref": "#/$defs/stringList"},
+    "sections": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/section"}
+    },
+    "evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence"}
+    },
+    "unknowns": {"$ref": "#/$defs/stringList"},
+    "nextActions": {"$ref": "#/$defs/stringList"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"id": {"const": "01-sprint-brief"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionChallenge"},
+        {"$ref": "#/$defs/sectionDesiredOutcome"},
+        {"$ref": "#/$defs/sectionConstraints"},
+        {"$ref": "#/$defs/sectionAvailableEvidence"},
+        {"$ref": "#/$defs/sectionUnknowns"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "02-evidence-ledger"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionEvidenceInventory"},
+        {"$ref": "#/$defs/sectionContradictions"},
+        {"$ref": "#/$defs/sectionEvidenceGaps"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "03-foundation"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionTargetCustomer"},
+        {"$ref": "#/$defs/sectionImportantProblem"},
+        {"$ref": "#/$defs/sectionAdvantage"},
+        {"$ref": "#/$defs/sectionAlternatives"},
+        {"$ref": "#/$defs/sectionDifferentiation"},
+        {"$ref": "#/$defs/sectionApproach"},
+        {"$ref": "#/$defs/sectionFoundingHypothesis"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "04-journey-map"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionActors"},
+        {"$ref": "#/$defs/sectionCurrentJourney"},
+        {"$ref": "#/$defs/sectionTargetMoment"},
+        {"$ref": "#/$defs/sectionDependencies"},
+        {"$ref": "#/$defs/sectionFailurePoints"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "05-sprint-questions"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionLongTermGoal"},
+        {"$ref": "#/$defs/sectionTarget"},
+        {"$ref": "#/$defs/sectionRankedAssumptions"},
+        {"$ref": "#/$defs/sectionSprintQuestions"},
+        {"$ref": "#/$defs/sectionSignals"},
+        {"$ref": "#/$defs/sectionFailureCriteria"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "06-solution-directions"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionDecisionCriteria"},
+        {"$ref": "#/$defs/sectionDirections"},
+        {"$ref": "#/$defs/sectionCrossRoleCritique"},
+        {"$ref": "#/$defs/sectionUnresolvedTradeOffs"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "07-decision"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionSelectedDirection"},
+        {"$ref": "#/$defs/sectionDecisionCriteria"},
+        {"$ref": "#/$defs/sectionRationale"},
+        {"$ref": "#/$defs/sectionDissent"},
+        {"$ref": "#/$defs/sectionRejectedAlternatives"},
+        {"$ref": "#/$defs/sectionUnresolvedRisks"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "08-experiment"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionHypothesis"},
+        {"$ref": "#/$defs/sectionAudience"},
+        {"$ref": "#/$defs/sectionSprintQuestionScorecard"},
+        {"$ref": "#/$defs/sectionObservableSignals"},
+        {"$ref": "#/$defs/sectionDecisionThresholds"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "09-storyboard"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionEntryContext"},
+        {"$ref": "#/$defs/sectionTestScenes"},
+        {"$ref": "#/$defs/sectionMockedBehaviour"},
+        {"$ref": "#/$defs/sectionPrototypeBoundaries"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "10-test-plan"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionRecruitmentCriteria"},
+        {"$ref": "#/$defs/sectionScreener"},
+        {"$ref": "#/$defs/sectionConsent"},
+        {"$ref": "#/$defs/sectionTasks"},
+        {"$ref": "#/$defs/sectionInterviewGuide"},
+        {"$ref": "#/$defs/sectionEvidenceCapture"},
+        {"$ref": "#/$defs/sectionLogistics"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "11-customer-evidence"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionSessionRegister"},
+        {"$ref": "#/$defs/sectionObservedBehaviour"},
+        {"$ref": "#/$defs/sectionCustomerQuotations"},
+        {"$ref": "#/$defs/sectionPerSessionSprintQuestionEvidence"},
+        {"$ref": "#/$defs/sectionDataLimitations"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "12-synthesis"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionQuestionByQuestionFindings"},
+        {"$ref": "#/$defs/sectionPatterns"},
+        {"$ref": "#/$defs/sectionContradictions"},
+        {"$ref": "#/$defs/sectionOutliers"},
+        {"$ref": "#/$defs/sectionConfidence"},
+        {"$ref": "#/$defs/sectionEvidenceGaps"}
+      ]}}}
+    },
+    {
+      "if": {"properties": {"id": {"const": "13-outcome"}}, "required": ["id"]},
+      "then": {"properties": {"sections": {"allOf": [
+        {"$ref": "#/$defs/sectionOutcomeDecision"},
+        {"$ref": "#/$defs/sectionSupportingEvidence"},
+        {"$ref": "#/$defs/sectionConfidence"},
+        {"$ref": "#/$defs/sectionUnresolvedRisks"},
+        {"$ref": "#/$defs/sectionNextActions"}
+      ]}}}
+    }
+  ],
+  "$defs": {
+    "artifactId": {
+      "enum": [
+        "01-sprint-brief", "02-evidence-ledger", "03-foundation",
+        "04-journey-map", "05-sprint-questions", "06-solution-directions",
+        "07-decision", "08-experiment", "09-storyboard", "10-test-plan",
+        "11-customer-evidence", "12-synthesis", "13-outcome"
+      ]
+    },
+    "artifactStatus": {
+      "enum": ["draft", "in-review", "ready-for-decision", "complete", "blocked"]
+    },
+    "evidenceStatus": {
+      "enum": ["Observed", "Assumption", "Inference", "Decision", "Unknown", "Synthetic rehearsal"]
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "section": {
+      "oneOf": [
+        {"$ref": "#/$defs/paragraphSection"},
+        {"$ref": "#/$defs/listSection"},
+        {"$ref": "#/$defs/orderedListSection"},
+        {"$ref": "#/$defs/tableSection"},
+        {"$ref": "#/$defs/cardsSection"},
+        {"$ref": "#/$defs/keyValueSection"}
+      ]
+    },
+    "paragraphSection": {
+      "type": "object",
+      "required": ["title", "type", "paragraphs"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "eyebrow": {"type": "string"},
+        "type": {"const": "paragraphs"},
+        "paragraphs": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "listSection": {
+      "type": "object",
+      "required": ["title", "type", "items"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "eyebrow": {"type": "string"},
+        "type": {"const": "list"},
+        "items": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "orderedListSection": {
+      "type": "object",
+      "required": ["title", "type", "items"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "eyebrow": {"type": "string"},
+        "type": {"const": "ordered-list"},
+        "items": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "tableSection": {
+      "type": "object",
+      "required": ["title", "type", "columns", "rows"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "eyebrow": {"type": "string"},
+        "type": {"const": "table"},
+        "caption": {"type": "string", "minLength": 1},
+        "columns": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
+      },
+      "additionalProperties": false
+    },
+    "cardsSection": {
+      "type": "object",
+      "required": ["title", "type", "cards"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "eyebrow": {"type": "string"},
+        "type": {"const": "cards"},
+        "cards": {"type": "array", "items": {"$ref": "#/$defs/card"}}
+      },
+      "additionalProperties": false
+    },
+    "card": {
+      "type": "object",
+      "required": ["title", "body", "status"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "body": {"type": "string"},
+        "status": {"$ref": "#/$defs/evidenceStatus"}
+      },
+      "additionalProperties": false
+    },
+    "keyValueSection": {
+      "type": "object",
+      "required": ["title", "type", "items"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "eyebrow": {"type": "string"},
+        "type": {"const": "key-value"},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/keyValue"}}
+      },
+      "additionalProperties": false
+    },
+    "keyValue": {
+      "type": "object",
+      "required": ["label", "value"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "value": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["status", "claim", "source"],
+      "properties": {
+        "status": {"$ref": "#/$defs/evidenceStatus"},
+        "claim": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "sourceUrl": {"type": "string", "format": "uri", "pattern": "^https?://"},
+        "date": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    },
+    "sectionChallenge": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Challenge"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDesiredOutcome": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Desired outcome"}}, "required": ["title"]}, "minContains": 1},
+    "sectionConstraints": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Constraints"}}, "required": ["title"]}, "minContains": 1},
+    "sectionAvailableEvidence": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Available evidence"}}, "required": ["title"]}, "minContains": 1},
+    "sectionUnknowns": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Unknowns"}}, "required": ["title"]}, "minContains": 1},
+    "sectionEvidenceInventory": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Evidence inventory"}}, "required": ["title"]}, "minContains": 1},
+    "sectionContradictions": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Contradictions"}}, "required": ["title"]}, "minContains": 1},
+    "sectionEvidenceGaps": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Evidence gaps"}}, "required": ["title"]}, "minContains": 1},
+    "sectionTargetCustomer": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Target customer"}}, "required": ["title"]}, "minContains": 1},
+    "sectionImportantProblem": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Important problem"}}, "required": ["title"]}, "minContains": 1},
+    "sectionAdvantage": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Advantage"}}, "required": ["title"]}, "minContains": 1},
+    "sectionAlternatives": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Alternatives"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDifferentiation": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Differentiation"}}, "required": ["title"]}, "minContains": 1},
+    "sectionApproach": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Approach"}}, "required": ["title"]}, "minContains": 1},
+    "sectionFoundingHypothesis": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Founding hypothesis"}}, "required": ["title"]}, "minContains": 1},
+    "sectionActors": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Actors"}}, "required": ["title"]}, "minContains": 1},
+    "sectionCurrentJourney": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Current journey"}}, "required": ["title"]}, "minContains": 1},
+    "sectionTargetMoment": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Target moment"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDependencies": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Dependencies"}}, "required": ["title"]}, "minContains": 1},
+    "sectionFailurePoints": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Failure points"}}, "required": ["title"]}, "minContains": 1},
+    "sectionLongTermGoal": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Long-term goal"}}, "required": ["title"]}, "minContains": 1},
+    "sectionTarget": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Target"}}, "required": ["title"]}, "minContains": 1},
+    "sectionRankedAssumptions": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Ranked assumptions"}}, "required": ["title"]}, "minContains": 1},
+    "sectionSprintQuestions": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Sprint questions"}}, "required": ["title"]}, "minContains": 1},
+    "sectionSignals": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Signals"}}, "required": ["title"]}, "minContains": 1},
+    "sectionFailureCriteria": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Failure criteria"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDecisionCriteria": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Decision criteria"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDirections": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Directions"}}, "required": ["title"]}, "minContains": 1},
+    "sectionCrossRoleCritique": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Cross-role critique"}}, "required": ["title"]}, "minContains": 1},
+    "sectionUnresolvedTradeOffs": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Unresolved trade-offs"}}, "required": ["title"]}, "minContains": 1},
+    "sectionSelectedDirection": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Selected direction"}}, "required": ["title"]}, "minContains": 1},
+    "sectionRationale": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Rationale"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDissent": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Dissent"}}, "required": ["title"]}, "minContains": 1},
+    "sectionRejectedAlternatives": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Rejected alternatives"}}, "required": ["title"]}, "minContains": 1},
+    "sectionUnresolvedRisks": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Unresolved risks"}}, "required": ["title"]}, "minContains": 1},
+    "sectionHypothesis": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Hypothesis"}}, "required": ["title"]}, "minContains": 1},
+    "sectionAudience": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Audience"}}, "required": ["title"]}, "minContains": 1},
+    "sectionSprintQuestionScorecard": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Sprint-question scorecard"}}, "required": ["title"]}, "minContains": 1},
+    "sectionObservableSignals": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Observable signals"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDecisionThresholds": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Decision thresholds"}}, "required": ["title"]}, "minContains": 1},
+    "sectionEntryContext": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Entry context"}}, "required": ["title"]}, "minContains": 1},
+    "sectionTestScenes": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Test scenes"}}, "required": ["title"]}, "minContains": 1},
+    "sectionMockedBehaviour": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Mocked behaviour"}}, "required": ["title"]}, "minContains": 1},
+    "sectionPrototypeBoundaries": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Prototype boundaries"}}, "required": ["title"]}, "minContains": 1},
+    "sectionRecruitmentCriteria": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Recruitment criteria"}}, "required": ["title"]}, "minContains": 1},
+    "sectionScreener": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Screener"}}, "required": ["title"]}, "minContains": 1},
+    "sectionConsent": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Consent"}}, "required": ["title"]}, "minContains": 1},
+    "sectionTasks": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Tasks"}}, "required": ["title"]}, "minContains": 1},
+    "sectionInterviewGuide": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Interview guide"}}, "required": ["title"]}, "minContains": 1},
+    "sectionEvidenceCapture": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Evidence capture"}}, "required": ["title"]}, "minContains": 1},
+    "sectionLogistics": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Logistics"}}, "required": ["title"]}, "minContains": 1},
+    "sectionSessionRegister": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Session register"}}, "required": ["title"]}, "minContains": 1},
+    "sectionObservedBehaviour": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Observed behaviour"}}, "required": ["title"]}, "minContains": 1},
+    "sectionCustomerQuotations": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Customer quotations"}}, "required": ["title"]}, "minContains": 1},
+    "sectionPerSessionSprintQuestionEvidence": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Per-session sprint-question evidence"}}, "required": ["title"]}, "minContains": 1},
+    "sectionDataLimitations": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Data limitations"}}, "required": ["title"]}, "minContains": 1},
+    "sectionQuestionByQuestionFindings": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Question-by-question findings"}}, "required": ["title"]}, "minContains": 1},
+    "sectionPatterns": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Patterns"}}, "required": ["title"]}, "minContains": 1},
+    "sectionOutliers": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Outliers"}}, "required": ["title"]}, "minContains": 1},
+    "sectionConfidence": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Confidence"}}, "required": ["title"]}, "minContains": 1},
+    "sectionOutcomeDecision": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Outcome decision"}}, "required": ["title"]}, "minContains": 1},
+    "sectionSupportingEvidence": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Supporting evidence"}}, "required": ["title"]}, "minContains": 1},
+    "sectionNextActions": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Next actions"}}, "required": ["title"]}, "minContains": 1}
+  }
+}

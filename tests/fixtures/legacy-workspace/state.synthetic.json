@@ -1,0 +1,40 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "document": {
+  "schemaVersion": "1.0",
+  "title": "Legacy Fixture Sprint",
+  "slug": "legacy-fixture-sprint",
+  "challenge": "Migrate without changing sprint meaning",
+  "route": "undecided",
+  "status": "waiting-for-human",
+  "currentStep": "01-intake",
+  "completedSteps": [],
+  "skippedSteps": [],
+  "skipReasons": {},
+  "pendingGate": null,
+  "humanGates": [
+    {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
+    {"id": "gate-2", "name": "Target and top risks", "status": "pending"},
+    {"id": "gate-3", "name": "Selected solution direction", "status": "pending"},
+    {"id": "gate-4", "name": "Prototype readiness", "status": "pending"},
+    {"id": "gate-5", "name": "Final outcome", "status": "pending"}
+  ],
+  "decisions": [],
+  "artifacts": [],
+  "customerTesting": {
+    "status": "not-planned",
+    "target": "",
+    "sessionsPlanned": 0,
+    "sessionsCompleted": 0
+  },
+  "openQuestions": ["Will migration preserve every field?"],
+  "nextAction": {
+    "title": "Preview the migration",
+    "body": "Review the deterministic version changes.",
+    "humanInput": "Approve applying the protected migration."
+  },
+  "createdAt": "2026-01-15T10:30:00Z",
+  "updatedAt": "2026-01-15T10:30:00Z"
+  }
+}

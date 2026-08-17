@@ -1,0 +1,59 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "document": {
+  "schemaVersion": "2.0",
+  "id": "01-sprint-brief",
+  "status": "draft",
+  "updatedAt": "2026-08-17T09:00:00Z",
+  "summary": ["A valid artifact exercising every section family."],
+  "sections": [
+    {
+      "title": "Challenge",
+      "eyebrow": "Paragraph fixture",
+      "type": "paragraphs",
+      "paragraphs": ["Validate nested artifact data before rendering."]
+    },
+    {
+      "title": "Desired outcome",
+      "type": "list",
+      "items": ["Useful field-level failures"]
+    },
+    {
+      "title": "Constraints",
+      "type": "ordered-list",
+      "items": ["Remain dependency-free", "Preserve valid workspaces"]
+    },
+    {
+      "title": "Available evidence",
+      "type": "table",
+      "caption": "Schema evidence",
+      "columns": ["Source", "Finding"],
+      "rows": [["Fixture", "Nested strings are accepted"]]
+    },
+    {
+      "title": "Unknowns",
+      "type": "cards",
+      "cards": [
+        {"title": "Future formats", "body": "Version independently.", "status": "Unknown"}
+      ]
+    },
+    {
+      "title": "Fixture metadata",
+      "type": "key-value",
+      "items": [{"label": "Version", "value": "2.0"}]
+    }
+  ],
+  "evidence": [
+    {
+      "status": "Observed",
+      "claim": "The fixture is checked by the repository test suite.",
+      "source": "Schema tests",
+      "sourceUrl": "https://github.com/Ty-Robb/sprint",
+      "date": "2026-08-17"
+    }
+  ],
+  "unknowns": [],
+  "nextActions": ["Run the validator."]
+  }
+}
