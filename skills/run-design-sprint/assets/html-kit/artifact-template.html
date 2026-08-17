@@ -22,6 +22,9 @@
         <p class="lede">{{ARTIFACT_PURPOSE}}</p>
         <div class="meta-row" role="group" aria-label="Artifact metadata">
           <span class="status {{STATUS_CLASS}}">{{ARTIFACT_STATUS}}</span>
+          <span class="tag">Method: {{METHOD_PROFILE}}</span>
+          <span class="tag">Mode: {{EXECUTION_MODE}}</span>
+          <span class="tag">Route: {{SPRINT_ROUTE}}</span>
           <span class="tag">Owner: Sprint Orchestrator</span>
           <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
         </div>
@@ -36,6 +39,8 @@
       </section>
 
       {{PRIMARY_CONTENT_HTML}}
+
+{{METHOD_FIDELITY_HTML}}
 
       <section class="section" aria-labelledby="evidence-title">
         <div class="section-header">

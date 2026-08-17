@@ -18,13 +18,15 @@
           <p class="lede">{{SPRINT_CHALLENGE}}</p>
           <div class="meta-row" role="group" aria-label="Sprint metadata">
             <span class="status status--active">{{SPRINT_STATUS}}</span>
+            <span class="tag">Method: {{METHOD_PROFILE}}</span>
+            <span class="tag">Mode: {{EXECUTION_MODE}}</span>
             <span class="tag">Route: {{SPRINT_ROUTE}}</span>
             <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
           </div>
         </div>
 
         <div class="metric" role="group" aria-label="Sprint progress">
-          <span class="metric__label">Overall progress</span>
+          <span class="metric__label">Process completion</span>
           <span class="metric__value">{{PROGRESS_PERCENT}}%</span>
           <!-- Set the value attribute to the current numeric percentage. -->
           <progress class="progress" value="0" max="100">
@@ -52,6 +54,44 @@
         <p class="eyebrow">Private by default</p>
         <h2 id="privacy-title">Protect the sprint record</h2>
         <p>Keep this entire generated workspace in access-controlled private storage. Publish only a separately reviewed, sanitized export; never publish raw transcripts, participant or contact data, company-confidential material, account information, or private usage-dashboard evidence.</p>
+      </section>
+
+      <section class="section" aria-labelledby="fidelity-title">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Method record</p>
+            <h2 id="fidelity-title">Method fidelity</h2>
+          </div>
+          <span class="status status--decision">{{METHOD_FIDELITY}}</span>
+        </div>
+        <div class="three-column">
+          <div class="metric">
+            <span class="metric__label">Completed steps</span>
+            <span class="metric__value">{{COMPLETED_STEPS}}</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Skipped steps</span>
+            <span class="metric__value">{{SKIPPED_STEPS}}</span>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Not applicable</span>
+            <span class="metric__value">{{NOT_APPLICABLE_STEPS}}</span>
+          </div>
+        </div>
+        <div class="two-column fidelity-detail">
+          <div>
+            <h3>Adaptations</h3>
+            <ul>{{FIDELITY_ADAPTATIONS}}</ul>
+          </div>
+          <div>
+            <h3>Limitations</h3>
+            <ul>{{FIDELITY_LIMITATIONS}}</ul>
+          </div>
+        </div>
+        <details class="guidance">
+          <summary>Show current-step method, participants, and timebox</summary>
+          {{CURRENT_FIDELITY_GUIDANCE}}
+        </details>
       </section>
 
       <div class="two-column">
@@ -85,7 +125,7 @@
             </div>
           </div>
           <div class="callout">
-            <strong>Evidence rule:</strong> synthetic personas and AI role-play are rehearsal only. They never count as customer evidence.
+            <strong>Evidence rule:</strong> {{EVIDENCE_BOUNDARY}} Synthetic personas and AI role-play are rehearsal only.
           </div>
         </section>
       </div>

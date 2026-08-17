@@ -251,6 +251,355 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(list(first.parent.glob(".first.txt.*")), [])
         self.assertEqual(list(second.parent.glob(".second.txt.*")), [])
 
+    def test_book_profile_defaults_to_five_and_records_explicit_adaptations(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Book Sprint",
+            "--challenge",
+            "Test the riskiest assumption",
+            "--method-profile",
+            "sprint-book",
+            "--execution-mode",
+            "live",
+            "--selected-by",
+            "human Decider",
+            "--profile-reason",
+            "Use the canonical five-day profile.",
+            "--mode-reason",
+            "Suitable real customers are available.",
+            "--output",
+            str(self.workspace),
+        )
+        state = self.read_json("sprint-state.json")
+        self.assertEqual(state["schemaVersion"], "2.0")
+        self.assertEqual(state["methodProfile"], "sprint-book")
+        self.assertEqual(state["executionMode"], "live")
+        self.assertEqual(state["route"], "undecided")
+        self.assertEqual(state["customerTesting"]["sessionsPlanned"], 5)
+        self.assertEqual(len(state["fidelity"]["steps"]), 13)
+        explore = state["fidelity"]["steps"]["07-explore"]
+        self.assertIn("canonicalPurpose", explore)
+        self.assertIn("human", explore["participants"])
+        self.assertIn("ai", explore["participants"])
+        self.assertIn("suggestedMinutes", explore["timebox"])
+        self.assertIsNone(explore["timebox"]["actualMinutes"])
+        self.assertEqual(len(explore["deviations"]), 2)
+        for deviation in explore["deviations"]:
+            self.assertTrue(deviation["preservedPurpose"])
+            self.assertTrue(deviation["reason"])
+            self.assertEqual(
+                set(deviation["impact"]),
+                {"methodFidelity", "evidence", "decisionReadiness"},
+            )
+        self.assertEqual(
+            state["fidelity"]["summary"]["assessment"],
+            "adapted-with-documented-substitutions",
+        )
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Method: Sprint Book", dashboard)
+        self.assertIn("Mode: Live", dashboard)
+        self.assertIn("Method fidelity", dashboard)
+        self.assertIn("One human Decider plus bounded AI specialists", dashboard)
+        self.assertIn("Show current-step method, participants, and timebox", dashboard)
+        self.assertIn("Pre-sprint challenge intake and Decider alignment", dashboard)
+        status = self.run_cli("status", "--workspace", str(self.workspace))
+        self.assertIn("Canonical purpose:", status.stdout)
+        self.assertIn("30 minutes suggested", status.stdout)
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "The strategic foundation is ready.",
+        )
+        no_reason = self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "recruiting",
+            "--target",
+            "Qualified buyers",
+            "--planned",
+            "3",
+            check=False,
+        )
+        self.assertEqual(no_reason.returncode, 2)
+        self.assertIn("target from five requires --rationale", no_reason.stderr)
+        self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "recruiting",
+            "--target",
+            "Qualified buyers",
+            "--planned",
+            "3",
+            "--rationale",
+            "Only three suitable buyers can attend this week.",
+        )
+        changed = self.read_json("sprint-state.json")
+        target_deviation = next(
+            item
+            for item in changed["fidelity"]["steps"]["11-customer-sessions"][
+                "deviations"
+            ]
+            if item["id"] == "customer-target"
+        )
+        self.assertEqual(target_deviation["type"], "compression")
+        self.assertTrue(target_deviation["impact"]["decisionReadiness"])
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_profile_mode_route_combinations_reject_only_method_mismatch(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Book Rehearsal",
+            "--challenge",
+            "Rehearse the full process",
+            "--method-profile",
+            "sprint-book",
+            "--execution-mode",
+            "self-test",
+            "--output",
+            str(self.workspace),
+        )
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "Rehearse the complete route.",
+        )
+        valid = self.read_json("sprint-state.json")
+        self.assertEqual(valid["executionMode"], "self-test")
+        self.assertEqual(valid["route"], "full-design-sprint")
+        self.assertEqual(
+            valid["fidelity"]["summary"]["assessment"],
+            "self-test-rehearsal",
+        )
+
+        result = self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "focused-design-sprint",
+            "--rationale",
+            "Try a shorter route.",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("incompatible", result.stderr)
+        unchanged = self.read_json("sprint-state.json")
+        self.assertEqual(unchanged["route"], "full-design-sprint")
+
+    def test_adaptive_planning_research_route_is_valid(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Research Plan",
+            "--challenge",
+            "Plan research into an unclear problem",
+            "--method-profile",
+            "adaptive-design-sprint",
+            "--execution-mode",
+            "planning-rehearsal",
+            "--output",
+            str(self.workspace),
+        )
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "research-first",
+            "--rationale",
+            "The customer and problem are not understood.",
+        )
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_self_test_rejects_customer_sessions_and_misleading_observed_claims(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Self Test",
+            "--challenge",
+            "Exercise the workflow",
+            "--execution-mode",
+            "self-test",
+            "--output",
+            str(self.workspace),
+        )
+        customer_result = self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "complete",
+            "--target",
+            "Founders",
+            "--planned",
+            "5",
+            "--completed",
+            "5",
+            check=False,
+        )
+        self.assertEqual(customer_result.returncode, 2)
+        self.assertIn("cannot record live customer sessions", customer_result.stderr)
+
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "11-customer-evidence",
+        )
+        data = self.read_json("artifact-data/11-customer-evidence.json")
+        data["status"] = "complete"
+        data["summary"] = ["The product was customer-validated with real customers."]
+        for section in data["sections"]:
+            section["paragraphs"] = ["Five real customer sessions were completed."]
+        data["evidence"] = [
+            {
+                "status": "Observed",
+                "claim": "Five customers validated the product.",
+                "source": "Synthetic rehearsal",
+            }
+        ]
+        self.write_json("artifact-data/11-customer-evidence.json", data)
+        render_result = self.run_cli(
+            "render", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(render_result.returncode, 2)
+        self.assertIn("cannot complete a customer-evidence artifact", render_result.stderr)
+        self.assertIn("claims live customer evidence", render_result.stderr)
+        self.assertIn("labels a customer claim Observed", render_result.stderr)
+
+    def test_directional_evidence_cannot_claim_statistical_validation(self) -> None:
+        self.initialise()
+        self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "partial",
+            "--target",
+            "Founders",
+            "--planned",
+            "2",
+            "--completed",
+            "1",
+        )
+        data = self.read_json("artifact-data/01-sprint-brief.json")
+        data["evidence"].append(
+            {
+                "status": "Inference",
+                "claim": "The product is statistically validated by customers.",
+                "source": "One directional session",
+            }
+        )
+        self.write_json("artifact-data/01-sprint-brief.json", data)
+        result = self.run_cli(
+            "render", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("directional", result.stderr)
+
+    def test_fidelity_updates_require_compression_impacts(self) -> None:
+        self.initialise()
+        invalid = self.run_cli(
+            "record-fidelity",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "01-intake",
+            "--actual-minutes",
+            "15",
+            check=False,
+        )
+        self.assertEqual(invalid.returncode, 2)
+        self.assertIn("compression deviation", invalid.stderr)
+
+        self.run_cli(
+            "record-fidelity",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "01-intake",
+            "--selected-method",
+            "Focused challenge intake",
+            "--actual-minutes",
+            "15",
+            "--deviation-type",
+            "compression",
+            "--reason",
+            "The brief and evidence inventory already existed.",
+            "--method-impact",
+            "The intake used half of the suggested timebox.",
+            "--evidence-impact",
+            "Existing material reduced collection time, but hidden constraints may remain.",
+            "--decision-impact",
+            "The Decider must reopen intake if qualification exposes a missing constraint.",
+        )
+        state = self.read_json("sprint-state.json")
+        intake = state["fidelity"]["steps"]["01-intake"]
+        self.assertEqual(intake["timebox"]["actualMinutes"], 15)
+        self.assertEqual(intake["deviations"][-1]["type"], "compression")
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_non_negotiable_learning_principles_cannot_be_weakened(self) -> None:
+        self.initialise()
+        state = self.read_json("sprint-state.json")
+        state["fidelity"]["nonNegotiablePrinciples"][0]["statement"] = (
+            "AI may make consequential choices."
+        )
+        self.write_json("sprint-state.json", state)
+        result = self.run_cli(
+            "validate", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot be weakened", result.stderr)
+
+    def test_schema_one_state_migrates_compatibly_on_render(self) -> None:
+        self.initialise()
+        state = self.read_json("sprint-state.json")
+        state["schemaVersion"] = "1.0"
+        state["route"] = "full-design-sprint"
+        state["skippedSteps"] = ["04-foundation"]
+        state["skipReasons"] = {
+            "04-foundation": "The strategic foundation already exists."
+        }
+        for key in (
+            "methodProfile",
+            "executionMode",
+            "methodProfileSelection",
+            "executionModeSelection",
+            "fidelity",
+            "notApplicableSteps",
+        ):
+            state.pop(key)
+        self.write_json("sprint-state.json", state)
+
+        self.run_cli("render", "--workspace", str(self.workspace))
+        migrated = self.read_json("sprint-state.json")
+        self.assertEqual(migrated["schemaVersion"], "2.0")
+        self.assertEqual(migrated["methodProfile"], "adaptive-design-sprint")
+        self.assertEqual(migrated["executionMode"], "live")
+        self.assertEqual(migrated["notApplicableSteps"], ["04-foundation"])
+        self.assertEqual(migrated["skippedSteps"], [])
+        self.assertEqual(
+            migrated["compatibility"]["migratedFromSchemaVersion"], "1.0"
+        )
+        self.assertIn("review", migrated["compatibility"]["migrationNote"])
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
     def test_role_packet_is_bounded_to_declared_inputs(self) -> None:
         self.initialise()
         self.run_cli(
@@ -371,7 +720,8 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         routed = self.read_json("sprint-state.json")
         self.assertEqual(routed["currentStep"], "03-evidence")
-        self.assertIn("04-foundation", routed["skippedSteps"])
+        self.assertIn("04-foundation", routed["notApplicableSteps"])
+        self.assertNotIn("04-foundation", routed["skippedSteps"])
 
         self.run_cli(
             "new-artifact",
@@ -417,7 +767,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 "--id",
                 artifact_id,
             )
-            self.complete_artifact(artifact_id)
+        self.complete_artifact("10-test-plan")
 
         result = self.run_cli(
             "complete-step",
@@ -445,6 +795,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--completed",
             "1",
         )
+        self.complete_artifact("11-customer-evidence")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -583,7 +934,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 "--id",
                 artifact_id,
             )
-            self.complete_artifact(artifact_id)
+        self.complete_artifact("10-test-plan")
         self.run_cli(
             "customer",
             "--workspace",
@@ -597,6 +948,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--completed",
             "2",
         )
+        self.complete_artifact("11-customer-evidence")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -643,6 +995,11 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(state["outcome"], "Proceed")
         dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
         self.assertIn("100%", dashboard)
+        outcome = (self.workspace / "artifacts" / "13-outcome.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Method-fidelity summary", outcome)
+        self.assertIn("Method: Adaptive Design Sprint", outcome)
 
     def test_no_sprint_route_closes_without_customer_claims(self) -> None:
         self.initialise("Ship an already approved copy change")
@@ -683,7 +1040,8 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         routed = self.read_json("sprint-state.json")
         self.assertEqual(routed["currentStep"], "13-outcome")
-        self.assertEqual(len(routed["skippedSteps"]), 10)
+        self.assertEqual(len(routed["notApplicableSteps"]), 10)
+        self.assertEqual(routed["skippedSteps"], [])
 
         self.run_cli(
             "new-artifact",

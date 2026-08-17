@@ -27,6 +27,7 @@ jobs:
           python -m py_compile skills/run-design-sprint/scripts/sprint_workspace.py
           python -m py_compile scripts/check_publication.py
           python -m json.tool skills/run-design-sprint/references/artifact-specs.json > /dev/null
+          python -m json.tool skills/run-design-sprint/references/method-profiles.json > /dev/null
           python -m json.tool skills/run-design-sprint/references/role-contracts.json > /dev/null
 
       - name: Check public/private evidence boundary

@@ -39,6 +39,8 @@ Define:
 - desired session count;
 - backup participants.
 
+For a live Sprint-book profile, default to five suitable one-to-one sessions plus appropriate backups. An adaptive profile may set a different target for the challenge, but must record the target and rationale. Changing the Sprint-book target requires an explicit fidelity deviation with its effect on the method, available evidence, and decision readiness; it must never be presented as equivalent to the five-session default.
+
 Use behavioural screener questions rather than asking whether someone identifies with a marketing persona. Avoid revealing the preferred product or answer in the screener.
 
 Example structure:
@@ -147,3 +149,5 @@ Set the workspace to `waiting-for-customers` when suitable sessions cannot occur
 - a clear customer-testing blocker.
 
 Do not create customer findings, synthesis, or a proceed/iterate/pivot outcome until real sessions exist. The human may choose `Investigate` or `Stop` if the sprint must close without testing.
+
+In `self-test` or `planning-rehearsal` execution mode, no customer evidence is expected or permitted. Rehearsed interviews, AI personas, and synthetic reactions must use the `Synthetic rehearsal` label, stay outside the customer-evidence artifact, and never increment session counts. A non-live final outcome must remain explicitly unvalidated and cannot use `Proceed`, `Iterate`, or `Pivot` as though customer evidence supported it.

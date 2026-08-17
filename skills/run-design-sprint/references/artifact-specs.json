@@ -102,7 +102,7 @@
       "filename": "13-outcome.html",
       "title": "Sprint Outcome",
       "phase": "Decision",
-      "purpose": "Record the human's final outcome, supporting evidence, confidence, unresolved risks, and owned next actions.",
+      "purpose": "Record the human's final outcome, supporting evidence, confidence, unresolved risks, owned next actions, and the generated method-fidelity summary.",
       "requiredSections": ["Outcome decision", "Supporting evidence", "Confidence", "Unresolved risks", "Next actions"]
     }
   }

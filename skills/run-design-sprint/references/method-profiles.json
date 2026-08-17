@@ -1,0 +1,248 @@
+{
+  "schemaVersion": "1.0",
+  "methodProfiles": {
+    "sprint-book": {
+      "displayName": "Sprint-book profile",
+      "description": "Preserve the canonical five-day Sprint intent, sequence, exercises, timeboxes, and five-customer target wherever the one-human-plus-AI team model permits.",
+      "compatibleRoutes": ["undecided", "full-design-sprint"],
+      "defaultCustomerSessionTarget": 5,
+      "teamModel": "one-human-plus-AI",
+      "teamModelLimitation": "A single human Decider working with AI specialists is an explicit adaptation of the Sprint book's cross-functional human team model, so this profile is never described as fully book-faithful."
+    },
+    "adaptive-design-sprint": {
+      "displayName": "Adaptive design-sprint profile",
+      "description": "Choose methods and duration for the challenge while preserving the non-negotiable learning loop and documenting every material adaptation.",
+      "compatibleRoutes": [
+        "undecided",
+        "research-first",
+        "foundation-plus-design",
+        "full-design-sprint",
+        "focused-design-sprint",
+        "no-sprint"
+      ],
+      "defaultCustomerSessionTarget": 0,
+      "teamModel": "one-human-plus-AI",
+      "teamModelLimitation": "AI specialists expand the range of analysis but do not provide independent human stakeholder knowledge or customer evidence."
+    }
+  },
+  "executionModes": {
+    "live": {
+      "displayName": "Live",
+      "allowsLiveCustomerEvidence": true,
+      "limitation": "Customer findings remain directional and must state sample, protocol, and prototype limitations."
+    },
+    "self-test": {
+      "displayName": "Self-test",
+      "allowsLiveCustomerEvidence": false,
+      "limitation": "This run rehearses the process. Synthetic activity cannot be presented as customer evidence or validation."
+    },
+    "planning-rehearsal": {
+      "displayName": "Planning/rehearsal",
+      "allowsLiveCustomerEvidence": false,
+      "limitation": "This workspace is a plan or rehearsal, not evidence that the described sprint activities occurred."
+    }
+  },
+  "nonNegotiablePrinciples": [
+    {
+      "id": "human-decider",
+      "statement": "A human Decider owns consequential choices."
+    },
+    {
+      "id": "evidence-before-solutions",
+      "statement": "Shared evidence precedes solution generation."
+    },
+    {
+      "id": "diverge-before-converge",
+      "statement": "Divergence occurs before convergence."
+    },
+    {
+      "id": "concrete-direction",
+      "statement": "The tested direction is concrete."
+    },
+    {
+      "id": "prototype-answers-questions",
+      "statement": "The prototype is designed to answer agreed questions."
+    },
+    {
+      "id": "real-customer-evidence",
+      "statement": "Only suitable real customers provide customer evidence."
+    },
+    {
+      "id": "observation-before-inference",
+      "statement": "Observed evidence is separated from inference."
+    },
+    {
+      "id": "visible-limitations-and-dissent",
+      "statement": "Limitations and dissent remain visible."
+    }
+  ],
+  "steps": {
+    "01-intake": {
+      "canonicalPurpose": "Frame the consequential challenge, intended outcome, constraints, evidence, and unknowns before committing to a sprint.",
+      "bookDefaultMethod": "Pre-sprint challenge intake and Decider alignment",
+      "adaptiveDefaultMethod": "Focused challenge intake",
+      "suggestedTimeboxMinutes": {"sprint-book": 30, "adaptive-design-sprint": 30},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Sprint Orchestrator"]
+    },
+    "02-qualify": {
+      "canonicalPurpose": "Choose a route that matches the uncertainty instead of applying sprint ceremony by default.",
+      "bookDefaultMethod": "Pre-sprint challenge and team-readiness check",
+      "adaptiveDefaultMethod": "Evidence sufficiency and decision-uncertainty assessment",
+      "suggestedTimeboxMinutes": {"sprint-book": 30, "adaptive-design-sprint": 30},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Sprint Orchestrator", "Evidence Researcher", "Product Strategist"]
+    },
+    "03-evidence": {
+      "canonicalPurpose": "Create shared understanding from relevant knowledge and evidence before solution generation.",
+      "bookDefaultMethod": "Expert interviews, shared knowledge, and How Might We notes",
+      "adaptiveDefaultMethod": "Sourced evidence review and early recruitment planning",
+      "suggestedTimeboxMinutes": {"sprint-book": 120, "adaptive-design-sprint": 90},
+      "humanParticipants": ["Human Decider", "Available external experts"],
+      "aiParticipants": ["Evidence Researcher", "Research Lead"],
+      "bookSubstitutions": [
+        {
+          "canonicalMethod": "Expert interviews and shared team knowledge",
+          "selectedMethod": "Bounded human or external-expert inputs plus a sourced evidence review",
+          "preservedPurpose": "Make relevant knowledge visible to every later role before solutions are generated.",
+          "reason": "The one-human-plus-AI team does not contain the cross-functional human knowledge assumed by the canonical exercise.",
+          "impact": {
+            "methodFidelity": "Replaces a live cross-functional knowledge-sharing exercise with traceable asynchronous inputs.",
+            "evidence": "Quality depends on the supplied sources and access to suitable external experts; AI synthesis adds no firsthand evidence.",
+            "decisionReadiness": "Unrepresented operational or domain knowledge may remain unknown and should narrow later decisions."
+          }
+        }
+      ]
+    },
+    "04-foundation": {
+      "canonicalPurpose": "Establish a coherent customer, problem, advantage, alternative, and differentiation hypothesis when one does not yet exist.",
+      "bookDefaultMethod": "Not a separate Sprint-book exercise; use an established challenge and strategic context",
+      "adaptiveDefaultMethod": "Evidence-labelled foundation hypothesis",
+      "suggestedTimeboxMinutes": {"sprint-book": 0, "adaptive-design-sprint": 90},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Product Strategist", "Evidence Researcher", "Critical Reviewer"]
+    },
+    "05-map": {
+      "canonicalPurpose": "Build shared understanding of the customer journey or system and select the most consequential target moment.",
+      "bookDefaultMethod": "Map the challenge from actors to outcome and select a target",
+      "adaptiveDefaultMethod": "Journey and system mapping",
+      "suggestedTimeboxMinutes": {"sprint-book": 90, "adaptive-design-sprint": 75},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Experience Designer", "Technical Lead"]
+    },
+    "06-questions": {
+      "canonicalPurpose": "Turn the long-term goal and riskiest assumptions into agreed questions and observable failure signals.",
+      "bookDefaultMethod": "Long-term goal, sprint questions, target selection, and Decider confirmation",
+      "adaptiveDefaultMethod": "Risk-ranked sprint questions and scorecard",
+      "suggestedTimeboxMinutes": {"sprint-book": 90, "adaptive-design-sprint": 75},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Product Strategist", "Technical Lead", "Critical Reviewer"]
+    },
+    "07-explore": {
+      "canonicalPurpose": "Diverge independently into multiple concrete, evidence-aware solution directions before evaluating them.",
+      "bookDefaultMethod": "Lightning Demos followed by four-step sketching",
+      "adaptiveDefaultMethod": "Independent concrete solution directions with a sourced precedent scan",
+      "suggestedTimeboxMinutes": {"sprint-book": 240, "adaptive-design-sprint": 150},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Product Strategist", "Experience Designer", "Technical Lead", "Critical Reviewer"],
+      "bookSubstitutions": [
+        {
+          "canonicalMethod": "Lightning Demos",
+          "selectedMethod": "Structured, sourced precedent scan",
+          "preservedPurpose": "Gather useful patterns and inspiration without converging on the first familiar answer.",
+          "reason": "The AI-assisted team cannot recreate a room of teammates presenting firsthand examples.",
+          "impact": {
+            "methodFidelity": "Changes a synchronous show-and-tell into a bounded research activity.",
+            "evidence": "Precedents are secondary evidence and must retain sources, dates, and relevance limits.",
+            "decisionReadiness": "The Decider should treat precedent fit as an inference, not proof that a direction will work."
+          }
+        },
+        {
+          "canonicalMethod": "Four-step sketching by multiple human team members",
+          "selectedMethod": "Independently generated concrete solution flows or sketches from bounded specialist roles",
+          "preservedPurpose": "Create genuinely different, inspectable solutions before any recommendation is shared.",
+          "reason": "Only one human is participating, so bounded AI roles supply independent exploration without acting as customers or decision-makers.",
+          "impact": {
+            "methodFidelity": "Preserves independent concrete divergence but changes the source and diversity of contributors.",
+            "evidence": "AI-generated directions are proposals, not evidence of stakeholder or customer preference.",
+            "decisionReadiness": "Missing human disciplines or lived experience may leave options and risks underrepresented."
+          }
+        }
+      ]
+    },
+    "08-decide": {
+      "canonicalPurpose": "Converge deliberately on one coherent direction while keeping decision criteria, dissent, and rejected alternatives visible.",
+      "bookDefaultMethod": "Art museum, heat-map review, speed critique, straw poll, and Decider supervote",
+      "adaptiveDefaultMethod": "Independent role assessments followed by the human Decider",
+      "suggestedTimeboxMinutes": {"sprint-book": 120, "adaptive-design-sprint": 75},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Sprint Orchestrator"],
+      "bookSubstitutions": [
+        {
+          "canonicalMethod": "Team heat-map voting and straw poll before the Decider supervote",
+          "selectedMethod": "Independent role assessments followed by the human Decider",
+          "preservedPurpose": "Expose perspectives and trade-offs without transferring the consequential choice away from the Decider.",
+          "reason": "AI role assessments cannot be counted as human team votes.",
+          "impact": {
+            "methodFidelity": "Retains Decider ownership but substitutes structured assessments for human team voting.",
+            "evidence": "Assessment convergence reflects analysis, not stakeholder support or customer preference.",
+            "decisionReadiness": "The Decider must account for missing stakeholder perspectives and preserve dissent."
+          }
+        }
+      ]
+    },
+    "09-experiment": {
+      "canonicalPurpose": "Translate the chosen direction into a fixed hypothesis, realistic storyboard, and observable test signals.",
+      "bookDefaultMethod": "Storyboard the customer test from opening scene through critical moments",
+      "adaptiveDefaultMethod": "Experiment card and four-to-six-scene storyboard",
+      "suggestedTimeboxMinutes": {"sprint-book": 180, "adaptive-design-sprint": 120},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Experience Designer", "Research Lead", "Technical Lead"]
+    },
+    "10-prototype": {
+      "canonicalPurpose": "Build and trial-run the smallest realistic prototype capable of answering the agreed questions.",
+      "bookDefaultMethod": "Divide-and-conquer realistic prototype build plus trial run",
+      "adaptiveDefaultMethod": "Bounded prototype build with independent critique and research-readiness review",
+      "suggestedTimeboxMinutes": {"sprint-book": 420, "adaptive-design-sprint": 300},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Prototype Builder", "Critical Reviewer", "Research Lead"]
+    },
+    "11-customer-sessions": {
+      "canonicalPurpose": "Observe suitable real customers encountering the prototype under a consistent protocol.",
+      "bookDefaultMethod": "Five one-to-one customer interviews observed by the sprint team",
+      "adaptiveDefaultMethod": "Planned one-to-one sessions with suitable real customers",
+      "suggestedTimeboxMinutes": {"sprint-book": 300, "adaptive-design-sprint": 180},
+      "humanParticipants": ["Human Decider", "Suitable real customers"],
+      "aiParticipants": ["Research Lead"],
+      "bookSubstitutions": [
+        {
+          "canonicalMethod": "Sprint-team watch party during five one-to-one interviews",
+          "selectedMethod": "Five one-to-one interviews plus deliberate observation and debrief checkpoints using traceable session summaries",
+          "preservedPurpose": "Keep individual observations visible across sessions so patterns can be identified without repairing inconvenient evidence.",
+          "reason": "A one-human-plus-AI run has no cross-functional human team available to observe together.",
+          "impact": {
+            "methodFidelity": "Keeps the five-customer interview target but adapts the team observation mechanic.",
+            "evidence": "Traceable session records preserve observations, but the run loses multiple simultaneous human observers.",
+            "decisionReadiness": "A single human perspective can miss signals; limitations and contradictory sessions must remain visible."
+          }
+        }
+      ]
+    },
+    "12-synthesis": {
+      "canonicalPurpose": "Compare observed customer evidence against the predefined questions and expose patterns, contradictions, outliers, and limitations.",
+      "bookDefaultMethod": "End-of-customer-day pattern review against sprint questions",
+      "adaptiveDefaultMethod": "Traceable question-by-question synthesis with independent critique",
+      "suggestedTimeboxMinutes": {"sprint-book": 60, "adaptive-design-sprint": 75},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Synthesis Analyst", "Critical Reviewer"]
+    },
+    "13-outcome": {
+      "canonicalPurpose": "Make a bounded human-owned decision that states what was learned, what remains unknown, and the next learning action.",
+      "bookDefaultMethod": "Decider review and post-sprint next-step decision",
+      "adaptiveDefaultMethod": "Evidence-limited outcome decision and owned handoff",
+      "suggestedTimeboxMinutes": {"sprint-book": 45, "adaptive-design-sprint": 45},
+      "humanParticipants": ["Human Decider"],
+      "aiParticipants": ["Sprint Orchestrator"]
+    }
+  }
+}
