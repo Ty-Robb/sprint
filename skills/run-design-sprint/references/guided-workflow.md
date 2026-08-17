@@ -35,7 +35,7 @@ Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
 python3 <skill-dir>/scripts/sprint_workspace.py --help
 ```
 
-The key commands are `init`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `render --check`, `status`, `validate`, and `migrate`.
+The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `render --check`, `status`, `validate`, and `migrate`.
 
 Read [json-schemas.md](json-schemas.md) when a workspace reports a legacy or unsupported schema version. Do not render or mutate legacy JSON before a protected migration.
 
@@ -46,7 +46,9 @@ Before initialising a workspace, read [privacy-and-publication.md](privacy-and-p
 ## Sprint state
 
 Maintain a machine-readable `sprint-state.json` next to `index.html`. The
-current strict schema is linked above; a minimal initial record has this shape:
+current strict schema is linked above. This abridged illustration shows field
+ownership; it is not a complete schema-valid record because `init` supplies all
+13 fidelity entries, exact non-negotiable principles, and derived summaries:
 
 ```json
 {
@@ -54,11 +56,24 @@ current strict schema is linked above; a minimal initial record has this shape:
   "title": "Example Sprint",
   "slug": "example-sprint",
   "challenge": "Improve the example journey",
+  "methodProfile": "adaptive-design-sprint",
+  "executionMode": "live",
   "route": "undecided",
-  "status": "waiting-for-human",
+  "methodProfileSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
+  "executionModeSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
+  "fidelity": {
+    "schemaVersion": "1.0",
+    "teamModel": "one-human-plus-AI",
+    "nonNegotiablePrinciples": [],
+    "steps": {},
+    "routeExclusions": [],
+    "summary": {}
+  },
+  "status": "active",
   "currentStep": "01-intake",
   "completedSteps": [],
   "skippedSteps": [],
+  "notApplicableSteps": [],
   "skipReasons": {},
   "pendingGate": null,
   "humanGates": [
@@ -87,7 +102,29 @@ current strict schema is linked above; a minimal initial record has this shape:
 }
 ```
 
-Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep detailed notes in artifacts rather than bloating the state file.
+Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity.
+
+Every entry in `fidelity.steps` records canonical purpose, default method, selected method, human and AI participants, suggested and actual minutes, and deviations. Each substitution, compression, omission, or skip requires a reason, an explanation of the preserved purpose, and separate impacts on method fidelity, evidence, and decision readiness. The engine derives the method-fidelity summary from those records.
+
+Record actual delivery with the workspace engine, for example:
+
+```bash
+python3 <skill-dir>/scripts/sprint_workspace.py record-fidelity \
+  --workspace <sprint-directory> \
+  --step 07-explore \
+  --selected-method "Independent concrete solution flows" \
+  --human-participant "Human Decider" \
+  --ai-participant "Experience Designer" \
+  --actual-minutes 120 \
+  --deviation-type substitution \
+  --preserved-purpose "Create concrete independent directions before convergence." \
+  --reason "A multi-person sketching workshop was unavailable." \
+  --method-impact "The contributor model differs from the canonical team exercise." \
+  --evidence-impact "The directions are proposals, not customer evidence." \
+  --decision-impact "Missing human disciplines may leave options underrepresented."
+```
+
+Schema 1.0 state is accepted only by the protected `migrate` command. Preview the migration, create the required untouched backup, then migrate it to 2.0 as adaptive/live, matching the old engine's implicit behavior. The migrated state carries a compatibility note so the Orchestrator can verify the historical assumption instead of silently inventing a profile.
 
 ## Output structure
 
@@ -145,6 +182,8 @@ Decide whether the work needs:
 - `no-sprint` when direction is settled and execution is the only remaining work.
 
 Explain the recommendation, trade-offs, proposed duration, customer needs, and required human time.
+
+Confirm the method profile and execution mode separately from the route. Use `sprint-book` only for the full-design-sprint route. Make the one-human-plus-AI team-model limitation visible even when canonical book exercises are otherwise followed.
 
 **Primary roles:** Sprint Orchestrator, Evidence Researcher, Product Strategist
 
@@ -230,6 +269,8 @@ Confirm recruitment criteria, consent, tasks, neutral prompts, note capture, and
 
 If sessions cannot occur, set the state to `waiting-for-customers`. Do not skip forward to a customer-tested conclusion.
 
+For a live Sprint-book profile, five suitable one-to-one sessions are the default target. A different target requires a reason and a fidelity/evidence/readiness impact record. Self-test and planning/rehearsal modes cannot complete this step or the customer-evidence artifact; they may skip it explicitly and may only rehearse later mechanics with synthetic material clearly labelled `Synthetic rehearsal`.
+
 ### Step 12: Synthesise
 
 Compare all session evidence against the sprint questions and scorecard. Show patterns, contradictions, outliers, confidence, and unanswered questions. Keep findings traceable to anonymised session evidence.
@@ -259,6 +300,8 @@ Do not bypass these gates:
 5. Final outcome
 
 Record the human's exact decision, date, rationale, reservations, and overridden recommendations. A vote or AI consensus cannot replace the human decision.
+
+At each completed or adapted step, update the fidelity record with actual participants, actual timebox, and any deviation before advancing. An AI-assisted substitute must preserve the canonical learning purpose, not merely produce an artifact with a similar name.
 
 ## Publication gate
 

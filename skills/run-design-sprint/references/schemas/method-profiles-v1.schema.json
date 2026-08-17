@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/method-profiles-v1.schema.json",
+  "title": "Design Sprint method profiles 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "methodProfiles",
+    "executionModes",
+    "nonNegotiablePrinciples",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "methodProfiles": {
+      "type": "object",
+      "required": ["sprint-book", "adaptive-design-sprint"],
+      "properties": {
+        "sprint-book": {"$ref": "#/$defs/methodProfile"},
+        "adaptive-design-sprint": {"$ref": "#/$defs/methodProfile"}
+      },
+      "additionalProperties": false
+    },
+    "executionModes": {
+      "type": "object",
+      "required": ["live", "self-test", "planning-rehearsal"],
+      "properties": {
+        "live": {"$ref": "#/$defs/executionMode"},
+        "self-test": {"$ref": "#/$defs/executionMode"},
+        "planning-rehearsal": {"$ref": "#/$defs/executionMode"}
+      },
+      "additionalProperties": false
+    },
+    "nonNegotiablePrinciples": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/principleHumanDecider"},
+          {"$ref": "#/$defs/principleEvidenceBeforeSolutions"},
+          {"$ref": "#/$defs/principleDivergeBeforeConverge"},
+          {"$ref": "#/$defs/principleConcreteDirection"},
+          {"$ref": "#/$defs/principlePrototypeAnswersQuestions"},
+          {"$ref": "#/$defs/principleRealCustomerEvidence"},
+          {"$ref": "#/$defs/principleObservationBeforeInference"},
+          {"$ref": "#/$defs/principleVisibleLimitationsAndDissent"}
+        ]
+      }
+    },
+    "steps": {
+      "type": "object",
+      "required": [
+        "01-intake",
+        "02-qualify",
+        "03-evidence",
+        "04-foundation",
+        "05-map",
+        "06-questions",
+        "07-explore",
+        "08-decide",
+        "09-experiment",
+        "10-prototype",
+        "11-customer-sessions",
+        "12-synthesis",
+        "13-outcome"
+      ],
+      "properties": {
+        "01-intake": {"$ref": "#/$defs/methodStep"},
+        "02-qualify": {"$ref": "#/$defs/methodStep"},
+        "03-evidence": {"$ref": "#/$defs/methodStep"},
+        "04-foundation": {"$ref": "#/$defs/methodStep"},
+        "05-map": {"$ref": "#/$defs/methodStep"},
+        "06-questions": {"$ref": "#/$defs/methodStep"},
+        "07-explore": {"$ref": "#/$defs/methodStep"},
+        "08-decide": {"$ref": "#/$defs/methodStep"},
+        "09-experiment": {"$ref": "#/$defs/methodStep"},
+        "10-prototype": {"$ref": "#/$defs/methodStep"},
+        "11-customer-sessions": {"$ref": "#/$defs/methodStep"},
+        "12-synthesis": {"$ref": "#/$defs/methodStep"},
+        "13-outcome": {"$ref": "#/$defs/methodStep"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "route": {
+      "enum": [
+        "undecided",
+        "research-first",
+        "foundation-plus-design",
+        "full-design-sprint",
+        "focused-design-sprint",
+        "no-sprint"
+      ]
+    },
+    "methodProfile": {
+      "type": "object",
+      "required": [
+        "displayName",
+        "description",
+        "compatibleRoutes",
+        "defaultCustomerSessionTarget",
+        "teamModel",
+        "teamModelLimitation"
+      ],
+      "properties": {
+        "displayName": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "compatibleRoutes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/route"}
+        },
+        "defaultCustomerSessionTarget": {"type": "integer", "minimum": 0},
+        "teamModel": {"type": "string", "minLength": 1},
+        "teamModelLimitation": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "executionMode": {
+      "type": "object",
+      "required": ["displayName", "allowsLiveCustomerEvidence", "limitation"],
+      "properties": {
+        "displayName": {"type": "string", "minLength": 1},
+        "allowsLiveCustomerEvidence": {"type": "boolean"},
+        "limitation": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "methodStep": {
+      "type": "object",
+      "required": [
+        "canonicalPurpose",
+        "bookDefaultMethod",
+        "adaptiveDefaultMethod",
+        "suggestedTimeboxMinutes",
+        "humanParticipants",
+        "aiParticipants"
+      ],
+      "properties": {
+        "canonicalPurpose": {"type": "string", "minLength": 1},
+        "bookDefaultMethod": {"type": "string", "minLength": 1},
+        "adaptiveDefaultMethod": {"type": "string", "minLength": 1},
+        "suggestedTimeboxMinutes": {
+          "type": "object",
+          "required": ["sprint-book", "adaptive-design-sprint"],
+          "properties": {
+            "sprint-book": {"type": "integer", "minimum": 0},
+            "adaptive-design-sprint": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        },
+        "humanParticipants": {"$ref": "#/$defs/participants"},
+        "aiParticipants": {"$ref": "#/$defs/participants"},
+        "bookSubstitutions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/substitution"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "participants": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "substitution": {
+      "type": "object",
+      "required": [
+        "canonicalMethod",
+        "selectedMethod",
+        "preservedPurpose",
+        "reason",
+        "impact"
+      ],
+      "properties": {
+        "canonicalMethod": {"type": "string", "minLength": 1},
+        "selectedMethod": {"type": "string", "minLength": 1},
+        "preservedPurpose": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "impact": {"$ref": "#/$defs/impact"}
+      },
+      "additionalProperties": false
+    },
+    "impact": {
+      "type": "object",
+      "required": ["methodFidelity", "evidence", "decisionReadiness"],
+      "properties": {
+        "methodFidelity": {"type": "string", "minLength": 1},
+        "evidence": {"type": "string", "minLength": 1},
+        "decisionReadiness": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "principleHumanDecider": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "human-decider"},
+        "statement": {"const": "A human Decider owns consequential choices."}
+      }
+    },
+    "principleEvidenceBeforeSolutions": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "evidence-before-solutions"},
+        "statement": {"const": "Shared evidence precedes solution generation."}
+      }
+    },
+    "principleDivergeBeforeConverge": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "diverge-before-converge"},
+        "statement": {"const": "Divergence occurs before convergence."}
+      }
+    },
+    "principleConcreteDirection": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "concrete-direction"},
+        "statement": {"const": "The tested direction is concrete."}
+      }
+    },
+    "principlePrototypeAnswersQuestions": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "prototype-answers-questions"},
+        "statement": {"const": "The prototype is designed to answer agreed questions."}
+      }
+    },
+    "principleRealCustomerEvidence": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "real-customer-evidence"},
+        "statement": {"const": "Only suitable real customers provide customer evidence."}
+      }
+    },
+    "principleObservationBeforeInference": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "observation-before-inference"},
+        "statement": {"const": "Observed evidence is separated from inference."}
+      }
+    },
+    "principleVisibleLimitationsAndDissent": {
+      "$ref": "#/$defs/principle",
+      "type": "object",
+      "properties": {
+        "id": {"const": "visible-limitations-and-dissent"},
+        "statement": {"const": "Limitations and dissent remain visible."}
+      }
+    },
+    "principle": {
+      "type": "object",
+      "required": ["id", "statement"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "statement": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

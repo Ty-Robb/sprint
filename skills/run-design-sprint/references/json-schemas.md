@@ -13,14 +13,17 @@ dependency-free and reports instance locations as JSONPath, for example
 | Artifact data | `artifact-data/*.json` | `2.0` | `1.0` is migratable |
 | Artifact specifications | `references/artifact-specs.json` | `1.0` | Current only |
 | Role contracts | `references/role-contracts.json` | `1.0` | Current only |
+| Method profiles | `references/method-profiles.json` | `1.0` | Current only |
 | Public usage evidence | `*.usage-evidence.json` publication records | `1.0` | Current only |
 
-The state schema includes its nested gate, decision, artifact-registration,
-customer-testing, resolved-question, and next-action records. The artifact
-schema includes evidence records and the `paragraphs`, `list`, `ordered-list`,
-`table`, `cards`, and `key-value` section families. Conditional schema rules
-require every artifact ID's declared section titles and complete gate records'
-decision fields.
+The state schema includes its separate method-profile, execution-mode, and
+route selectors; fidelity principles, step records, participation, timeboxes,
+deviations, impacts, and summary; plus nested gate, decision,
+artifact-registration, customer-testing, resolved-question, and next-action
+records. The artifact schema includes evidence records and the `paragraphs`,
+`list`, `ordered-list`, `table`, `cards`, and `key-value` section families.
+Conditional schema rules require every artifact ID's declared section titles
+and complete gate records' decision fields.
 
 There is no standalone customer-session JSON format or session-import command
 in the current engine. Customer-testing counts remain a nested state record.
@@ -33,14 +36,19 @@ be validated before an import writes a file or changes those counts.
   family. They never interpret a legacy or unknown version as current.
 - A supported legacy version fails with a migration command; an unknown,
   missing, or wrongly typed version lists the versions the engine understands.
-- State and artifact `1.0` are the only supported legacy versions. Migration to
-  `2.0` is deliberately structure-preserving: `2.0` makes the previously
-  documented shape strict, while the migration changes only `schemaVersion`.
-  User content, workflow history, array ordering, and timestamps remain
-  unchanged. Object keys are serialized in canonical sorted order.
-- The packaged artifact and role registries and public usage-evidence records
-  currently have no legacy line. Their loaders reject any version other than
-  `1.0`.
+- State and artifact `1.0` are the only supported legacy versions. Artifact
+  migration to `2.0` changes only `schemaVersion`. State migration also makes
+  the formerly implicit one-human-plus-AI method explicit: it classifies the
+  legacy run as `adaptive-design-sprint` and `live`, creates canonical fidelity
+  records, translates route exclusions into `notApplicableSteps`, and records
+  a compatibility note for human review. Existing user content, decisions,
+  timestamps, and workflow history remain unchanged. Migration-derived
+  timestamps reuse the source state's `updatedAt`, and object keys are
+  serialized in canonical sorted order, so repeated migration inputs produce
+  identical JSON.
+- The packaged artifact, role, and method-profile registries and public
+  usage-evidence records currently have no legacy line. Their loaders reject
+  any version other than `1.0`.
 - Adding fields to a strict document requires a new compatible schema version;
   undeclared properties are rejected instead of being silently ignored.
 - Loaders accept standards-compliant JSON only; non-finite extensions such as

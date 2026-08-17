@@ -13,6 +13,7 @@ Read the following references before running a sprint:
 
 - [references/privacy-and-publication.md](references/privacy-and-publication.md) before choosing a workspace location, handling private evidence, or publishing any sprint material.
 - [references/guided-workflow.md](references/guided-workflow.md) for the state machine, human gates, and resumable interaction pattern.
+- [references/method-profiles.json](references/method-profiles.json) for method profiles, execution modes, canonical purposes, default methods, timeboxes, substitutions, and non-negotiable principles.
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
@@ -31,6 +32,8 @@ Read [references/customer-testing.md](references/customer-testing.md) before rec
 7. Use suitable real customers before claiming the sprint is customer-tested.
 8. Produce every user-facing artifact as accessible HTML.
 9. Label important claims as `Observed`, `Assumption`, `Inference`, `Decision`, or `Unknown`.
+10. Keep method profile, execution mode, and route separate; never describe the one-human-plus-AI team model as fully Sprint-book faithful.
+11. Record a reason and method-fidelity, evidence, and decision-readiness impact for every substitution, compression, omission, or skip.
 
 Prompt boundaries are behavioural controls, not a security sandbox. When the runtime supports isolated subagents, pass minimum context and restrict file ownership. When it does not, perform explicit sequential role passes and preserve the same boundaries.
 
@@ -39,19 +42,32 @@ Prompt boundaries are behavioural controls, not a security sandbox. When the run
 On a new sprint:
 
 1. Choose an access-controlled private workspace root outside any public repository checkout. Treat the complete generated workspace as private, even when participant names have been removed.
-2. Run the workspace engine with an explicit output below that private root:
+2. Help the human select three independent things:
+
+   - method profile: `sprint-book` or `adaptive-design-sprint`;
+   - execution mode: `live`, `self-test`, or `planning-rehearsal`;
+   - route: selected after qualification from the routes in the guided workflow.
+
+   The Sprint-book profile is compatible with the full-design-sprint route. Other routes use the adaptive profile. A self-test or rehearsal may exercise the process but cannot produce customer evidence.
+
+3. Run the workspace engine with an explicit output below the private root:
 
    ```bash
    python3 <skill-dir>/scripts/sprint_workspace.py init \
      --title "<sprint title>" \
      --challenge "<initial challenge>" \
+     --method-profile "<sprint-book|adaptive-design-sprint>" \
+     --execution-mode "<live|self-test|planning-rehearsal>" \
+     --selected-by "human Decider" \
+     --profile-reason "<why this profile fits>" \
+     --mode-reason "<why this mode is truthful>" \
      --output "<private-workspace-root>/design-sprint-<short-slug>"
    ```
 
-3. Keep identity/contact maps, raw transcripts, recordings, account evidence, and private usage-dashboard captures in separately access-controlled source storage rather than the shareable workspace artifacts.
-4. Open the generated `index.html` path for the human.
-5. Read `sprint-state.json` and begin the current step from the facilitation playbook.
-6. Ask only for the information needed to progress.
+4. Keep identity/contact maps, raw transcripts, recordings, account evidence, and private usage-dashboard captures in separately access-controlled source storage rather than the shareable workspace artifacts.
+5. Open the generated `index.html` path for the human.
+6. Read `sprint-state.json` and begin the current step from the facilitation playbook.
+7. Ask only for the information needed to progress.
 
 On an existing sprint, run `status --workspace <sprint-directory>`. If it reports
 a supported legacy schema, preview and apply `migrate` as documented in
@@ -106,8 +122,12 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `complete-step` enforces required artifacts and pauses at human gates.
 - `gate` records the human's decision and rationale.
 - `customer` records real-session status and counts.
+- `set-method-profile` and `set-execution-mode` record selector changes before work begins.
+- `record-fidelity` records the selected method, human and AI participants, actual timebox, and any deviation with its reason and impacts.
 - `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
 - `migrate` previews or safely upgrades supported legacy state and artifact JSON while preserving an untouched backup.
+
+The state schema stores `methodProfile`, `executionMode`, `route`, and `fidelity` separately. Every fidelity step retains its canonical purpose, default and selected methods, participants, suggested and actual timebox, deviations, and impact statements. Route exclusions are not counted as deliberate skips. Schema 1.0 workspaces are migrated as adaptive/live with an explicit compatibility note; review that assumption when resuming old work.
 
 Update canonical artifact JSON below `artifact-data/`, including its `updatedAt`, then run `render`. Never edit `index.html`, `assets/sprint.css`, or files below `artifacts/` directly; they are disposable generated views. Rendering does not update workflow timestamps.
 
@@ -127,10 +147,14 @@ Never:
 - expose unnecessary personal information in artifacts;
 - call directional evidence universal validation.
 
-If no real customer evidence is available, complete the sprint only to `Ready for customer testing` and make the blocker visible on the dashboard.
+In live mode, if no real customer evidence is available, complete the sprint only to `Ready for customer testing` and make the blocker visible on the dashboard. A self-test or planning/rehearsal may close only as an explicitly unvalidated `Investigate` or `Stop` outcome after customer activity is skipped and labelled truthfully.
+
+For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, skip the live customer-session step explicitly and use only `Synthetic rehearsal` labels; never complete a customer-evidence artifact.
 
 ## Complete the sprint
 
 Finish only after the human makes a recorded outcome decision: `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`. Publish the final HTML outcome report with evidence, confidence, unresolved risks, owners, and dated next actions. Mark customer testing truthfully as complete, partial, or not conducted.
+
+The dashboard and final outcome must show process completion separately from the generated method-fidelity assessment. The fidelity summary must list the one-human-plus-AI team-model adaptation, every material deviation, and the limitations those choices place on evidence and decision readiness.
 
 Run `validate --workspace <sprint-directory>` before handoff. Do not call the sprint complete while validation errors remain.

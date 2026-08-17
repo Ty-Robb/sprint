@@ -31,6 +31,8 @@ For every step:
 6. Show the resulting HTML artifact.
 7. Advance only when the definition of done is met.
 
+Keep three decisions visible throughout: method profile, execution mode, and route. At the end of every step, compare what actually happened with its record in `method-profiles.json`; record actual participants and timebox, and document each substitution, compression, omission, or skip with its reason and method-fidelity, evidence, and decision-readiness impacts.
+
 At a human gate, accept `approve`, `revise`, `go back`, `show evidence`, or `pause`. Do not treat silence as approval.
 
 ## Step 1 — Intake
@@ -67,6 +69,7 @@ Have the Evidence Researcher assess evidence sufficiency and the Product Strateg
 
 Present:
 
+- the selected method profile and execution mode;
 - the recommended route;
 - why it fits;
 - what evidence is missing;
@@ -78,6 +81,8 @@ Ask:
 
 > I recommend **[route]** because **[reason]**. Shall we use that route, revise it, or stop?
 
+The `sprint-book` profile pairs with `full-design-sprint` and retains the five-day intent, canonical exercises/timeboxes, and five-customer live-testing target wherever possible. Always disclose that one human plus AI specialists adapts the book's cross-functional human team model. Use `adaptive-design-sprint` for research-first, foundation, focused, and no-sprint routes. Choose `live`, `self-test`, or `planning-rehearsal` independently; non-live modes cannot produce customer evidence.
+
 **Definition of done:** The route and rationale are recorded. Complete Step 2 and pass Gate 1 with an explicit human decision.
 
 ## Step 3 — Evidence
@@ -85,6 +90,8 @@ Ask:
 **Purpose:** Give every later role the same defensible factual base and start customer recruitment early.
 
 Have the Evidence Researcher inventory supplied evidence and permitted public research. For each material claim, record status, source, date, and relevance. Have the Research Lead separately define the target participant and recruitment path.
+
+When a Sprint-book run cannot convene canonical expert interviews and shared team knowledge, use bounded human or external-expert inputs plus a sourced evidence review. This preserves shared understanding but loses some live cross-functional knowledge; record the substitution and its limitations.
 
 Ask the human only when:
 
@@ -178,6 +185,8 @@ Generate bounded packets for the Product Strategist, Experience Designer, Techni
 
 Reject duplicate directions that differ only in wording or interface styling. The human may add, combine, or reject directions after seeing all of them.
 
+For the Sprint-book profile, use a structured sourced precedent scan as the explicit Lightning Demos substitute and independently generated concrete flows or sketches as the four-step-sketching substitute. Prose-only ideas do not preserve the purpose of sketching.
+
 **Definition of done:** At least three meaningfully different directions exist, each is testable, and dissent remains visible.
 
 ## Step 8 — Decide
@@ -198,6 +207,8 @@ The Sprint Orchestrator presents the comparison without choosing. Ask:
 > Which direction should we test, and what is the main reason? You may deliberately combine compatible elements, but we need one coherent experiment.
 
 Record the selected direction, rationale, reservations, rejected alternatives, and overridden recommendations.
+
+Independent AI role assessments may replace team voting mechanics, but they are not human votes. The human Decider still makes the consequential choice, and the record must state that this changes team participation and may omit stakeholder perspectives.
 
 **Definition of done:** The human selects one direction at Gate 3 and the decision record is `complete`.
 
@@ -249,6 +260,8 @@ Ask:
 Read [customer-testing.md](customer-testing.md) before this step. Do not substitute AI role-play. If suitable customers are unavailable, set the sprint to `waiting-for-customers` and stop before synthesis.
 
 The human may conduct sessions or permit AI-assisted moderation when suitable tooling and participant consent exist. Record observations before interpretations.
+
+Plan five suitable customers for a live Sprint-book profile. Use deliberate observation and debrief checkpoints with traceable session summaries when a cross-functional watch party is impractical. In self-test or planning/rehearsal mode, skip the live-session step with a recorded reason and impacts; keep rehearsal material out of the customer-evidence artifact.
 
 **Definition of done:** Recruitment and consent are documented, at least one suitable real session is complete, the planned test was followed or deviations are recorded, and anonymised evidence is stored.
 

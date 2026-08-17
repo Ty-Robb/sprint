@@ -26,6 +26,9 @@ jobs:
         run: |
           python -m py_compile skills/run-design-sprint/scripts/sprint_workspace.py
           python -m py_compile scripts/check_publication.py
+          python -m json.tool skills/run-design-sprint/references/artifact-specs.json > /dev/null
+          python -m json.tool skills/run-design-sprint/references/method-profiles.json > /dev/null
+          python -m json.tool skills/run-design-sprint/references/role-contracts.json > /dev/null
           python -m py_compile skills/run-design-sprint/scripts/schema_validation.py
           find skills tests/fixtures -name '*.json' -print0 | xargs -0 -n1 python -m json.tool > /dev/null
 

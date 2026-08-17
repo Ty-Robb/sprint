@@ -1,40 +1,387 @@
 {
-  "fixtureKind": "synthetic",
   "containsRealCustomerData": false,
   "document": {
-  "schemaVersion": "2.0",
-  "title": "Invalid Schema Fixture",
-  "slug": "invalid-schema-fixture",
-  "challenge": "Reject an unknown step",
-  "route": "undecided",
-  "status": "waiting-for-human",
-  "currentStep": "99-not-a-step",
-  "completedSteps": [],
-  "skippedSteps": [],
-  "skipReasons": {},
-  "pendingGate": null,
-  "humanGates": [
-    {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
-    {"id": "gate-2", "name": "Target and top risks", "status": "pending"},
-    {"id": "gate-3", "name": "Selected solution direction", "status": "pending"},
-    {"id": "gate-4", "name": "Prototype readiness", "status": "pending"},
-    {"id": "gate-5", "name": "Final outcome", "status": "pending"}
-  ],
-  "decisions": [],
-  "artifacts": [],
-  "customerTesting": {
-    "status": "not-planned",
-    "target": "",
-    "sessionsPlanned": 0,
-    "sessionsCompleted": 0
+    "artifacts": [],
+    "challenge": "Reject an unknown step",
+    "compatibility": {
+      "migratedAt": "2026-08-17T09:00:00Z",
+      "migratedFromSchemaVersion": "1.0",
+      "migrationNote": "Legacy state was classified as adaptive/live; review and revise the selectors if that historical assumption is inaccurate."
+    },
+    "completedSteps": [],
+    "createdAt": "2026-08-17T09:00:00Z",
+    "currentStep": "99-not-a-step",
+    "customerTesting": {
+      "sessionsCompleted": 0,
+      "sessionsPlanned": 0,
+      "status": "not-planned",
+      "target": ""
+    },
+    "decisions": [],
+    "executionMode": "live",
+    "executionModeSelection": {
+      "reason": "Schema 1.0 enforced real-customer evidence and is therefore migrated as live mode.",
+      "selectedAt": "2026-08-17T09:00:00Z",
+      "selectedBy": "compatibility migration"
+    },
+    "fidelity": {
+      "nonNegotiablePrinciples": [
+        {
+          "id": "human-decider",
+          "requirement": "non-negotiable",
+          "statement": "A human Decider owns consequential choices."
+        },
+        {
+          "id": "evidence-before-solutions",
+          "requirement": "non-negotiable",
+          "statement": "Shared evidence precedes solution generation."
+        },
+        {
+          "id": "diverge-before-converge",
+          "requirement": "non-negotiable",
+          "statement": "Divergence occurs before convergence."
+        },
+        {
+          "id": "concrete-direction",
+          "requirement": "non-negotiable",
+          "statement": "The tested direction is concrete."
+        },
+        {
+          "id": "prototype-answers-questions",
+          "requirement": "non-negotiable",
+          "statement": "The prototype is designed to answer agreed questions."
+        },
+        {
+          "id": "real-customer-evidence",
+          "requirement": "non-negotiable",
+          "statement": "Only suitable real customers provide customer evidence."
+        },
+        {
+          "id": "observation-before-inference",
+          "requirement": "non-negotiable",
+          "statement": "Observed evidence is separated from inference."
+        },
+        {
+          "id": "visible-limitations-and-dissent",
+          "requirement": "non-negotiable",
+          "statement": "Limitations and dissent remain visible."
+        }
+      ],
+      "routeExclusions": [],
+      "schemaVersion": "1.0",
+      "steps": {
+        "01-intake": {
+          "canonicalPurpose": "Frame the consequential challenge, intended outcome, constraints, evidence, and unknowns before committing to a sprint.",
+          "defaultMethod": "Focused challenge intake",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Sprint Orchestrator"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Focused challenge intake",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 30
+          }
+        },
+        "02-qualify": {
+          "canonicalPurpose": "Choose a route that matches the uncertainty instead of applying sprint ceremony by default.",
+          "defaultMethod": "Evidence sufficiency and decision-uncertainty assessment",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Sprint Orchestrator",
+              "Evidence Researcher",
+              "Product Strategist"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Evidence sufficiency and decision-uncertainty assessment",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 30
+          }
+        },
+        "03-evidence": {
+          "canonicalPurpose": "Create shared understanding from relevant knowledge and evidence before solution generation.",
+          "defaultMethod": "Sourced evidence review and early recruitment planning",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Evidence Researcher",
+              "Research Lead"
+            ],
+            "human": [
+              "Human Decider",
+              "Available external experts"
+            ]
+          },
+          "selectedMethod": "Sourced evidence review and early recruitment planning",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 90
+          }
+        },
+        "04-foundation": {
+          "canonicalPurpose": "Establish a coherent customer, problem, advantage, alternative, and differentiation hypothesis when one does not yet exist.",
+          "defaultMethod": "Evidence-labelled foundation hypothesis",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Product Strategist",
+              "Evidence Researcher",
+              "Critical Reviewer"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Evidence-labelled foundation hypothesis",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 90
+          }
+        },
+        "05-map": {
+          "canonicalPurpose": "Build shared understanding of the customer journey or system and select the most consequential target moment.",
+          "defaultMethod": "Journey and system mapping",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Experience Designer",
+              "Technical Lead"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Journey and system mapping",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 75
+          }
+        },
+        "06-questions": {
+          "canonicalPurpose": "Turn the long-term goal and riskiest assumptions into agreed questions and observable failure signals.",
+          "defaultMethod": "Risk-ranked sprint questions and scorecard",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Product Strategist",
+              "Technical Lead",
+              "Critical Reviewer"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Risk-ranked sprint questions and scorecard",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 75
+          }
+        },
+        "07-explore": {
+          "canonicalPurpose": "Diverge independently into multiple concrete, evidence-aware solution directions before evaluating them.",
+          "defaultMethod": "Independent concrete solution directions with a sourced precedent scan",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Product Strategist",
+              "Experience Designer",
+              "Technical Lead",
+              "Critical Reviewer"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Independent concrete solution directions with a sourced precedent scan",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 150
+          }
+        },
+        "08-decide": {
+          "canonicalPurpose": "Converge deliberately on one coherent direction while keeping decision criteria, dissent, and rejected alternatives visible.",
+          "defaultMethod": "Independent role assessments followed by the human Decider",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Sprint Orchestrator"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Independent role assessments followed by the human Decider",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 75
+          }
+        },
+        "09-experiment": {
+          "canonicalPurpose": "Translate the chosen direction into a fixed hypothesis, realistic storyboard, and observable test signals.",
+          "defaultMethod": "Experiment card and four-to-six-scene storyboard",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Experience Designer",
+              "Research Lead",
+              "Technical Lead"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Experiment card and four-to-six-scene storyboard",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 120
+          }
+        },
+        "10-prototype": {
+          "canonicalPurpose": "Build and trial-run the smallest realistic prototype capable of answering the agreed questions.",
+          "defaultMethod": "Bounded prototype build with independent critique and research-readiness review",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Prototype Builder",
+              "Critical Reviewer",
+              "Research Lead"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Bounded prototype build with independent critique and research-readiness review",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 300
+          }
+        },
+        "11-customer-sessions": {
+          "canonicalPurpose": "Observe suitable real customers encountering the prototype under a consistent protocol.",
+          "defaultMethod": "Planned one-to-one sessions with suitable real customers",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Research Lead"
+            ],
+            "human": [
+              "Human Decider",
+              "Suitable real customers"
+            ]
+          },
+          "selectedMethod": "Planned one-to-one sessions with suitable real customers",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 180
+          }
+        },
+        "12-synthesis": {
+          "canonicalPurpose": "Compare observed customer evidence against the predefined questions and expose patterns, contradictions, outliers, and limitations.",
+          "defaultMethod": "Traceable question-by-question synthesis with independent critique",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Synthesis Analyst",
+              "Critical Reviewer"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Traceable question-by-question synthesis with independent critique",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 75
+          }
+        },
+        "13-outcome": {
+          "canonicalPurpose": "Make a bounded human-owned decision that states what was learned, what remains unknown, and the next learning action.",
+          "defaultMethod": "Evidence-limited outcome decision and owned handoff",
+          "deviations": [],
+          "participants": {
+            "ai": [
+              "Sprint Orchestrator"
+            ],
+            "human": [
+              "Human Decider"
+            ]
+          },
+          "selectedMethod": "Evidence-limited outcome decision and owned handoff",
+          "timebox": {
+            "actualMinutes": null,
+            "suggestedMinutes": 45
+          }
+        }
+      },
+      "summary": {
+        "adaptations": [],
+        "assessment": "profile-followed",
+        "limitations": [
+          "Customer findings remain directional and must state sample, protocol, and prototype limitations."
+        ]
+      },
+      "teamModel": "one-human-plus-AI",
+      "teamModelLimitation": "AI specialists expand the range of analysis but do not provide independent human stakeholder knowledge or customer evidence."
+    },
+    "humanGates": [
+      {
+        "id": "gate-1",
+        "name": "Challenge and sprint route",
+        "status": "pending"
+      },
+      {
+        "id": "gate-2",
+        "name": "Target and top risks",
+        "status": "pending"
+      },
+      {
+        "id": "gate-3",
+        "name": "Selected solution direction",
+        "status": "pending"
+      },
+      {
+        "id": "gate-4",
+        "name": "Prototype readiness",
+        "status": "pending"
+      },
+      {
+        "id": "gate-5",
+        "name": "Final outcome",
+        "status": "pending"
+      }
+    ],
+    "methodProfile": "adaptive-design-sprint",
+    "methodProfileSelection": {
+      "reason": "Schema 1.0 represented the adaptive one-human-plus-AI workflow implicitly.",
+      "selectedAt": "2026-08-17T09:00:00Z",
+      "selectedBy": "compatibility migration"
+    },
+    "nextAction": {
+      "body": "The invalid step must produce a field path.",
+      "humanInput": "None.",
+      "title": "Reject fixture"
+    },
+    "notApplicableSteps": [],
+    "openQuestions": [],
+    "pendingGate": null,
+    "route": "undecided",
+    "schemaVersion": "2.0",
+    "skipReasons": {},
+    "skippedSteps": [],
+    "slug": "invalid-schema-fixture",
+    "status": "waiting-for-human",
+    "title": "Invalid Schema Fixture",
+    "updatedAt": "2026-08-17T09:00:00Z"
   },
-  "openQuestions": [],
-  "nextAction": {
-    "title": "Reject fixture",
-    "body": "The invalid step must produce a field path.",
-    "humanInput": "None."
-  },
-  "createdAt": "2026-08-17T09:00:00Z",
-  "updatedAt": "2026-08-17T09:00:00Z"
-  }
+  "fixtureKind": "synthetic"
 }

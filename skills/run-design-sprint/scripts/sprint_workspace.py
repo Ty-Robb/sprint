@@ -32,6 +32,10 @@ STATE_FILENAME = "sprint-state.json"
 SCHEMA_VERSION = "2.0"
 LEGACY_SCHEMA_VERSION = "1.0"
 REFERENCE_SCHEMA_VERSION = "1.0"
+STATE_SCHEMA_VERSION = SCHEMA_VERSION
+LEGACY_STATE_SCHEMA_VERSION = LEGACY_SCHEMA_VERSION
+ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION
+FIDELITY_SCHEMA_VERSION = "1.0"
 PORTABLE_FILE_MODE = 0o644
 
 SCHEMA_FAMILIES = {
@@ -66,6 +70,14 @@ SCHEMA_FAMILIES = {
         "current": REFERENCE_SCHEMA_VERSION,
         "schemas": {
             REFERENCE_SCHEMA_VERSION: SCHEMAS_DIR / "role-contracts-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+    "method-profiles": {
+        "label": "method profiles",
+        "current": REFERENCE_SCHEMA_VERSION,
+        "schemas": {
+            REFERENCE_SCHEMA_VERSION: SCHEMAS_DIR / "method-profiles-v1.schema.json"
         },
         "migratable": set(),
     },
@@ -104,6 +116,16 @@ CUSTOMER_STATUSES = {
     "blocked",
 }
 FINAL_OUTCOMES = {"proceed", "iterate", "pivot", "investigate", "stop"}
+METHOD_PROFILES = {"sprint-book", "adaptive-design-sprint"}
+EXECUTION_MODES = {"live", "self-test", "planning-rehearsal"}
+DEVIATION_TYPES = {"substitution", "compression", "omission", "skip"}
+FIDELITY_ASSESSMENTS = {
+    "profile-followed",
+    "adapted-with-documented-substitutions",
+    "partial",
+    "self-test-rehearsal",
+    "not-applicable",
+}
 
 STEPS = [
     {"id": "01-intake", "name": "Intake"},
@@ -451,6 +473,25 @@ def load_role_contracts() -> dict[str, dict[str, Any]]:
     return roles
 
 
+def load_method_contract() -> dict[str, Any]:
+    path = REFERENCES_DIR / "method-profiles.json"
+    data = read_json(path)
+    require_valid_schema(data, "method-profiles", path)
+    profiles = data.get("methodProfiles")
+    modes = data.get("executionModes")
+    principles = data.get("nonNegotiablePrinciples")
+    steps = data.get("steps")
+    if not isinstance(profiles, dict) or set(profiles) != METHOD_PROFILES:
+        raise SprintError("method-profiles.json has invalid method profiles")
+    if not isinstance(modes, dict) or set(modes) != EXECUTION_MODES:
+        raise SprintError("method-profiles.json has invalid execution modes")
+    if not isinstance(principles, list):
+        raise SprintError("method-profiles.json must define non-negotiable principles")
+    if not isinstance(steps, dict) or set(steps) != set(STEP_INDEX):
+        raise SprintError("method-profiles.json must define every workflow step")
+    return data
+
+
 def workspace_path(value: str) -> Path:
     return Path(value).expanduser().resolve()
 
@@ -463,6 +504,7 @@ def load_state(workspace: Path) -> dict[str, Any]:
     path = state_path(workspace)
     state = read_json(path)
     require_valid_schema(state, "workspace-state", path)
+    refresh_fidelity_summary(state)
     return state
 
 
@@ -475,6 +517,7 @@ def load_artifact_data(path: Path) -> dict[str, Any]:
 def save_state(
     workspace: Path, state: dict[str, Any], timestamp: str | None = None
 ) -> None:
+    refresh_fidelity_summary(state)
     state["updatedAt"] = timestamp or utc_now()
     path = state_path(workspace)
     require_valid_schema(state, "workspace-state", path)
@@ -486,10 +529,291 @@ def save_artifact_data(path: Path, data: dict[str, Any]) -> None:
     write_json(path, data)
 
 
-def next_step(current: str, skipped: set[str]) -> str | None:
+def selection_record(
+    selected_by: str, reason: str, timestamp: str | None = None
+) -> dict[str, str]:
+    return {
+        "selectedBy": selected_by,
+        "reason": reason,
+        "selectedAt": timestamp or utc_now(),
+    }
+
+
+def profile_mode_route_errors(
+    method_profile: Any, execution_mode: Any, route: Any
+) -> list[str]:
+    errors: list[str] = []
+    if method_profile not in METHOD_PROFILES:
+        errors.append(f"Invalid method profile: {method_profile}")
+    if execution_mode not in EXECUTION_MODES:
+        errors.append(f"Invalid execution mode: {execution_mode}")
+    if route not in ROUTES:
+        errors.append(f"Invalid route: {route}")
+    if errors:
+        return errors
+    contract = load_method_contract()
+    compatible = contract["methodProfiles"][method_profile]["compatibleRoutes"]
+    if route not in compatible:
+        errors.append(
+            f"Method profile {method_profile} is incompatible with route {route}; "
+            "use full-design-sprint for the Sprint-book profile or select the adaptive profile"
+        )
+    return errors
+
+
+def impact_record(
+    method_fidelity: str, evidence: str, decision_readiness: str
+) -> dict[str, str]:
+    return {
+        "methodFidelity": method_fidelity,
+        "evidence": evidence,
+        "decisionReadiness": decision_readiness,
+    }
+
+
+def build_fidelity(
+    method_profile: str, execution_mode: str, timestamp: str | None = None
+) -> dict[str, Any]:
+    contract = load_method_contract()
+    recorded_at = timestamp or utc_now()
+    steps: dict[str, Any] = {}
+    method_key = (
+        "bookDefaultMethod"
+        if method_profile == "sprint-book"
+        else "adaptiveDefaultMethod"
+    )
+    for step_id, spec in contract["steps"].items():
+        default_method = str(spec[method_key])
+        deviations: list[dict[str, Any]] = []
+        selected_methods: list[str] = []
+        if method_profile == "sprint-book":
+            for index, substitution in enumerate(spec.get("bookSubstitutions", []), 1):
+                selected_methods.append(str(substitution["selectedMethod"]))
+                deviations.append(
+                    {
+                        "id": f"default-book-substitution-{index}",
+                        "type": "substitution",
+                        "canonicalMethod": substitution["canonicalMethod"],
+                        "selectedMethod": substitution["selectedMethod"],
+                        "preservedPurpose": substitution["preservedPurpose"],
+                        "reason": substitution["reason"],
+                        "impact": dict(substitution["impact"]),
+                        "recordedAt": recorded_at,
+                    }
+                )
+        participants = {
+            "human": list(spec.get("humanParticipants", [])),
+            "ai": list(spec.get("aiParticipants", [])),
+        }
+        if execution_mode != "live" and step_id == "11-customer-sessions":
+            participants["human"] = [
+                item
+                for item in participants["human"]
+                if item != "Suitable real customers"
+            ]
+        steps[step_id] = {
+            "canonicalPurpose": spec["canonicalPurpose"],
+            "defaultMethod": default_method,
+            "selectedMethod": "; ".join(selected_methods) or default_method,
+            "participants": participants,
+            "timebox": {
+                "suggestedMinutes": int(
+                    spec["suggestedTimeboxMinutes"][method_profile]
+                ),
+                "actualMinutes": None,
+            },
+            "deviations": deviations,
+        }
+    principles = [
+        {
+            "id": item["id"],
+            "statement": item["statement"],
+            "requirement": "non-negotiable",
+        }
+        for item in contract["nonNegotiablePrinciples"]
+    ]
+    profile = contract["methodProfiles"][method_profile]
+    return {
+        "schemaVersion": FIDELITY_SCHEMA_VERSION,
+        "teamModel": profile["teamModel"],
+        "teamModelLimitation": profile["teamModelLimitation"],
+        "nonNegotiablePrinciples": principles,
+        "steps": steps,
+        "routeExclusions": [],
+        "summary": {},
+    }
+
+
+def route_not_applicable_steps(route: str) -> dict[str, str]:
+    if route in {"full-design-sprint", "focused-design-sprint"}:
+        return {
+            "04-foundation": "The approved route starts from an existing strategic foundation."
+        }
+    if route == "no-sprint":
+        return {
+            step["id"]: "The Decider approved a no-sprint route after qualification."
+            for step in STEPS[2:-1]
+        }
+    return {}
+
+
+def add_fidelity_deviation(
+    state: dict[str, Any],
+    step_id: str,
+    deviation: dict[str, Any],
+) -> None:
+    record = state["fidelity"]["steps"][step_id]
+    deviations = record.setdefault("deviations", [])
+    deviation_id = deviation.get("id")
+    if deviation_id and any(item.get("id") == deviation_id for item in deviations):
+        return
+    deviations.append(deviation)
+
+
+def add_skip_deviation(
+    state: dict[str, Any],
+    step_id: str,
+    reason: str,
+    source: str = "explicit-skip",
+    timestamp: str | None = None,
+) -> None:
+    add_fidelity_deviation(
+        state,
+        step_id,
+        {
+            "id": source,
+            "type": "skip",
+            "canonicalMethod": state["fidelity"]["steps"][step_id]["defaultMethod"],
+            "selectedMethod": "Skipped",
+            "preservedPurpose": "Not preserved; the recorded impacts describe the resulting gap.",
+            "reason": reason,
+            "impact": impact_record(
+                f"Skipping {step_name(step_id).lower()} makes the selected method partial.",
+                "No evidence or learning from this step was produced.",
+                "Any decision depending on this step is less ready and must retain the gap as a limitation.",
+            ),
+            "recordedAt": timestamp or utc_now(),
+        },
+    )
+
+
+def migrate_legacy_state(state: dict[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(state)
+    migration_timestamp = str(
+        migrated.get("updatedAt") or migrated.get("createdAt") or utc_now()
+    )
+    migrated["schemaVersion"] = STATE_SCHEMA_VERSION
+    migrated["methodProfile"] = "adaptive-design-sprint"
+    migrated["executionMode"] = "live"
+    migrated["methodProfileSelection"] = selection_record(
+        "compatibility migration",
+        "Schema 1.0 represented the adaptive one-human-plus-AI workflow implicitly.",
+        migration_timestamp,
+    )
+    migrated["executionModeSelection"] = selection_record(
+        "compatibility migration",
+        "Schema 1.0 enforced real-customer evidence and is therefore migrated as live mode.",
+        migration_timestamp,
+    )
+    migrated["fidelity"] = build_fidelity(
+        migrated["methodProfile"], migrated["executionMode"], migration_timestamp
+    )
+    route = str(migrated.get("route", "undecided"))
+    route_exclusions = route_not_applicable_steps(route)
+    previous_skips = list(migrated.get("skippedSteps", []))
+    migrated["notApplicableSteps"] = sorted(route_exclusions)
+    migrated["skippedSteps"] = [
+        step_id for step_id in previous_skips if step_id not in route_exclusions
+    ]
+    migrated["fidelity"]["routeExclusions"] = [
+        {"step": step_id, "reason": reason}
+        for step_id, reason in route_exclusions.items()
+    ]
+    for step_id in migrated["skippedSteps"]:
+        if step_id in STEP_INDEX:
+            reason = migrated.get("skipReasons", {}).get(
+                step_id, "Skipped before the schema 2.0 fidelity contract was added."
+            )
+            add_skip_deviation(
+                migrated, step_id, reason, "legacy-skip", migration_timestamp
+            )
+    migrated["compatibility"] = {
+        "migratedFromSchemaVersion": LEGACY_STATE_SCHEMA_VERSION,
+        "migrationNote": "Legacy state was classified as adaptive/live; review and revise the selectors if that historical assumption is inaccurate.",
+        "migratedAt": migration_timestamp,
+    }
+    refresh_fidelity_summary(migrated)
+    return migrated
+
+
+def refresh_fidelity_summary(state: dict[str, Any]) -> None:
+    fidelity = state.get("fidelity")
+    if not isinstance(fidelity, dict):
+        return
+    adaptations: list[dict[str, str]] = []
+    limitations: list[str] = []
+    if state.get("methodProfile") == "sprint-book":
+        limitations.append(str(fidelity.get("teamModelLimitation", "")))
+        adaptations.append(
+            {
+                "step": "Whole sprint",
+                "type": "team-model adaptation",
+                "description": "One human Decider plus bounded AI specialists replaces the canonical cross-functional human sprint team.",
+            }
+        )
+    for step_id, record in fidelity.get("steps", {}).items():
+        for deviation in record.get("deviations", []):
+            adaptations.append(
+                {
+                    "step": step_id,
+                    "type": str(deviation.get("type", "adaptation")),
+                    "description": str(
+                        deviation.get("selectedMethod")
+                        or deviation.get("reason")
+                        or "Documented adaptation"
+                    ),
+                }
+            )
+            impact = deviation.get("impact", {})
+            for key in ("evidence", "decisionReadiness"):
+                value = str(impact.get(key, "")).strip()
+                if value and value not in limitations:
+                    limitations.append(value)
+    contract = load_method_contract()
+    mode = state.get("executionMode")
+    if mode in EXECUTION_MODES:
+        mode_limitation = str(contract["executionModes"][mode]["limitation"])
+        if mode_limitation not in limitations:
+            limitations.insert(0, mode_limitation)
+    skipped = state.get("skippedSteps", [])
+    route = state.get("route")
+    if route == "no-sprint":
+        assessment = "not-applicable"
+    elif mode != "live":
+        assessment = "self-test-rehearsal"
+    elif skipped:
+        assessment = "partial"
+    elif adaptations:
+        assessment = "adapted-with-documented-substitutions"
+    else:
+        assessment = "profile-followed"
+    fidelity["summary"] = {
+        "assessment": assessment,
+        "adaptations": adaptations,
+        "limitations": [item for item in limitations if item],
+    }
+
+
+def excluded_steps(state: dict[str, Any]) -> set[str]:
+    return set(state.get("skippedSteps", [])) | set(
+        state.get("notApplicableSteps", [])
+    )
+
+
+def next_step(current: str, excluded: set[str]) -> str | None:
     index = STEP_INDEX[current]
     for step in STEPS[index + 1 :]:
-        if step["id"] not in skipped:
+        if step["id"] not in excluded:
             return step["id"]
     return None
 
@@ -502,32 +826,27 @@ def add_skip(state: dict[str, Any], step_id: str, reason: str) -> None:
     if step_id not in skipped:
         skipped.append(step_id)
     state.setdefault("skipReasons", {})[step_id] = reason
-
-
-def remove_skip(state: dict[str, Any], step_id: str) -> None:
-    skipped = state.setdefault("skippedSteps", [])
-    if step_id in skipped:
-        skipped.remove(step_id)
-    state.setdefault("skipReasons", {}).pop(step_id, None)
+    add_skip_deviation(state, step_id, reason)
 
 
 def apply_route(state: dict[str, Any], route: str) -> None:
+    errors = profile_mode_route_errors(
+        state.get("methodProfile"), state.get("executionMode"), route
+    )
+    if errors:
+        raise SprintError("; ".join(errors))
     state["route"] = route
-    if route in {"full-design-sprint", "focused-design-sprint"}:
-        add_skip(
-            state,
-            "04-foundation",
-            "The approved route starts from an existing strategic foundation.",
-        )
-    elif route == "foundation-plus-design":
-        remove_skip(state, "04-foundation")
-    elif route == "no-sprint":
-        for step in STEPS[2:-1]:
-            add_skip(
-                state,
-                step["id"],
-                "The Decider approved a no-sprint route after qualification.",
-            )
+    exclusions = route_not_applicable_steps(route)
+    state["notApplicableSteps"] = sorted(exclusions)
+    state["fidelity"]["routeExclusions"] = [
+        {"step": step_id, "reason": reason}
+        for step_id, reason in exclusions.items()
+    ]
+    for step_id in exclusions:
+        if step_id in state.setdefault("skippedSteps", []):
+            state["skippedSteps"].remove(step_id)
+        state.setdefault("skipReasons", {}).pop(step_id, None)
+    refresh_fidelity_summary(state)
 
 
 def step_name(step_id: str) -> str:
@@ -700,12 +1019,182 @@ def render_evidence(values: Any) -> str:
     return "\n".join(output)
 
 
+def display_label(value: Any) -> str:
+    return str(value or "unknown").replace("-", " ").title()
+
+
+def render_fidelity_adaptations(state: dict[str, Any]) -> str:
+    summary = state.get("fidelity", {}).get("summary", {})
+    adaptations = summary.get("adaptations", [])
+    if not isinstance(adaptations, list) or not adaptations:
+        return "<li>No material adaptations recorded.</li>"
+    output = []
+    for item in adaptations:
+        if not isinstance(item, dict):
+            continue
+        step_id = str(item.get("step", "Sprint"))
+        step = step_name(step_id) if step_id in STEP_INDEX else step_id
+        output.append(
+            f"<li><strong>{escape(step)} — {escape(display_label(item.get('type')))}:</strong> "
+            f"{escape(item.get('description', 'Documented adaptation'))}</li>"
+        )
+    return "\n".join(output) or "<li>No material adaptations recorded.</li>"
+
+
+def render_fidelity_limitations(state: dict[str, Any]) -> str:
+    summary = state.get("fidelity", {}).get("summary", {})
+    limitations = summary.get("limitations", [])
+    if not isinstance(limitations, list) or not limitations:
+        return "<li>No additional limitations recorded.</li>"
+    return "\n".join(f"<li>{escape(item)}</li>" for item in limitations)
+
+
+def render_method_fidelity_section(state: dict[str, Any]) -> str:
+    assessment = display_label(
+        state.get("fidelity", {}).get("summary", {}).get("assessment")
+    )
+    return (
+        '<section class="section" aria-labelledby="method-fidelity-title">'
+        '<p class="eyebrow">Method record</p>'
+        '<h2 id="method-fidelity-title">Method-fidelity summary</h2>'
+        '<div class="three-column">'
+        '<div class="metric"><span class="metric__label">Method profile</span>'
+        f'<span class="metric__value">{escape(display_label(state.get("methodProfile")))}</span></div>'
+        '<div class="metric"><span class="metric__label">Execution mode</span>'
+        f'<span class="metric__value">{escape(display_label(state.get("executionMode")))}</span></div>'
+        '<div class="metric"><span class="metric__label">Method fidelity</span>'
+        f'<span class="metric__value">{escape(assessment)}</span></div>'
+        '</div><h3>Adaptations</h3><ul>'
+        f'{render_fidelity_adaptations(state)}</ul>'
+        '<h3>Limitations</h3><ul>'
+        f'{render_fidelity_limitations(state)}</ul></section>'
+    )
+
+
+def render_current_fidelity_guidance(state: dict[str, Any]) -> str:
+    current = str(state.get("currentStep", "01-intake"))
+    record = state.get("fidelity", {}).get("steps", {}).get(current, {})
+    participants = record.get("participants", {})
+    timebox = record.get("timebox", {})
+    actual = timebox.get("actualMinutes")
+    actual_text = "Not recorded yet" if actual is None else f"{actual} minutes"
+    human = ", ".join(participants.get("human", [])) or "None recorded"
+    ai = ", ".join(participants.get("ai", [])) or "None recorded"
+    return (
+        '<div class="guidance-grid">'
+        '<div><span class="metric__label">Canonical purpose</span>'
+        f'<p>{escape(record.get("canonicalPurpose", "Not recorded"))}</p></div>'
+        '<div><span class="metric__label">Default method</span>'
+        f'<p>{escape(record.get("defaultMethod", "Not recorded"))}</p></div>'
+        '<div><span class="metric__label">Selected method</span>'
+        f'<p>{escape(record.get("selectedMethod", "Not recorded"))}</p></div>'
+        '<div><span class="metric__label">Timebox</span>'
+        f'<p>Suggested: {escape(timebox.get("suggestedMinutes", "Unknown"))} minutes · '
+        f'Actual: {escape(actual_text)}</p></div>'
+        '<div><span class="metric__label">Human participants</span>'
+        f'<p>{escape(human)}</p></div>'
+        '<div><span class="metric__label">AI participants</span>'
+        f'<p>{escape(ai)}</p></div></div>'
+    )
+
+
+def text_values(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        output: list[str] = []
+        for item in value:
+            output.extend(text_values(item))
+        return output
+    if isinstance(value, dict):
+        output = []
+        for item in value.values():
+            output.extend(text_values(item))
+        return output
+    return []
+
+
+def negates_customer_claim(value: str) -> bool:
+    lowered = value.lower()
+    return bool(
+        re.search(
+            r"\b(?:no|not|never|without|cannot|did not|was not|were not|unvalidated)\b[^.]{0,80}\b(?:customer|session|interview|validation|evidence)",
+            lowered,
+        )
+    )
+
+
+def evidence_claim_errors(data: dict[str, Any], state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    artifact_id = data.get("id")
+    mode = state.get("executionMode")
+    customer = state.get("customerTesting", {})
+    completed_value = customer.get("sessionsCompleted", 0)
+    completed = completed_value if isinstance(completed_value, int) else 0
+    live_evidence_available = mode == "live" and completed > 0
+    if artifact_id == "11-customer-evidence":
+        if mode != "live" and data.get("status") in {
+            "ready-for-decision",
+            "complete",
+        }:
+            errors.append(
+                f"Execution mode {mode} cannot complete a customer-evidence artifact"
+            )
+        if mode == "live" and completed == 0 and data.get("status") in {
+            "ready-for-decision",
+            "complete",
+        }:
+            errors.append(
+                "Customer evidence cannot be completed before a real session is recorded"
+            )
+    customer_claim_pattern = re.compile(
+        r"\b(?:customer[- ]validated|validated\s+(?:by|with)\s+(?:real\s+)?customers?|live\s+customer\s+evidence|real\s+customer\s+sessions?\s+(?:were\s+)?(?:completed|conducted)|tested\s+with\s+(?:real\s+)?customers?)\b",
+        re.IGNORECASE,
+    )
+    overclaim_pattern = re.compile(
+        r"\b(?:statistically\s+(?:validated|significant|proven)|universally\s+validated|proven\s+(?:by|with)\s+customers?|guaranteed\s+customer\s+validation)\b",
+        re.IGNORECASE,
+    )
+    for value in text_values(data):
+        if overclaim_pattern.search(value) and not negates_customer_claim(value):
+            errors.append(
+                "Customer evidence is directional and cannot be described as statistical, universal, or proven validation"
+            )
+            break
+    if not live_evidence_available:
+        for value in text_values(data):
+            if customer_claim_pattern.search(value) and not negates_customer_claim(value):
+                errors.append(
+                    "Artifact claims live customer evidence that the execution mode and recorded sessions do not support"
+                )
+                break
+    evidence = data.get("evidence", [])
+    if isinstance(evidence, list):
+        for index, item in enumerate(evidence, 1):
+            if not isinstance(item, dict):
+                continue
+            claim = str(item.get("claim", ""))
+            if (
+                artifact_id == "11-customer-evidence"
+                and item.get("status") == "Observed"
+                and re.search(r"\b(?:customers?|participants?|sessions?|interviews?)\b", claim, re.I)
+                and not live_evidence_available
+                and not negates_customer_claim(claim)
+            ):
+                errors.append(
+                    f"Evidence entry {index} labels a customer claim Observed without a recorded live customer session"
+                )
+    return errors
+
+
 def artifact_data_errors(
     data: dict[str, Any], specs: dict[str, dict[str, Any]]
 ) -> list[str]:
     """Return artifact completion rules that are intentionally above schema shape."""
 
     errors: list[str] = []
+    if data.get("schemaVersion") != ARTIFACT_SCHEMA_VERSION:
+        errors.append(f"Unsupported artifact schema: {data.get('schemaVersion')}")
     artifact_id = data.get("id")
     if artifact_id not in specs:
         errors.append(f"$.id: unknown artifact id {artifact_id!r}")
@@ -777,6 +1266,7 @@ def render_artifact(
         workspace / "artifact-data" / f"{data.get('id', 'unknown')}.json",
     )
     errors = artifact_data_errors(data, specs)
+    errors.extend(evidence_claim_errors(data, state))
     if errors:
         raise SprintError(f"Artifact {data.get('id')} is invalid: {'; '.join(errors)}")
     artifact_id = str(data["id"])
@@ -799,6 +1289,9 @@ def render_artifact(
             "SPRINT_PHASE": escape(spec["phase"]),
             "STATUS_CLASS": class_for_status(status),
             "ARTIFACT_STATUS": escape(status.replace("-", " ").title()),
+            "METHOD_PROFILE": escape(display_label(state.get("methodProfile"))),
+            "EXECUTION_MODE": escape(display_label(state.get("executionMode"))),
+            "SPRINT_ROUTE": escape(display_label(state.get("route"))),
             "UPDATED_ISO": escape(updated_at),
             "UPDATED_DISPLAY": escape(display_date(updated_at)),
             "SUMMARY_HTML": render_paragraphs(data.get("summary", [])),
@@ -806,6 +1299,11 @@ def render_artifact(
             "EVIDENCE_HTML": render_evidence(data.get("evidence", [])),
             "UNKNOWNS_HTML": render_list(data.get("unknowns", [])),
             "NEXT_ACTION_HTML": render_list(data.get("nextActions", []), ordered=True),
+            "METHOD_FIDELITY_HTML": (
+                render_method_fidelity_section(state)
+                if artifact_id == "13-outcome"
+                else ""
+            ),
         },
     )
     output_path = workspace / "artifacts" / spec["filename"]
@@ -825,11 +1323,17 @@ def render_artifact(
 def render_steps(state: dict[str, Any]) -> str:
     completed = set(state.get("completedSteps", []))
     skipped = set(state.get("skippedSteps", []))
+    not_applicable = set(state.get("notApplicableSteps", []))
     current = state.get("currentStep")
     output = []
     for number, step in enumerate(STEPS, start=1):
         step_id = step["id"]
-        if step_id in skipped:
+        if step_id in not_applicable:
+            css = "step"
+            marker = "·"
+            detail = "Not applicable to the selected route"
+            status = '<span class="status status--unknown">Not applicable</span>'
+        elif step_id in skipped:
             css = "step"
             marker = "–"
             detail = "Skipped with a recorded reason"
@@ -899,8 +1403,11 @@ def render_dashboard(
 ) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
     skipped = set(state.get("skippedSteps", []))
-    denominator = max(1, len(STEPS) - len(skipped))
-    completed = len(set(state.get("completedSteps", [])) - skipped)
+    not_applicable = set(state.get("notApplicableSteps", []))
+    denominator = max(1, len(STEPS) - len(not_applicable))
+    completed = len(
+        set(state.get("completedSteps", [])) - skipped - not_applicable
+    )
     progress = min(100, round((completed / denominator) * 100))
     current = str(state.get("currentStep", "01-intake"))
     next_action = state.get("nextAction", {})
@@ -915,6 +1422,13 @@ def render_dashboard(
     else:
         questions_html = "<li>No open questions recorded.</li>"
     updated_at = str(state.get("updatedAt") or state.get("createdAt") or "")
+    fidelity_summary = state.get("fidelity", {}).get("summary", {})
+    if state.get("executionMode") == "live":
+        evidence_boundary = "Only suitable real-customer sessions count as customer evidence."
+    else:
+        evidence_boundary = (
+            "This non-live run cannot claim customer evidence; synthetic work is rehearsal only."
+        )
     rendered = replace_tokens(
         template,
         {
@@ -922,10 +1436,18 @@ def render_dashboard(
             "SPRINT_CHALLENGE": escape(state.get("challenge", "No challenge recorded")),
             "SPRINT_STATUS": escape(str(state.get("status", "active")).replace("-", " ").title()),
             "SPRINT_ROUTE": escape(str(state.get("route", "undecided")).replace("-", " ").title()),
+            "METHOD_PROFILE": escape(display_label(state.get("methodProfile"))),
+            "EXECUTION_MODE": escape(display_label(state.get("executionMode"))),
+            "METHOD_FIDELITY": escape(
+                display_label(fidelity_summary.get("assessment"))
+            ),
             "UPDATED_ISO": escape(updated_at),
             "UPDATED_DISPLAY": escape(display_date(updated_at)),
             "PROGRESS_PERCENT": progress,
             "CURRENT_STEP": escape(f"{current}: {step_name(current)}"),
+            "COMPLETED_STEPS": completed,
+            "SKIPPED_STEPS": len(skipped),
+            "NOT_APPLICABLE_STEPS": len(not_applicable),
             "NEXT_ACTION_TITLE": escape(next_action.get("title", "Continue the sprint")),
             "NEXT_ACTION_BODY": escape(next_action.get("body", "Review the current step.")),
             "HUMAN_INPUT_NEEDED": escape(next_action.get("humanInput", "None right now")),
@@ -933,6 +1455,10 @@ def render_dashboard(
             "TEST_STATUS": escape(str(customer.get("status", "not-planned")).replace("-", " ").title()),
             "SESSIONS_PLANNED": escape(customer.get("sessionsPlanned", 0)),
             "SESSIONS_COMPLETED": escape(customer.get("sessionsCompleted", 0)),
+            "EVIDENCE_BOUNDARY": escape(evidence_boundary),
+            "FIDELITY_ADAPTATIONS": render_fidelity_adaptations(state),
+            "FIDELITY_LIMITATIONS": render_fidelity_limitations(state),
+            "CURRENT_FIDELITY_GUIDANCE": render_current_fidelity_guidance(state),
             "ARTIFACT_COUNT": len(artifacts),
             "ARTIFACT_LINKS": render_artifact_links(artifacts),
             "DECISION_SUMMARY": render_decisions(state.get("decisions", [])),
@@ -983,6 +1509,7 @@ def load_workspace_documents(
 
 
 def build_render_plan(workspace: Path) -> RenderPlan:
+    source_state = read_json(state_path(workspace))
     state, specs, artifact_documents = load_workspace_documents(workspace)
     registrations: list[dict[str, Any]] = []
     generated_files: dict[Path, str] = {
@@ -1009,7 +1536,7 @@ def build_render_plan(workspace: Path) -> RenderPlan:
     normalized_state = dict(state)
     normalized_state["artifacts"] = registrations
     require_valid_schema(normalized_state, "workspace-state", state_path(workspace))
-    state_update = normalized_state if state.get("artifacts") != registrations else None
+    state_update = normalized_state if source_state != normalized_state else None
     expected_artifact_files = {
         path for path in generated_files if path.parent == workspace / "artifacts"
     }
@@ -1058,7 +1585,7 @@ def new_artifact_data(
 ) -> dict[str, Any]:
     now = timestamp or utc_now()
     return {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": ARTIFACT_SCHEMA_VERSION,
         "id": artifact_id,
         "status": "draft",
         "updatedAt": now,
@@ -1120,6 +1647,26 @@ def command_init(args: argparse.Namespace) -> None:
     if not title or not challenge:
         raise SprintError("Both --title and --challenge are required")
     load_artifact_specs()
+    now = utc_now()
+    method_profile = args.method_profile
+    execution_mode = args.execution_mode
+    selected_by = args.selected_by.strip()
+    if not selected_by:
+        raise SprintError("--selected-by cannot be empty")
+    combination_errors = profile_mode_route_errors(
+        method_profile, execution_mode, "undecided"
+    )
+    if combination_errors:
+        raise SprintError("; ".join(combination_errors))
+    fidelity = build_fidelity(method_profile, execution_mode)
+    contract = load_method_contract()
+    session_target = 0
+    if method_profile == "sprint-book" and execution_mode == "live":
+        session_target = int(
+            contract["methodProfiles"][method_profile][
+                "defaultCustomerSessionTarget"
+            ]
+        )
     output = workspace_path(args.output or f"design-sprint-{slugify(title)}")
     if output.exists():
         if not output.is_dir():
@@ -1130,17 +1677,30 @@ def command_init(args: argparse.Namespace) -> None:
     for directory in ("artifact-data", "artifacts", "assets", "prototype", "working"):
         (output / directory).mkdir(exist_ok=True)
     write_text(output / ".gitignore", WORKSPACE_GITIGNORE)
-    now = utc_now()
     state = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": STATE_SCHEMA_VERSION,
         "title": title,
         "slug": slugify(title),
         "challenge": challenge,
+        "methodProfile": method_profile,
+        "executionMode": execution_mode,
         "route": "undecided",
+        "methodProfileSelection": selection_record(
+            selected_by,
+            args.profile_reason
+            or "Selected when the workspace was initialised.",
+        ),
+        "executionModeSelection": selection_record(
+            selected_by,
+            args.mode_reason
+            or "Selected when the workspace was initialised.",
+        ),
+        "fidelity": fidelity,
         "status": "waiting-for-human",
         "currentStep": "01-intake",
         "completedSteps": [],
         "skippedSteps": [],
+        "notApplicableSteps": [],
         "skipReasons": {},
         "pendingGate": None,
         "humanGates": [
@@ -1151,8 +1711,17 @@ def command_init(args: argparse.Namespace) -> None:
         "artifacts": [],
         "customerTesting": {
             "status": "not-planned",
-            "target": "",
-            "sessionsPlanned": 0,
+            "target": (
+                "Five suitable customers matching the approved recruitment criteria"
+                if session_target == 5
+                else ""
+            ),
+            "targetRationale": (
+                "The Sprint-book live profile defaults to five suitable one-to-one sessions."
+                if session_target == 5
+                else ""
+            ),
+            "sessionsPlanned": session_target,
             "sessionsCompleted": 0,
         },
         "openQuestions": [
@@ -1209,6 +1778,7 @@ def command_set_artifact_status(args: argparse.Namespace) -> None:
     data["status"] = args.status
     data["updatedAt"] = now
     errors = artifact_data_errors(data, specs)
+    errors.extend(evidence_claim_errors(data, state))
     if errors:
         raise SprintError(f"Artifact {args.id} is invalid: {'; '.join(errors)}")
     save_artifact_data(data_path, data)
@@ -1229,7 +1799,7 @@ def command_set_route(args: argparse.Namespace) -> None:
         previous_route == "research-first"
         and "03-evidence" in state.get("completedSteps", [])
     ):
-        following = next_step("03-evidence", set(state.get("skippedSteps", [])))
+        following = next_step("03-evidence", excluded_steps(state))
         if args.route == "no-sprint":
             following = "13-outcome"
         if following:
@@ -1249,6 +1819,186 @@ def command_set_route(args: argparse.Namespace) -> None:
     save_state(workspace, state)
     render_workspace(workspace)
     print(f"Set sprint route: {args.route}")
+
+
+def command_set_method_profile(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state = load_state(workspace)
+    if state.get("completedSteps"):
+        raise SprintError(
+            "Method profile cannot change after a step is complete; start a new workspace or revise the legacy state deliberately"
+        )
+    errors = profile_mode_route_errors(
+        args.profile, state.get("executionMode"), state.get("route")
+    )
+    if errors:
+        raise SprintError("; ".join(errors))
+    selected_by = args.selected_by.strip()
+    reason = args.reason.strip()
+    if not selected_by or not reason:
+        raise SprintError("Method-profile selection requires a selector and reason")
+    state["methodProfile"] = args.profile
+    state["methodProfileSelection"] = selection_record(
+        selected_by, reason
+    )
+    state["fidelity"] = build_fidelity(
+        args.profile, str(state["executionMode"])
+    )
+    customer = state.setdefault("customerTesting", {})
+    if args.profile == "sprint-book" and state["executionMode"] == "live":
+        customer.update(
+            {
+                "status": "not-planned",
+                "target": "Five suitable customers matching the approved recruitment criteria",
+                "targetRationale": "The Sprint-book live profile defaults to five suitable one-to-one sessions.",
+                "sessionsPlanned": 5,
+                "sessionsCompleted": 0,
+            }
+        )
+    elif int(customer.get("sessionsCompleted", 0)) == 0:
+        customer.update(
+            {
+                "status": "not-planned",
+                "target": "",
+                "targetRationale": "",
+                "sessionsPlanned": 0,
+            }
+        )
+    apply_route(state, str(state["route"]))
+    save_state(workspace, state)
+    render_workspace(workspace)
+    print(f"Set method profile: {args.profile}")
+
+
+def command_set_execution_mode(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state = load_state(workspace)
+    if state.get("completedSteps"):
+        raise SprintError(
+            "Execution mode cannot change after a step is complete; create or restart a workspace so evidence history stays truthful"
+        )
+    customer = state.get("customerTesting", {})
+    if args.mode != "live" and int(customer.get("sessionsCompleted", 0)) > 0:
+        raise SprintError(
+            "Cannot switch a workspace with recorded live customer sessions to a non-live mode"
+        )
+    errors = profile_mode_route_errors(
+        state.get("methodProfile"), args.mode, state.get("route")
+    )
+    if errors:
+        raise SprintError("; ".join(errors))
+    selected_by = args.selected_by.strip()
+    reason = args.reason.strip()
+    if not selected_by or not reason:
+        raise SprintError("Execution-mode selection requires a selector and reason")
+    state["executionMode"] = args.mode
+    state["executionModeSelection"] = selection_record(
+        selected_by, reason
+    )
+    state["fidelity"] = build_fidelity(
+        str(state["methodProfile"]), args.mode
+    )
+    if state["methodProfile"] == "sprint-book" and args.mode == "live":
+        customer.update(
+            {
+                "status": "not-planned",
+                "target": "Five suitable customers matching the approved recruitment criteria",
+                "targetRationale": "The Sprint-book live profile defaults to five suitable one-to-one sessions.",
+                "sessionsPlanned": 5,
+                "sessionsCompleted": 0,
+            }
+        )
+    elif args.mode != "live":
+        customer.update(
+            {
+                "status": "not-planned",
+                "target": "No live customer sessions in this execution mode",
+                "targetRationale": "Non-live execution modes cannot produce customer evidence.",
+                "sessionsPlanned": 0,
+                "sessionsCompleted": 0,
+            }
+        )
+    apply_route(state, str(state["route"]))
+    save_state(workspace, state)
+    render_workspace(workspace)
+    print(f"Set execution mode: {args.mode}")
+
+
+def command_record_fidelity(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state = load_state(workspace)
+    record = state["fidelity"]["steps"][args.step]
+    changed = False
+    if args.selected_method is not None:
+        selected_method = args.selected_method.strip()
+        if not selected_method:
+            raise SprintError("Selected method cannot be empty")
+        record["selectedMethod"] = selected_method
+        changed = True
+    if args.human_participant is not None:
+        record["participants"]["human"] = args.human_participant
+        changed = True
+    if args.ai_participant is not None:
+        record["participants"]["ai"] = args.ai_participant
+        changed = True
+    if args.actual_minutes is not None:
+        if args.actual_minutes < 0:
+            raise SprintError("Actual timebox cannot be negative")
+        record["timebox"]["actualMinutes"] = args.actual_minutes
+        changed = True
+    if args.deviation_type:
+        required_values = {
+            "reason": args.reason,
+            "method impact": args.method_impact,
+            "evidence impact": args.evidence_impact,
+            "decision-readiness impact": args.decision_impact,
+        }
+        missing = [name for name, value in required_values.items() if not value]
+        if missing:
+            raise SprintError(
+                "A fidelity deviation requires " + ", ".join(missing)
+            )
+        if args.deviation_type == "substitution" and not args.preserved_purpose:
+            raise SprintError(
+                "A substitution requires --preserved-purpose to show how the learning purpose survives"
+            )
+        selected_method = str(record["selectedMethod"])
+        if (
+            args.deviation_type in {"substitution", "omission", "skip"}
+            and selected_method == str(record["defaultMethod"])
+        ):
+            raise SprintError(
+                "Record the substituted, compressed, omitted, or skipped method with --selected-method"
+            )
+        add_fidelity_deviation(
+            state,
+            args.step,
+            {
+                "id": f"manual-{len(record.get('deviations', [])) + 1}",
+                "type": args.deviation_type,
+                "canonicalMethod": args.canonical_method
+                or record["defaultMethod"],
+                "selectedMethod": selected_method,
+                "preservedPurpose": args.preserved_purpose
+                or "The purpose is only partially preserved; see the impacts.",
+                "reason": args.reason.strip(),
+                "impact": impact_record(
+                    args.method_impact.strip(),
+                    args.evidence_impact.strip(),
+                    args.decision_impact.strip(),
+                ),
+                "recordedAt": utc_now(),
+            },
+        )
+        changed = True
+    if not changed:
+        raise SprintError("No fidelity update was supplied")
+    errors = fidelity_errors(state)
+    if errors:
+        raise SprintError("; ".join(errors))
+    save_state(workspace, state)
+    render_workspace(workspace)
+    print(f"Updated fidelity record: {args.step}")
 
 
 def command_set_challenge(args: argparse.Namespace) -> None:
@@ -1334,6 +2084,10 @@ def command_complete_step(args: argparse.Namespace) -> None:
     if step_id == "10-prototype" and not (workspace / "prototype" / "index.html").exists():
         raise SprintError("prototype/index.html must exist before completing 10-prototype")
     if step_id == "11-customer-sessions":
+        if state.get("executionMode") != "live":
+            raise SprintError(
+                "Non-live execution modes cannot complete real-customer sessions; skip the step with an explicit reason and fidelity impact"
+            )
         customer = state.get("customerTesting", {})
         if int(customer.get("sessionsCompleted", 0)) < 1:
             state["status"] = "waiting-for-customers"
@@ -1371,7 +2125,7 @@ def command_complete_step(args: argparse.Namespace) -> None:
                 "humanInput": "Approve the next route.",
             }
         else:
-            following = next_step(step_id, set(state.get("skippedSteps", [])))
+            following = next_step(step_id, excluded_steps(state))
             if following:
                 state["currentStep"] = following
                 state["status"] = "active"
@@ -1393,16 +2147,18 @@ def command_skip_step(args: argparse.Namespace) -> None:
         raise SprintError(f"Only the current step may be skipped: {state.get('currentStep')}")
     if step_id in GATE_BY_STEP:
         raise SprintError("A step with a human gate cannot be skipped")
-    state.setdefault("skippedSteps", []).append(step_id)
-    state.setdefault("skipReasons", {})[step_id] = args.reason.strip()
-    following = next_step(step_id, set(state["skippedSteps"]))
+    reason = args.reason.strip()
+    if not reason:
+        raise SprintError("A skipped step requires a reason")
+    add_skip(state, step_id, reason)
+    following = next_step(step_id, excluded_steps(state))
     if following is None:
         raise SprintError("Cannot skip the final remaining step")
     state["currentStep"] = following
     state["status"] = "active"
     state["nextAction"] = {
         "title": step_name(following),
-        "body": f"Step {step_id} was skipped: {args.reason.strip()}",
+        "body": f"Step {step_id} was skipped: {reason}",
         "humanInput": "None unless the next step requires a decision.",
     }
     save_state(workspace, state)
@@ -1464,7 +2220,7 @@ def command_gate(args: argparse.Namespace) -> None:
     else:
         if gate_id == "gate-1":
             apply_route(state, str(state["route"]))
-        following = next_step(current, set(state.get("skippedSteps", [])))
+        following = next_step(current, excluded_steps(state))
         if gate_id == "gate-1" and state.get("route") == "no-sprint":
             following = "13-outcome"
             for gate in state.get("humanGates", []):
@@ -1497,9 +2253,60 @@ def command_customer(args: argparse.Namespace) -> None:
         raise SprintError("Completed sessions cannot exceed planned sessions")
     if not planned and completed:
         planned = completed
+    target = args.target.strip()
+    if planned and not target:
+        raise SprintError("A planned customer session target must name the suitable audience")
+    mode = state.get("executionMode")
+    if mode != "live" and (
+        completed > 0 or args.status in {"in-progress", "complete", "partial"}
+    ):
+        raise SprintError(
+            f"Execution mode {mode} cannot record live customer sessions or customer evidence"
+        )
+    target_rationale = (args.rationale or "").strip()
+    if state.get("methodProfile") == "sprint-book" and mode == "live":
+        step_record = state["fidelity"]["steps"]["11-customer-sessions"]
+        step_record["deviations"] = [
+            item
+            for item in step_record.get("deviations", [])
+            if item.get("id") != "customer-target"
+        ]
+        if planned != 5:
+            if not target_rationale:
+                raise SprintError(
+                    "Changing the Sprint-book live target from five requires --rationale"
+                )
+            add_fidelity_deviation(
+                state,
+                "11-customer-sessions",
+                {
+                    "id": "customer-target",
+                    "type": "compression" if planned < 5 else "substitution",
+                    "canonicalMethod": "Five suitable one-to-one customer interviews",
+                    "selectedMethod": f"{planned} planned suitable one-to-one customer interviews",
+                    "preservedPurpose": "Observe suitable real customers against the agreed questions; breadth differs from the canonical five-session target.",
+                    "reason": target_rationale,
+                    "impact": impact_record(
+                        "The Sprint-book live five-customer target is not being followed.",
+                        "The session target changes the opportunity to observe recurring and contradictory behaviour; it does not create a statistical confidence score.",
+                        "Any outcome must be bounded to the usable observed sample and explain why the altered target is sufficient for the proposed decision.",
+                    ),
+                    "recordedAt": utc_now(),
+                },
+            )
+        else:
+            target_rationale = (
+                target_rationale
+                or "The Sprint-book live profile defaults to five suitable one-to-one sessions."
+            )
+    elif planned and not target_rationale:
+        target_rationale = (
+            "Adaptive customer-session target selected for this challenge; record a more specific rationale before testing."
+        )
     state["customerTesting"] = {
         "status": args.status,
-        "target": args.target.strip(),
+        "target": target,
+        "targetRationale": target_rationale,
         "sessionsPlanned": planned,
         "sessionsCompleted": completed,
     }
@@ -1547,11 +2354,16 @@ def command_role_packet(args: argparse.Namespace) -> None:
     may = "\n".join(f"- {item}" for item in contract["may"])
     must_not = "\n".join(f"- {item}" for item in contract["mustNot"])
     permitted = "\n".join(f"- {item}" for item in inputs) or "- No files; use only the task context"
+    fidelity_step = state["fidelity"]["steps"][str(state["currentStep"])]
     packet = f"""# Bounded specialist assignment
 
 Role: {contract['displayName']} (`{args.role}`)
 Sprint: {state['title']}
+Method profile: {state['methodProfile']}
+Execution mode: {state['executionMode']}
 Current step: {state['currentStep']} — {step_name(str(state['currentStep']))}
+Canonical purpose: {fidelity_step['canonicalPurpose']}
+Selected method: {fidelity_step['selectedMethod']}
 
 ## Mission
 
@@ -1603,6 +2415,199 @@ Return exactly these sections:
         print(packet)
 
 
+def fidelity_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    fidelity = state.get("fidelity")
+    if not isinstance(fidelity, dict):
+        return ["fidelity must be an object"]
+    if fidelity.get("schemaVersion") != FIDELITY_SCHEMA_VERSION:
+        errors.append(
+            f"Unsupported fidelity schema: {fidelity.get('schemaVersion')}"
+        )
+    contract = load_method_contract()
+    method_profile = state.get("methodProfile")
+    if method_profile in METHOD_PROFILES:
+        profile_spec = contract["methodProfiles"][method_profile]
+        if fidelity.get("teamModel") != profile_spec["teamModel"]:
+            errors.append("fidelity.teamModel must match the selected method profile")
+    principles = fidelity.get("nonNegotiablePrinciples")
+    expected_principles = {
+        item["id"]: item["statement"]
+        for item in contract["nonNegotiablePrinciples"]
+    }
+    actual_principles = (
+        {item.get("id") for item in principles if isinstance(item, dict)}
+        if isinstance(principles, list)
+        else set()
+    )
+    if actual_principles != set(expected_principles):
+        errors.append(
+            "fidelity.nonNegotiablePrinciples must contain every required learning principle"
+        )
+    elif isinstance(principles, list):
+        for item in principles:
+            if not isinstance(item, dict):
+                continue
+            principle_id = item.get("id")
+            if (
+                item.get("statement") != expected_principles[principle_id]
+                or item.get("requirement") != "non-negotiable"
+            ):
+                errors.append(
+                    f"Non-negotiable principle {principle_id} cannot be weakened or relabelled"
+                )
+    records = fidelity.get("steps")
+    if not isinstance(records, dict) or set(records) != set(STEP_INDEX):
+        errors.append("fidelity.steps must contain a record for every workflow step")
+        return errors
+    for step_id in STEP_INDEX:
+        record = records.get(step_id)
+        if not isinstance(record, dict):
+            errors.append(f"Fidelity record {step_id} must be an object")
+            continue
+        for key in ("canonicalPurpose", "defaultMethod", "selectedMethod"):
+            if not str(record.get(key, "")).strip():
+                errors.append(f"Fidelity record {step_id} requires {key}")
+        if method_profile in METHOD_PROFILES:
+            method_key = (
+                "bookDefaultMethod"
+                if method_profile == "sprint-book"
+                else "adaptiveDefaultMethod"
+            )
+            method_spec = contract["steps"][step_id]
+            if record.get("canonicalPurpose") != method_spec["canonicalPurpose"]:
+                errors.append(
+                    f"Fidelity record {step_id} cannot change its canonical purpose"
+                )
+            if record.get("defaultMethod") != method_spec[method_key]:
+                errors.append(
+                    f"Fidelity record {step_id} default method does not match {method_profile}"
+                )
+        participants = record.get("participants")
+        if not isinstance(participants, dict):
+            errors.append(f"Fidelity record {step_id} requires participants")
+        else:
+            for kind in ("human", "ai"):
+                values = participants.get(kind)
+                if not isinstance(values, list):
+                    errors.append(
+                        f"Fidelity record {step_id} participants.{kind} must be a list"
+                    )
+        timebox = record.get("timebox")
+        suggested = None
+        actual = None
+        if not isinstance(timebox, dict):
+            errors.append(f"Fidelity record {step_id} requires a timebox")
+        else:
+            suggested = timebox.get("suggestedMinutes")
+            actual = timebox.get("actualMinutes")
+            if not isinstance(suggested, int) or suggested < 0:
+                errors.append(
+                    f"Fidelity record {step_id} suggestedMinutes must be a non-negative integer"
+                )
+            elif (
+                method_profile in METHOD_PROFILES
+                and suggested
+                != contract["steps"][step_id]["suggestedTimeboxMinutes"][
+                    method_profile
+                ]
+            ):
+                errors.append(
+                    f"Fidelity record {step_id} suggestedMinutes must match the selected profile"
+                )
+            if actual is not None and (
+                not isinstance(actual, int) or isinstance(actual, bool) or actual < 0
+            ):
+                errors.append(
+                    f"Fidelity record {step_id} actualMinutes must be null or a non-negative integer"
+                )
+        deviations = record.get("deviations")
+        if not isinstance(deviations, list):
+            errors.append(f"Fidelity record {step_id} deviations must be a list")
+            deviations = []
+        for index, deviation in enumerate(deviations, 1):
+            prefix = f"Fidelity deviation {step_id}#{index}"
+            if not isinstance(deviation, dict):
+                errors.append(f"{prefix} must be an object")
+                continue
+            if deviation.get("type") not in DEVIATION_TYPES:
+                errors.append(f"{prefix} has invalid type: {deviation.get('type')}")
+            for key in (
+                "canonicalMethod",
+                "selectedMethod",
+                "preservedPurpose",
+                "reason",
+            ):
+                if not str(deviation.get(key, "")).strip():
+                    errors.append(f"{prefix} requires {key}")
+            impact = deviation.get("impact")
+            if not isinstance(impact, dict):
+                errors.append(f"{prefix} requires an impact object")
+            else:
+                for key in ("methodFidelity", "evidence", "decisionReadiness"):
+                    if not str(impact.get(key, "")).strip():
+                        errors.append(f"{prefix} impact requires {key}")
+        if method_profile == "sprint-book":
+            required_substitutions = contract["steps"][step_id].get(
+                "bookSubstitutions", []
+            )
+            deviations_by_id = {
+                item.get("id"): item
+                for item in deviations
+                if isinstance(item, dict) and item.get("id")
+            }
+            for index, substitution in enumerate(required_substitutions, 1):
+                deviation_id = f"default-book-substitution-{index}"
+                recorded = deviations_by_id.get(deviation_id)
+                if not recorded:
+                    errors.append(
+                        f"Fidelity record {step_id} is missing required one-human-plus-AI substitution {deviation_id}"
+                    )
+                    continue
+                expected = {
+                    "type": "substitution",
+                    "canonicalMethod": substitution["canonicalMethod"],
+                    "selectedMethod": substitution["selectedMethod"],
+                    "preservedPurpose": substitution["preservedPurpose"],
+                    "reason": substitution["reason"],
+                    "impact": substitution["impact"],
+                }
+                if any(recorded.get(key) != value for key, value in expected.items()):
+                    errors.append(
+                        f"Fidelity record {step_id} cannot weaken required substitution {deviation_id}"
+                    )
+        selected_differs = record.get("selectedMethod") != record.get("defaultMethod")
+        if selected_differs and not deviations:
+            errors.append(
+                f"Fidelity record {step_id} changes the default method without a documented deviation"
+            )
+        if (
+            isinstance(suggested, int)
+            and isinstance(actual, int)
+            and actual < suggested
+            and not any(
+                item.get("type") == "compression"
+                for item in deviations
+                if isinstance(item, dict)
+            )
+        ):
+            errors.append(
+                f"Fidelity record {step_id} has a compressed actual timebox without a compression deviation"
+            )
+        if step_id in state.get("skippedSteps", []) and not any(
+            item.get("type") in {"skip", "omission"}
+            for item in deviations
+            if isinstance(item, dict)
+        ):
+            errors.append(
+                f"Skipped step {step_id} requires a fidelity deviation with reason and impacts"
+            )
+    summary = fidelity.get("summary", {})
+    if not isinstance(summary, dict) or summary.get("assessment") not in FIDELITY_ASSESSMENTS:
+        errors.append("fidelity.summary has an invalid assessment")
+    return errors
+
+
 def validate_state(state: dict[str, Any]) -> list[str]:
     """Return the pre-existing cross-record workflow checks.
 
@@ -1612,28 +2617,142 @@ def validate_state(state: dict[str, Any]) -> list[str]:
     """
 
     errors: list[str] = []
-    completed = state["completedSteps"]
-    skipped = state["skippedSteps"]
-    if set(completed) & set(skipped):
-        errors.append(
-            "$.completedSteps and $.skippedSteps: a step cannot be both completed and skipped"
+    required = {
+        "schemaVersion",
+        "title",
+        "slug",
+        "challenge",
+        "methodProfile",
+        "executionMode",
+        "route",
+        "methodProfileSelection",
+        "executionModeSelection",
+        "fidelity",
+        "status",
+        "currentStep",
+        "completedSteps",
+        "skippedSteps",
+        "notApplicableSteps",
+        "humanGates",
+        "artifacts",
+        "customerTesting",
+        "nextAction",
+        "updatedAt",
+    }
+    missing = sorted(required - state.keys())
+    if missing:
+        errors.append(f"State is missing keys: {', '.join(missing)}")
+    if state.get("schemaVersion") != STATE_SCHEMA_VERSION:
+        errors.append(f"Unsupported state schema: {state.get('schemaVersion')}")
+    errors.extend(
+        profile_mode_route_errors(
+            state.get("methodProfile"),
+            state.get("executionMode"),
+            state.get("route"),
         )
-    customer = state["customerTesting"]
-    planned = customer["sessionsPlanned"]
-    completed_sessions = customer["sessionsCompleted"]
-    if planned and completed_sessions > planned:
-        errors.append(
-            "$.customerTesting.sessionsCompleted: completed customer sessions exceed planned sessions"
+    )
+    for key in ("methodProfileSelection", "executionModeSelection"):
+        selection = state.get(key)
+        if not isinstance(selection, dict) or not str(
+            selection.get("selectedBy", "")
+        ).strip() or not str(selection.get("reason", "")).strip():
+            errors.append(f"{key} must record selectedBy and reason")
+    if state.get("status") not in WORKSPACE_STATUSES:
+        errors.append(f"Invalid workspace status: {state.get('status')}")
+    if state.get("currentStep") not in STEP_INDEX:
+        errors.append(f"Invalid current step: {state.get('currentStep')}")
+    completed = state.get("completedSteps", [])
+    skipped = state.get("skippedSteps", [])
+    not_applicable = state.get("notApplicableSteps", [])
+    if not isinstance(completed, list) or len(completed) != len(set(completed)):
+        errors.append("completedSteps must be a unique list")
+    if not isinstance(skipped, list) or len(skipped) != len(set(skipped)):
+        errors.append("skippedSteps must be a unique list")
+    if not isinstance(not_applicable, list) or len(not_applicable) != len(
+        set(not_applicable)
+    ):
+        errors.append("notApplicableSteps must be a unique list")
+    if all(isinstance(value, list) for value in (completed, skipped, not_applicable)):
+        if set(completed) & set(skipped):
+            errors.append("A step cannot be both completed and skipped")
+        if set(completed) & set(not_applicable):
+            errors.append("A step cannot be both completed and not applicable")
+        if set(skipped) & set(not_applicable):
+            errors.append("A step cannot be both skipped and not applicable")
+        expected_not_applicable = set(
+            route_not_applicable_steps(str(state.get("route")))
         )
-    if "12-synthesis" in completed and completed_sessions < 1:
-        errors.append(
-            "$.completedSteps: synthesis cannot be complete without a real customer session"
-        )
-    gates = state["humanGates"]
+        if set(not_applicable) != expected_not_applicable:
+            errors.append(
+                "notApplicableSteps does not match the selected route"
+            )
+    customer = state.get("customerTesting", {})
+    if not isinstance(customer, dict):
+        errors.append("customerTesting must be an object")
+    else:
+        if customer.get("status") not in CUSTOMER_STATUSES:
+            errors.append(f"Invalid customer-testing status: {customer.get('status')}")
+        planned = customer.get("sessionsPlanned")
+        completed_sessions = customer.get("sessionsCompleted")
+        if not isinstance(planned, int) or not isinstance(completed_sessions, int):
+            errors.append("Customer session counts must be integers")
+        elif planned < 0 or completed_sessions < 0:
+            errors.append("Customer session counts cannot be negative")
+        elif planned and completed_sessions > planned:
+            errors.append("Completed customer sessions exceed planned sessions")
+        if (
+            state.get("executionMode") != "live"
+            and isinstance(completed_sessions, int)
+            and (
+                completed_sessions > 0
+                or customer.get("status") in {"in-progress", "complete", "partial"}
+            )
+        ):
+            errors.append(
+                "Non-live execution modes cannot record live customer sessions or completion"
+            )
+        if (
+            state.get("executionMode") == "live"
+            and isinstance(completed_sessions, int)
+            and isinstance(completed, list)
+            and "12-synthesis" in completed
+            and completed_sessions < 1
+        ):
+            errors.append("Synthesis cannot be complete without a real customer session")
+        if (
+            state.get("methodProfile") == "sprint-book"
+            and state.get("executionMode") == "live"
+            and isinstance(planned, int)
+            and planned != 5
+        ):
+            customer_deviations = (
+                state.get("fidelity", {})
+                .get("steps", {})
+                .get("11-customer-sessions", {})
+                .get("deviations", [])
+            )
+            if not any(
+                item.get("id") == "customer-target"
+                for item in customer_deviations
+                if isinstance(item, dict)
+            ):
+                errors.append(
+                    "Sprint-book live profiles default to five suitable customers; another target requires a documented deviation"
+                )
+    errors.extend(fidelity_errors(state))
+    gates = state.get("humanGates", [])
+    if not isinstance(gates, list) or {item.get("id") for item in gates if isinstance(item, dict)} != set(GATE_NAMES):
+        errors.append("humanGates must contain gate-1 through gate-5")
     if state.get("status") == "complete":
         gate_5 = next((gate for gate in gates if gate.get("id") == "gate-5"), {})
         if gate_5.get("status") != "complete":
-            errors.append("$.humanGates[4].status: a complete sprint requires Gate 5")
+            errors.append("A complete sprint requires Gate 5")
+        if state.get("executionMode") != "live" and str(
+            state.get("outcome", "")
+        ).lower() in {"proceed", "iterate", "pivot"}:
+            errors.append(
+                "A non-live run cannot close with a customer-evidence-dependent outcome"
+            )
     return errors
 
 
@@ -1750,6 +2869,10 @@ def workspace_errors(workspace: Path) -> list[str]:
         errors.extend(f"{data_path}: {item}" for item in content_errors)
         if content_errors:
             workspace_json_is_valid = False
+        evidence_errors = evidence_claim_errors(data, state)
+        errors.extend(f"{data_path}: {item}" for item in evidence_errors)
+        if evidence_errors:
+            workspace_json_is_valid = False
         artifact_id = data["id"]
         artifact_statuses[artifact_id] = data["status"]
         if artifact_id in specs:
@@ -1788,11 +2911,9 @@ def workspace_errors(workspace: Path) -> list[str]:
 
 
 def migrate_workspace_state_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
-    """Migrate a validated legacy state without inventing workflow history."""
+    """Add explicit adaptive/live fidelity records to validated legacy state."""
 
-    migrated = copy.deepcopy(data)
-    migrated["schemaVersion"] = SCHEMA_VERSION
-    return migrated
+    return migrate_legacy_state(data)
 
 
 def migrate_artifact_data_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
@@ -1939,9 +3060,29 @@ def command_status(args: argparse.Namespace) -> None:
         print(json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True))
         return
     print(f"Sprint: {state['title']}")
+    print(f"Method profile: {state['methodProfile']}")
+    print(f"Execution mode: {state['executionMode']}")
     print(f"Route: {state['route']}")
+    print(
+        "Method fidelity: "
+        f"{state.get('fidelity', {}).get('summary', {}).get('assessment', 'unknown')}"
+    )
     print(f"Status: {state['status']}")
     print(f"Current step: {state['currentStep']} — {step_name(str(state['currentStep']))}")
+    fidelity_step = (
+        state.get("fidelity", {})
+        .get("steps", {})
+        .get(str(state["currentStep"]), {})
+    )
+    timebox = fidelity_step.get("timebox", {})
+    print(f"Canonical purpose: {fidelity_step.get('canonicalPurpose', 'unknown')}")
+    print(f"Default method: {fidelity_step.get('defaultMethod', 'unknown')}")
+    print(f"Selected method: {fidelity_step.get('selectedMethod', 'unknown')}")
+    print(
+        "Timebox: "
+        f"{timebox.get('suggestedMinutes', 'unknown')} minutes suggested, "
+        f"{timebox.get('actualMinutes') if timebox.get('actualMinutes') is not None else 'not recorded'} actual"
+    )
     print(f"Pending gate: {state.get('pendingGate') or 'none'}")
     customer = state.get("customerTesting", {})
     print(
@@ -1964,6 +3105,17 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--title", required=True)
     init_parser.add_argument("--challenge", required=True)
     init_parser.add_argument("--output")
+    init_parser.add_argument(
+        "--method-profile",
+        choices=sorted(METHOD_PROFILES),
+        default="adaptive-design-sprint",
+    )
+    init_parser.add_argument(
+        "--execution-mode", choices=sorted(EXECUTION_MODES), default="live"
+    )
+    init_parser.add_argument("--selected-by", default="workspace default")
+    init_parser.add_argument("--profile-reason")
+    init_parser.add_argument("--mode-reason")
     init_parser.set_defaults(handler=command_init)
 
     artifact_parser = subparsers.add_parser("new-artifact", help="Create an artifact data draft")
@@ -1984,6 +3136,50 @@ def build_parser() -> argparse.ArgumentParser:
     route_parser.add_argument("--route", required=True, choices=sorted(ROUTES - {"undecided"}))
     route_parser.add_argument("--rationale", required=True)
     route_parser.set_defaults(handler=command_set_route)
+
+    profile_parser = subparsers.add_parser(
+        "set-method-profile", help="Select the canonical method profile"
+    )
+    profile_parser.add_argument("--workspace", required=True)
+    profile_parser.add_argument(
+        "--profile", required=True, choices=sorted(METHOD_PROFILES)
+    )
+    profile_parser.add_argument("--reason", required=True)
+    profile_parser.add_argument("--selected-by", default="human Decider")
+    profile_parser.set_defaults(handler=command_set_method_profile)
+
+    mode_parser = subparsers.add_parser(
+        "set-execution-mode", help="Select live, self-test, or planning/rehearsal mode"
+    )
+    mode_parser.add_argument("--workspace", required=True)
+    mode_parser.add_argument(
+        "--mode", required=True, choices=sorted(EXECUTION_MODES)
+    )
+    mode_parser.add_argument("--reason", required=True)
+    mode_parser.add_argument("--selected-by", default="human Decider")
+    mode_parser.set_defaults(handler=command_set_execution_mode)
+
+    fidelity_parser = subparsers.add_parser(
+        "record-fidelity", help="Record a step method, participants, timebox, and deviation"
+    )
+    fidelity_parser.add_argument("--workspace", required=True)
+    fidelity_parser.add_argument(
+        "--step", required=True, choices=[step["id"] for step in STEPS]
+    )
+    fidelity_parser.add_argument("--selected-method")
+    fidelity_parser.add_argument("--human-participant", action="append")
+    fidelity_parser.add_argument("--ai-participant", action="append")
+    fidelity_parser.add_argument("--actual-minutes", type=int)
+    fidelity_parser.add_argument(
+        "--deviation-type", choices=sorted(DEVIATION_TYPES)
+    )
+    fidelity_parser.add_argument("--canonical-method")
+    fidelity_parser.add_argument("--preserved-purpose")
+    fidelity_parser.add_argument("--reason")
+    fidelity_parser.add_argument("--method-impact")
+    fidelity_parser.add_argument("--evidence-impact")
+    fidelity_parser.add_argument("--decision-impact")
+    fidelity_parser.set_defaults(handler=command_record_fidelity)
 
     challenge_parser = subparsers.add_parser(
         "set-challenge", help="Refine the sprint challenge and brief"
@@ -2026,6 +3222,7 @@ def build_parser() -> argparse.ArgumentParser:
     customer_parser.add_argument("--target", default="")
     customer_parser.add_argument("--planned", type=int, default=0)
     customer_parser.add_argument("--completed", type=int, default=0)
+    customer_parser.add_argument("--rationale")
     customer_parser.set_defaults(handler=command_customer)
 
     next_parser = subparsers.add_parser("next-action", help="Update dashboard guidance")

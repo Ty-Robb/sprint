@@ -136,8 +136,10 @@ Include a unique page title, UTF-8 charset, responsive viewport, link to the loc
 
 Make `index.html` the control centre, not a decorative cover. Show:
 
-- sprint title, route, status, and current step;
-- overall progress and completed stages;
+- sprint title, method profile, execution mode, route, status, and current step;
+- process completion with completed, skipped, and not-applicable stages;
+- method fidelity as a separate assessment with adaptations and limitations;
+- progressively disclosed current-step purpose, default and selected methods, participants, and timebox;
 - the exact next action;
 - human decisions and unresolved questions;
 - customer-testing status and session count;
@@ -146,6 +148,8 @@ Make `index.html` the control centre, not a decorative cover. Show:
 - evidence-status legend.
 
 Never show a later stage as complete merely because a placeholder file exists.
+
+Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same generated method-fidelity summary in the final outcome artifact so exported conclusions cannot lose their method limitations.
 
 ## Artifact requirements
 
@@ -201,4 +205,6 @@ Before handing off an artifact:
 7. Confirm that observed evidence is not mixed with assumptions.
 8. Confirm that customer testing is labelled complete, partial, or not conducted.
 9. Confirm that the dashboard points to the latest artifact version.
-10. Before any public release, complete the [publication checklist](privacy-and-publication.md#publication-checklist); workspace validation alone is not publication approval.
+10. Confirm that profile, mode, route, process completion, and method fidelity are separate and consistent with state.
+11. Confirm that every displayed adaptation has a reason and method-fidelity, evidence, and decision-readiness impact in state.
+12. Before any public release, complete the [publication checklist](privacy-and-publication.md#publication-checklist); workspace validation alone is not publication approval.
