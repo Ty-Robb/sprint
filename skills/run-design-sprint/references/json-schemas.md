@@ -40,9 +40,10 @@ be validated before an import writes a file or changes those counts.
   migration to `2.0` changes only `schemaVersion`. State migration also makes
   the formerly implicit one-human-plus-AI method explicit: it classifies the
   legacy run as `adaptive-design-sprint` and `live`, creates canonical fidelity
-  records, translates route exclusions into `notApplicableSteps`, and records
-  a compatibility note for human review. Existing user content, decisions,
-  timestamps, and workflow history remain unchanged. Migration-derived
+  records, records any already-selected route in `routeHistory`, translates
+  route exclusions into `notApplicableSteps`, and records a compatibility note
+  for human review. Existing user content, decisions, timestamps, and completed
+  history remain unchanged. Migration-derived
   timestamps reuse the source state's `updatedAt`, and object keys are
   serialized in canonical sorted order, so repeated migration inputs produce
   identical JSON.
@@ -58,9 +59,11 @@ Schema validation runs when state, artifact specifications, role contracts, or
 artifact data are loaded; immediately before state or artifact mutations are
 persisted; before gate logic; before any artifact or dashboard rendering; and
 as part of whole-workspace validation. The publication checker validates usage
-records before evaluating them for release. Completion and customer-evidence
-checks remain separate cross-record rules. Route-history and skip-policy
-invariants are intentionally not changed here.
+records before evaluating them for release. The
+[transition model](transition-model.md) adds the cross-record rules that JSON
+Schema cannot express cleanly, including route history, step ordering, skip
+eligibility, artifact readiness, customer-session consistency, and terminal
+invariants.
 
 ## Migrating a workspace
 

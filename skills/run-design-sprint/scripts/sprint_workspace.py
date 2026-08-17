@@ -158,6 +158,84 @@ GATE_NAMES = {
     "gate-5": "Final outcome",
 }
 
+STEP_REQUIRED = "required"
+STEP_NOT_APPLICABLE = "not-applicable"
+STEP_DEFERRED = "deferred-until-reroute"
+
+# This is the executable route/step matrix.  Every route names every step so a
+# new step or route cannot silently inherit permissive behavior.
+ROUTE_STEP_TRANSITIONS = {
+    "undecided": {
+        "01-intake": STEP_REQUIRED,
+        "02-qualify": STEP_REQUIRED,
+        "03-evidence": STEP_DEFERRED,
+        "04-foundation": STEP_DEFERRED,
+        "05-map": STEP_DEFERRED,
+        "06-questions": STEP_DEFERRED,
+        "07-explore": STEP_DEFERRED,
+        "08-decide": STEP_DEFERRED,
+        "09-experiment": STEP_DEFERRED,
+        "10-prototype": STEP_DEFERRED,
+        "11-customer-sessions": STEP_DEFERRED,
+        "12-synthesis": STEP_DEFERRED,
+        "13-outcome": STEP_DEFERRED,
+    },
+    "research-first": {
+        "01-intake": STEP_REQUIRED,
+        "02-qualify": STEP_REQUIRED,
+        "03-evidence": STEP_REQUIRED,
+        "04-foundation": STEP_DEFERRED,
+        "05-map": STEP_DEFERRED,
+        "06-questions": STEP_DEFERRED,
+        "07-explore": STEP_DEFERRED,
+        "08-decide": STEP_DEFERRED,
+        "09-experiment": STEP_DEFERRED,
+        "10-prototype": STEP_DEFERRED,
+        "11-customer-sessions": STEP_DEFERRED,
+        "12-synthesis": STEP_DEFERRED,
+        "13-outcome": STEP_DEFERRED,
+    },
+    "foundation-plus-design": {
+        step["id"]: STEP_REQUIRED for step in STEPS
+    },
+    "full-design-sprint": {
+        **{step["id"]: STEP_REQUIRED for step in STEPS},
+        "04-foundation": STEP_NOT_APPLICABLE,
+    },
+    "focused-design-sprint": {
+        **{step["id"]: STEP_REQUIRED for step in STEPS},
+        "04-foundation": STEP_NOT_APPLICABLE,
+    },
+    "no-sprint": {
+        **{step["id"]: STEP_NOT_APPLICABLE for step in STEPS},
+        "01-intake": STEP_REQUIRED,
+        "02-qualify": STEP_REQUIRED,
+        "13-outcome": STEP_REQUIRED,
+    },
+}
+
+ROUTE_TRANSITION_TABLE = {
+    "undecided": {
+        "research-first",
+        "foundation-plus-design",
+        "full-design-sprint",
+        "focused-design-sprint",
+        "no-sprint",
+    },
+    "research-first": {
+        "foundation-plus-design",
+        "full-design-sprint",
+        "focused-design-sprint",
+        "no-sprint",
+    },
+    "foundation-plus-design": set(),
+    "full-design-sprint": set(),
+    "focused-design-sprint": set(),
+    "no-sprint": set(),
+}
+
+NO_SPRINT_NOT_APPLICABLE_GATES = {"gate-2", "gate-3", "gate-4"}
+
 WORKSPACE_GITIGNORE = """# This generated workspace is private by default.
 # Keep sensitive source material outside the workspace; these rules are a fallback.
 **/account-evidence/
@@ -644,17 +722,94 @@ def build_fidelity(
     }
 
 
-def route_not_applicable_steps(route: str) -> dict[str, str]:
+def route_transition_record(
+    from_route: str,
+    to_route: str,
+    reason: str,
+    timestamp: str | None = None,
+) -> dict[str, str]:
+    return {
+        "from": from_route,
+        "to": to_route,
+        "reason": reason,
+        "selectedAt": timestamp or utc_now(),
+    }
+
+
+def followed_research_first(state: dict[str, Any]) -> bool:
+    return any(
+        isinstance(item, dict)
+        and item.get("from") == "undecided"
+        and item.get("to") == "research-first"
+        for item in state.get("routeHistory", [])
+    )
+
+
+def effective_route_step_policy(state: dict[str, Any]) -> dict[str, str]:
+    route = str(state.get("route", "undecided"))
+    policy = dict(ROUTE_STEP_TRANSITIONS.get(route, {}))
+    if route == "no-sprint" and followed_research_first(state):
+        policy["03-evidence"] = STEP_REQUIRED
+    return policy
+
+
+def route_not_applicable_steps(
+    route: str, route_history: list[dict[str, Any]] | None = None
+) -> dict[str, str]:
+    state = {"route": route, "routeHistory": route_history or []}
+    policy = effective_route_step_policy(state)
     if route in {"full-design-sprint", "focused-design-sprint"}:
-        return {
-            "04-foundation": "The approved route starts from an existing strategic foundation."
-        }
-    if route == "no-sprint":
-        return {
-            step["id"]: "The Decider approved a no-sprint route after qualification."
-            for step in STEPS[2:-1]
-        }
-    return {}
+        reason = "The approved route starts from an existing strategic foundation."
+    elif route == "no-sprint" and followed_research_first(state):
+        reason = "The Decider ended after the research-first evidence stage without running a design sprint."
+    else:
+        reason = "The Decider approved a no-sprint route after qualification."
+    return {
+        step_id: reason
+        for step_id, disposition in policy.items()
+        if disposition == STEP_NOT_APPLICABLE
+    }
+
+
+def route_change_errors(state: dict[str, Any], new_route: str) -> list[str]:
+    current_route = str(state.get("route", "undecided"))
+    errors: list[str] = []
+    if new_route not in ROUTE_TRANSITION_TABLE.get(current_route, set()):
+        allowed = sorted(ROUTE_TRANSITION_TABLE.get(current_route, set()))
+        detail = ", ".join(allowed) if allowed else "none"
+        errors.append(
+            f"Route transition {current_route} -> {new_route} is impossible; allowed next routes: {detail}"
+        )
+        return errors
+    completed = set(state.get("completedSteps", []))
+    if current_route == "undecided":
+        if state.get("currentStep") != "02-qualify" or "01-intake" not in completed:
+            errors.append(
+                "Select the initial route during 02-qualify after completing 01-intake"
+            )
+        if "02-qualify" in completed or state.get("pendingGate") is not None:
+            errors.append(
+                "The initial route cannot change after 02-qualify has completed or a gate is pending"
+            )
+    elif current_route == "research-first":
+        gate_1 = next(
+            (
+                gate
+                for gate in state.get("humanGates", [])
+                if isinstance(gate, dict) and gate.get("id") == "gate-1"
+            ),
+            {},
+        )
+        if (
+            state.get("currentStep") != "03-evidence"
+            or "03-evidence" not in completed
+            or state.get("status") != "waiting-for-human"
+            or gate_1.get("status") != "complete"
+        ):
+            errors.append(
+                "A research-first route may change only after 03-evidence completes and Gate 1 is approved"
+            )
+    return errors
 
 
 def add_fidelity_deviation(
@@ -719,12 +874,36 @@ def migrate_legacy_state(state: dict[str, Any]) -> dict[str, Any]:
         migrated["methodProfile"], migrated["executionMode"], migration_timestamp
     )
     route = str(migrated.get("route", "undecided"))
-    route_exclusions = route_not_applicable_steps(route)
+    route_reason = str(migrated.get("routeRationale", "")).strip()
+    if route != "undecided" and not route_reason:
+        route_reason = (
+            "Preserved selected route from the schema 1.0 workspace during "
+            "compatibility migration."
+        )
+        migrated["routeRationale"] = route_reason
+    migrated["routeHistory"] = (
+        []
+        if route == "undecided"
+        else [
+            route_transition_record(
+                "undecided",
+                route,
+                route_reason,
+                migration_timestamp,
+            )
+        ]
+    )
+    route_exclusions = route_not_applicable_steps(route, migrated["routeHistory"])
     previous_skips = list(migrated.get("skippedSteps", []))
     migrated["notApplicableSteps"] = sorted(route_exclusions)
     migrated["skippedSteps"] = [
         step_id for step_id in previous_skips if step_id not in route_exclusions
     ]
+    migrated["skipReasons"] = {
+        step_id: reason
+        for step_id, reason in migrated.get("skipReasons", {}).items()
+        if step_id in migrated["skippedSteps"]
+    }
     migrated["fidelity"]["routeExclusions"] = [
         {"step": step_id, "reason": reason}
         for step_id, reason in route_exclusions.items()
@@ -836,7 +1015,7 @@ def apply_route(state: dict[str, Any], route: str) -> None:
     if errors:
         raise SprintError("; ".join(errors))
     state["route"] = route
-    exclusions = route_not_applicable_steps(route)
+    exclusions = route_not_applicable_steps(route, state.get("routeHistory", []))
     state["notApplicableSteps"] = sorted(exclusions)
     state["fidelity"]["routeExclusions"] = [
         {"step": step_id, "reason": reason}
@@ -1201,15 +1380,26 @@ def artifact_data_errors(
         return errors
     sections = data.get("sections")
     assert isinstance(sections, list)
-    section_indexes = {
-        section["title"]: index
-        for index, section in enumerate(sections)
-        if isinstance(section, dict) and isinstance(section.get("title"), str)
-    }
+    section_indexes: dict[str, int] = {}
+    for index, section in enumerate(sections):
+        if not isinstance(section, dict) or not isinstance(
+            section.get("title"), str
+        ):
+            continue
+        title = section["title"]
+        if title in section_indexes:
+            errors.append(
+                f"$.sections[{index}].title: duplicate section title {title!r}"
+            )
+        section_indexes[title] = index
     for required in specs[artifact_id].get("requiredSections", []):
         if required not in section_indexes:
             errors.append(f"$.sections: missing required section {required!r}")
     if data.get("status") in {"ready-for-decision", "complete"}:
+        if not nested_has_content(data.get("summary")):
+            errors.append(
+                "$.summary: ready or complete artifacts require a non-empty summary"
+            )
         for required in specs[artifact_id].get("requiredSections", []):
             section = next(
                 (
@@ -1228,30 +1418,73 @@ def artifact_data_errors(
                 errors.append(
                     f"{section_path}: Required section is still empty: {required}"
                 )
-        if data.get("summary") == ["This artifact is in progress."]:
+        if any(
+            str(item).strip().lower() == "this artifact is in progress."
+            for item in data.get("summary", [])
+        ):
             errors.append("$.summary: completed artifact still has the draft summary")
+    for index, item in enumerate(data.get("evidence", [])):
+        if not isinstance(item, dict):
+            continue
+        for field in ("claim", "source"):
+            if not meaningful_text(item.get(field)):
+                errors.append(
+                    f"$.evidence[{index}].{field}: evidence text cannot be blank"
+                )
     return errors
 
 
+EMPTY_CONTENT_MARKERS = {
+    "not established yet.",
+    "nothing recorded yet.",
+    "no evidence entries recorded yet.",
+}
+
+
+def meaningful_text(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and value.strip().lower() not in EMPTY_CONTENT_MARKERS
+    )
+
+
+def nested_has_content(value: Any) -> bool:
+    if isinstance(value, str):
+        return meaningful_text(value)
+    if isinstance(value, dict):
+        return any(nested_has_content(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(nested_has_content(item) for item in value)
+    return value is not None
+
+
 def section_has_content(section: dict[str, Any]) -> bool:
-    placeholder = "not established yet."
     section_type = section.get("type", "paragraphs")
     if section_type in {"list", "ordered-list"}:
-        values = section.get("items", [])
-    elif section_type == "table":
-        values = section.get("rows", [])
-    elif section_type == "cards":
-        values = section.get("cards", [])
-    elif section_type == "key-value":
-        values = section.get("items", [])
-    else:
-        values = section.get("paragraphs", section.get("body", []))
-    if isinstance(values, str):
-        values = [values]
-    if not isinstance(values, list) or not values:
-        return False
-    meaningful = [value for value in values if str(value).strip().lower() != placeholder]
-    return bool(meaningful)
+        return nested_has_content(section.get("items", []))
+    if section_type == "table":
+        rows = section.get("rows", [])
+        return isinstance(rows, list) and any(
+            isinstance(row, list) and nested_has_content(row) for row in rows
+        )
+    if section_type == "cards":
+        cards = section.get("cards", [])
+        return isinstance(cards, list) and any(
+            isinstance(card, dict)
+            and meaningful_text(card.get("title"))
+            and meaningful_text(card.get("body"))
+            for card in cards
+        )
+    if section_type == "key-value":
+        items = section.get("items", [])
+        return isinstance(items, list) and any(
+            isinstance(item, dict) and meaningful_text(item.get("value"))
+            for item in items
+        )
+    return nested_has_content(
+        section.get("paragraphs", section.get("body", []))
+    )
 
 
 def render_artifact(
@@ -1479,6 +1712,12 @@ def load_workspace_documents(
     """Validate all persisted workspace JSON before a mutation or render."""
 
     state = load_state(workspace)
+    state_errors = validate_state(state)
+    if state_errors:
+        raise SprintError(
+            "Invalid workflow state:\n"
+            + "\n".join(f"- {item}" for item in state_errors)
+        )
     specs = load_artifact_specs()
     data_dir = workspace / "artifact-data"
     artifact_documents = (
@@ -1696,6 +1935,7 @@ def command_init(args: argparse.Namespace) -> None:
             or "Selected when the workspace was initialised.",
         ),
         "fidelity": fidelity,
+        "routeHistory": [],
         "status": "waiting-for-human",
         "currentStep": "01-intake",
         "completedSteps": [],
@@ -1770,6 +2010,12 @@ def command_new_artifact(args: argparse.Namespace) -> None:
 def command_set_artifact_status(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, specs, _artifacts = load_workspace_documents(workspace)
+    state_errors = validate_state(state)
+    if state_errors:
+        raise SprintError(
+            "Cannot change artifact status from an invalid workflow state: "
+            + "; ".join(state_errors)
+        )
     if args.status not in ARTIFACT_STATUSES:
         raise SprintError(f"Invalid artifact status: {args.status}")
     data_path = workspace / "artifact-data" / f"{args.id}.json"
@@ -1779,6 +2025,9 @@ def command_set_artifact_status(args: argparse.Namespace) -> None:
     data["updatedAt"] = now
     errors = artifact_data_errors(data, specs)
     errors.extend(evidence_claim_errors(data, state))
+    errors.extend(
+        artifact_status_context_errors(state, specs, args.id, args.status)
+    )
     if errors:
         raise SprintError(f"Artifact {args.id} is invalid: {'; '.join(errors)}")
     save_artifact_data(data_path, data)
@@ -1793,8 +2042,17 @@ def command_set_route(args: argparse.Namespace) -> None:
         raise SprintError(f"Invalid sprint route: {args.route}")
     state, _specs, _artifacts = load_workspace_documents(workspace)
     previous_route = state.get("route")
+    rationale = args.rationale.strip()
+    if not rationale:
+        raise SprintError("A route transition requires a non-empty rationale")
+    transition_errors = route_change_errors(state, args.route)
+    if transition_errors:
+        raise SprintError("; ".join(transition_errors))
+    state.setdefault("routeHistory", []).append(
+        route_transition_record(str(previous_route), args.route, rationale)
+    )
     apply_route(state, args.route)
-    state["routeRationale"] = args.rationale.strip()
+    state["routeRationale"] = rationale
     if (
         previous_route == "research-first"
         and "03-evidence" in state.get("completedSteps", [])
@@ -1802,6 +2060,9 @@ def command_set_route(args: argparse.Namespace) -> None:
         following = next_step("03-evidence", excluded_steps(state))
         if args.route == "no-sprint":
             following = "13-outcome"
+            for gate in state.get("humanGates", []):
+                if gate.get("id") in NO_SPRINT_NOT_APPLICABLE_GATES:
+                    gate["status"] = "not-applicable"
         if following:
             state["currentStep"] = following
             state["status"] = "active"
@@ -1816,6 +2077,12 @@ def command_set_route(args: argparse.Namespace) -> None:
             "body": f"Review the recommendation for {args.route.replace('-', ' ')}.",
             "humanInput": "Approve the challenge and route, or request a revision.",
         }
+    transition_errors = validate_state(state)
+    if transition_errors:
+        raise SprintError(
+            "Route transition would create an invalid workspace: "
+            + "; ".join(transition_errors)
+        )
     save_state(workspace, state)
     render_workspace(workspace)
     print(f"Set sprint route: {args.route}")
@@ -2067,9 +2334,208 @@ def artifact_status(workspace: Path, artifact_id: str) -> str | None:
     return str(load_artifact_data(path).get("status"))
 
 
+def artifact_documents_by_id(
+    artifacts: list[tuple[Path, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    return {str(data["id"]): data for _path, data in artifacts}
+
+
+def artifact_status_context_errors(
+    state: dict[str, Any],
+    specs: dict[str, dict[str, Any]],
+    artifact_id: str,
+    status: str,
+) -> list[str]:
+    """Enforce the workflow context represented by an artifact status."""
+
+    spec = specs.get(artifact_id)
+    if spec is None:
+        return [f"Unknown artifact id: {artifact_id}"]
+    step_id = str(spec["step"])
+    gate_id = GATE_BY_STEP.get(step_id)
+    completed = step_id in state.get("completedSteps", [])
+    gates = {
+        gate.get("id"): gate
+        for gate in state.get("humanGates", [])
+        if isinstance(gate, dict)
+    }
+    errors: list[str] = []
+    if status == "ready-for-decision":
+        if gate_id is None:
+            errors.append(
+                f"Artifact {artifact_id} cannot be ready-for-decision because "
+                f"step {step_id} has no human decision gate; mark it complete"
+            )
+        elif state.get("currentStep") != step_id:
+            errors.append(
+                f"Artifact {artifact_id} may be ready-for-decision only while "
+                f"{step_id} is the current step"
+            )
+        elif gates.get(gate_id, {}).get("status") != "pending":
+            errors.append(
+                f"Artifact {artifact_id} cannot be ready-for-decision after "
+                f"{gate_id} has closed"
+            )
+        elif completed and state.get("pendingGate") != gate_id:
+            errors.append(
+                f"Completed step {step_id} requires pendingGate {gate_id} while "
+                f"artifact {artifact_id} is ready-for-decision"
+            )
+        elif not completed and state.get("pendingGate") is not None:
+            errors.append(
+                f"Artifact {artifact_id} cannot begin {gate_id} review while "
+                f"another gate is pending"
+            )
+    if completed:
+        allowed = (
+            {"ready-for-decision", "complete"}
+            if gate_id
+            and gates.get(gate_id, {}).get("status") == "pending"
+            and state.get("pendingGate") == gate_id
+            else {"complete"}
+        )
+        if status not in allowed:
+            errors.append(
+                f"Completed step {step_id} requires artifact {artifact_id} "
+                f"status {' or '.join(sorted(allowed))}; found {status}"
+            )
+    return errors
+
+
+def recorded_session_errors(
+    state: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
+    customer = state.get("customerTesting", {})
+    completed = customer.get("sessionsCompleted", 0)
+    if not isinstance(completed, int) or isinstance(completed, bool):
+        return errors
+    evidence = artifacts.get("11-customer-evidence")
+    session_rows: list[Any] = []
+    if evidence is not None:
+        register = next(
+            (
+                section
+                for section in evidence.get("sections", [])
+                if isinstance(section, dict)
+                and section.get("title") == "Session register"
+            ),
+            None,
+        )
+        if register is None:
+            errors.append(
+                "Customer evidence is missing the Session register section"
+            )
+        elif register.get("type") != "table":
+            if completed > 0 or evidence.get("status") in {
+                "ready-for-decision",
+                "complete",
+            }:
+                errors.append(
+                    "Customer evidence Session register must be a table with one row per completed session"
+                )
+        else:
+            session_rows = register.get("rows", [])
+            if not isinstance(session_rows, list):
+                session_rows = []
+    if completed > 0 and evidence is None:
+        errors.append(
+            "Recorded customer sessions require artifact 11-customer-evidence with a Session register"
+        )
+        return errors
+    if evidence is None:
+        return errors
+    valid_ids: list[str] = []
+    for index, row in enumerate(session_rows):
+        if not isinstance(row, list) or not row or not meaningful_text(row[0]):
+            errors.append(
+                f"Customer evidence Session register row {index + 1} requires a non-empty session ID in its first cell"
+            )
+            continue
+        if not nested_has_content(row[1:]):
+            errors.append(
+                f"Customer evidence Session register row {index + 1} requires non-empty recorded session evidence"
+            )
+        valid_ids.append(row[0].strip())
+    if len(valid_ids) != len(set(valid_ids)):
+        errors.append("Customer evidence Session register IDs must be unique")
+    if len(session_rows) != completed:
+        errors.append(
+            "customerTesting.sessionsCompleted must equal the number of Session "
+            f"register rows; state has {completed}, artifact has {len(session_rows)}"
+        )
+    return errors
+
+
+def gate_artifact_errors(
+    gate_id: str,
+    artifacts: dict[str, dict[str, Any]],
+) -> list[str]:
+    step_id = next(step for step, gate in GATE_BY_STEP.items() if gate == gate_id)
+    errors: list[str] = []
+    for artifact_id in required_artifacts_for_step(step_id):
+        artifact = artifacts.get(artifact_id)
+        status = artifact.get("status") if artifact else "missing"
+        if status != "complete":
+            errors.append(
+                f"Cannot close {gate_id}: artifact {artifact_id} must be complete; "
+                f"found {status}. ready-for-decision only permits the gate review to begin"
+            )
+    return errors
+
+
+def artifact_workflow_errors(
+    state: dict[str, Any],
+    specs: dict[str, dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Cross-check artifact status against step, gate, and session state."""
+
+    errors: list[str] = []
+    gates = {
+        gate.get("id"): gate
+        for gate in state.get("humanGates", [])
+        if isinstance(gate, dict)
+    }
+    for step_id in state.get("completedSteps", []):
+        for artifact_id in required_artifacts_for_step(step_id):
+            artifact = artifacts.get(artifact_id)
+            status = artifact.get("status") if artifact else None
+            gate_id = GATE_BY_STEP.get(step_id)
+            gate_status = gates.get(gate_id, {}).get("status")
+            allowed = (
+                {"ready-for-decision", "complete"}
+                if gate_id and gate_status == "pending"
+                else {"complete"}
+            )
+            if status not in allowed:
+                errors.append(
+                    f"Completed step {step_id} requires artifact {artifact_id} "
+                    f"status {' or '.join(sorted(allowed))}; found "
+                    f"{status or 'missing'}"
+                )
+    for artifact_id, artifact in artifacts.items():
+        status = str(artifact.get("status"))
+        if status == "ready-for-decision":
+            errors.extend(
+                artifact_status_context_errors(
+                    state, specs, artifact_id, status
+                )
+            )
+    errors.extend(recorded_session_errors(state, artifacts))
+    return errors
+
+
 def command_complete_step(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state, _specs, _artifacts = load_workspace_documents(workspace)
+    state, _specs, artifacts = load_workspace_documents(workspace)
+    existing_errors = validate_state(state)
+    if existing_errors:
+        raise SprintError(
+            "Cannot complete a step from an invalid workflow state: "
+            + "; ".join(existing_errors)
+        )
     step_id = args.step
     if step_id not in STEP_INDEX:
         raise SprintError(f"Unknown step: {step_id}")
@@ -2079,6 +2545,12 @@ def command_complete_step(args: argparse.Namespace) -> None:
         )
     if step_id in state.get("completedSteps", []):
         raise SprintError(f"Step is already complete: {step_id}")
+    disposition = effective_route_step_policy(state).get(step_id)
+    if disposition != STEP_REQUIRED:
+        raise SprintError(
+            f"Step {step_id} is {disposition or 'undefined'} for route "
+            f"{state.get('route')} and cannot be completed"
+        )
     if step_id == "02-qualify" and state.get("route") == "undecided":
         raise SprintError("Set the sprint route before completing 02-qualify")
     if step_id == "10-prototype" and not (workspace / "prototype" / "index.html").exists():
@@ -2099,6 +2571,17 @@ def command_complete_step(args: argparse.Namespace) -> None:
             save_state(workspace, state)
             render_workspace(workspace)
             raise SprintError("At least one real customer session is required")
+        customer_status = state.get("customerTesting", {}).get("status")
+        if customer_status not in {"complete", "partial"}:
+            raise SprintError(
+                "Customer sessions may complete only when customerTesting.status "
+                "is complete or partial"
+            )
+        session_errors = recorded_session_errors(
+            state, artifact_documents_by_id(artifacts)
+        )
+        if session_errors:
+            raise SprintError("; ".join(session_errors))
     for artifact_id in required_artifacts_for_step(step_id):
         status = artifact_status(workspace, artifact_id)
         allowed = {"ready-for-decision", "complete"} if step_id in GATE_BY_STEP else {"complete"}
@@ -2134,6 +2617,12 @@ def command_complete_step(args: argparse.Namespace) -> None:
                     "body": "Begin the next sprint step.",
                     "humanInput": "None unless the Orchestrator identifies a required decision.",
                 }
+    transition_errors = validate_state(state)
+    if transition_errors:
+        raise SprintError(
+            "Completing the step would create an invalid transition: "
+            + "; ".join(transition_errors)
+        )
     save_state(workspace, state)
     render_workspace(workspace)
     print(f"Completed step: {step_id}")
@@ -2142,14 +2631,21 @@ def command_complete_step(args: argparse.Namespace) -> None:
 def command_skip_step(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
+    existing_errors = validate_state(state)
+    if existing_errors:
+        raise SprintError(
+            "Cannot skip from an invalid workflow state: "
+            + "; ".join(existing_errors)
+        )
     step_id = args.step
     if state.get("currentStep") != step_id:
         raise SprintError(f"Only the current step may be skipped: {state.get('currentStep')}")
-    if step_id in GATE_BY_STEP:
-        raise SprintError("A step with a human gate cannot be skipped")
     reason = args.reason.strip()
     if not reason:
         raise SprintError("A skipped step requires a reason")
+    policy_error = skip_policy_error(state, step_id)
+    if policy_error:
+        raise SprintError(policy_error)
     add_skip(state, step_id, reason)
     following = next_step(step_id, excluded_steps(state))
     if following is None:
@@ -2161,6 +2657,12 @@ def command_skip_step(args: argparse.Namespace) -> None:
         "body": f"Step {step_id} was skipped: {reason}",
         "humanInput": "None unless the next step requires a decision.",
     }
+    transition_errors = validate_state(state)
+    if transition_errors:
+        raise SprintError(
+            "Skipping the step would create an invalid transition: "
+            + "; ".join(transition_errors)
+        )
     save_state(workspace, state)
     render_workspace(workspace)
     print(f"Skipped step: {step_id}")
@@ -2168,7 +2670,13 @@ def command_skip_step(args: argparse.Namespace) -> None:
 
 def command_gate(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state, _specs, _artifacts = load_workspace_documents(workspace)
+    state, _specs, artifacts = load_workspace_documents(workspace)
+    existing_errors = validate_state(state)
+    if existing_errors:
+        raise SprintError(
+            "Cannot close a gate from an invalid workflow state: "
+            + "; ".join(existing_errors)
+        )
     gate_id = args.gate
     if gate_id not in GATE_NAMES:
         raise SprintError(f"Unknown gate: {gate_id}")
@@ -2176,7 +2684,15 @@ def command_gate(args: argparse.Namespace) -> None:
         raise SprintError(f"Pending gate is {state.get('pendingGate')}; cannot record {gate_id}")
     if gate_id == "gate-1" and state.get("route") == "undecided":
         raise SprintError("Gate 1 requires an approved sprint route")
-    normalized = args.decision.strip().lower()
+    decision_text = args.decision.strip()
+    rationale = args.rationale.strip()
+    if not decision_text or not rationale:
+        raise SprintError("A gate decision requires a non-empty decision and rationale")
+    artifact_map = artifact_documents_by_id(artifacts)
+    readiness_errors = gate_artifact_errors(gate_id, artifact_map)
+    if readiness_errors:
+        raise SprintError("; ".join(readiness_errors))
+    normalized = decision_text.lower()
     customer = state.get("customerTesting", {})
     if gate_id == "gate-5":
         if normalized not in FINAL_OUTCOMES:
@@ -2191,8 +2707,8 @@ def command_gate(args: argparse.Namespace) -> None:
             )
     decision = {
         "gate": gate_id,
-        "decision": args.decision.strip(),
-        "rationale": args.rationale.strip(),
+        "decision": decision_text,
+        "rationale": rationale,
         "reservations": args.reservations.strip() if args.reservations else "",
         "decidedAt": utc_now(),
     }
@@ -2213,7 +2729,7 @@ def command_gate(args: argparse.Namespace) -> None:
         state["status"] = "complete"
         state["outcome"] = args.decision.strip()
         state["nextAction"] = {
-            "title": f"Sprint complete: {args.decision.strip()}",
+            "title": f"Sprint complete: {decision_text}",
             "body": "Use the outcome artifact and owned next actions for the handoff.",
             "humanInput": "None.",
         }
@@ -2235,6 +2751,16 @@ def command_gate(args: argparse.Namespace) -> None:
             "body": "The human gate is complete. Begin the next sprint step.",
             "humanInput": "None unless the Orchestrator identifies a required decision.",
         }
+    if gate_id == "gate-5":
+        session_errors = recorded_session_errors(state, artifact_map)
+        if session_errors:
+            raise SprintError("; ".join(session_errors))
+    transition_errors = validate_state(state)
+    if transition_errors:
+        raise SprintError(
+            f"Closing {gate_id} would create an invalid transition: "
+            + "; ".join(transition_errors)
+        )
     save_state(workspace, state)
     render_workspace(workspace)
     print(f"Recorded {gate_id}: {args.decision.strip()}")
@@ -2242,26 +2768,31 @@ def command_gate(args: argparse.Namespace) -> None:
 
 def command_customer(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state, _specs, _artifacts = load_workspace_documents(workspace)
+    state, _specs, artifacts = load_workspace_documents(workspace)
+    existing_errors = validate_state(state)
+    if existing_errors:
+        raise SprintError(
+            "Cannot update customer testing from an invalid workflow state: "
+            + "; ".join(existing_errors)
+        )
     if args.status not in CUSTOMER_STATUSES:
         raise SprintError(f"Invalid customer-testing status: {args.status}")
     planned = args.planned
     completed = args.completed
     if planned < 0 or completed < 0:
         raise SprintError("Session counts cannot be negative")
-    if planned and completed > planned:
+    if completed > planned:
         raise SprintError("Completed sessions cannot exceed planned sessions")
-    if not planned and completed:
-        planned = completed
     target = args.target.strip()
     if planned and not target:
         raise SprintError("A planned customer session target must name the suitable audience")
     mode = state.get("executionMode")
     if mode != "live" and (
-        completed > 0 or args.status in {"in-progress", "complete", "partial"}
+        completed > 0 or planned > 0 or args.status != "not-planned"
     ):
         raise SprintError(
-            f"Execution mode {mode} cannot record live customer sessions or customer evidence"
+            f"Execution mode {mode} cannot record live customer sessions; it "
+            "requires not-planned customer status and zero sessions"
         )
     target_rationale = (args.rationale or "").strip()
     if state.get("methodProfile") == "sprint-book" and mode == "live":
@@ -2312,6 +2843,18 @@ def command_customer(args: argparse.Namespace) -> None:
     }
     if args.status in {"recruiting", "scheduled", "in-progress", "blocked"}:
         state["status"] = "waiting-for-customers" if args.status == "blocked" else state["status"]
+    transition_errors = customer_testing_errors(state)
+    transition_errors.extend(
+        recorded_session_errors(state, artifact_documents_by_id(artifacts))
+    )
+    if transition_errors:
+        raise SprintError("; ".join(transition_errors))
+    state_errors = validate_state(state)
+    if state_errors:
+        raise SprintError(
+            "Customer update would create an invalid workflow state: "
+            + "; ".join(state_errors)
+        )
     save_state(workspace, state)
     render_workspace(workspace)
     print(f"Updated customer testing: {args.status}, {completed}/{planned} sessions")
@@ -2320,15 +2863,42 @@ def command_customer(args: argparse.Namespace) -> None:
 def command_next_action(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
+    existing_errors = validate_state(state)
+    if existing_errors:
+        raise SprintError(
+            "Cannot update the next action from an invalid workflow state: "
+            + "; ".join(existing_errors)
+        )
+    if state.get("status") == "complete":
+        raise SprintError(
+            "A Gate 5 terminal state cannot be reopened or rewritten with "
+            "next-action; start a new workspace for further work"
+        )
+    if args.status == "complete":
+        raise SprintError(
+            "Workspace completion is a terminal transition owned by Gate 5; "
+            "use complete-step 13-outcome and then gate --gate gate-5"
+        )
+    title = args.title.strip()
+    body = args.body.strip()
+    human_input = args.human_input.strip()
+    if not title or not body or not human_input:
+        raise SprintError("Next action fields cannot be blank")
     state["nextAction"] = {
-        "title": args.title.strip(),
-        "body": args.body.strip(),
-        "humanInput": args.human_input.strip(),
+        "title": title,
+        "body": body,
+        "humanInput": human_input,
     }
     if args.status:
         if args.status not in WORKSPACE_STATUSES:
             raise SprintError(f"Invalid workspace status: {args.status}")
         state["status"] = args.status
+    transition_errors = validate_state(state)
+    if transition_errors:
+        raise SprintError(
+            "Next-action update would create an invalid workflow state: "
+            + "; ".join(transition_errors)
+        )
     save_state(workspace, state)
     render_workspace(workspace)
     print("Updated the next action")
@@ -2608,12 +3178,480 @@ def fidelity_errors(state: dict[str, Any]) -> list[str]:
     return errors
 
 
+def route_history_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    history = state.get("routeHistory", [])
+    if not isinstance(history, list):
+        return ["routeHistory must be a list"]
+    expected_from = "undecided"
+    for index, transition in enumerate(history):
+        prefix = f"routeHistory[{index}]"
+        if not isinstance(transition, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        from_route = transition.get("from")
+        to_route = transition.get("to")
+        if from_route != expected_from:
+            errors.append(
+                f"{prefix}.from must be {expected_from!r} to preserve a continuous route history"
+            )
+        if to_route not in ROUTE_TRANSITION_TABLE.get(str(from_route), set()):
+            errors.append(
+                f"{prefix} records impossible route transition {from_route} -> {to_route}"
+            )
+        if not str(transition.get("reason", "")).strip():
+            errors.append(f"{prefix}.reason must explain the route change")
+        expected_from = str(to_route)
+    route = state.get("route")
+    if route == "undecided" and history:
+        errors.append("An undecided workspace cannot have route history")
+    elif route != "undecided":
+        if not history:
+            errors.append(
+                f"Route {route} requires routeHistory beginning at undecided"
+            )
+        elif expected_from != route:
+            errors.append(
+                f"routeHistory ends at {expected_from!r}, but the selected route is {route!r}"
+            )
+    if len(history) > 2:
+        errors.append(
+            "routeHistory may contain only the initial route and one research-first reroute"
+        )
+    if len(history) == 2:
+        if history[0].get("to") != "research-first":
+            errors.append("Only research-first may have a second route transition")
+        if "03-evidence" not in state.get("completedSteps", []):
+            errors.append(
+                "A post-research route transition requires completed 03-evidence"
+            )
+    if route != "undecided" and not str(state.get("routeRationale", "")).strip():
+        errors.append("A selected route requires a non-empty routeRationale")
+    elif history and str(state.get("routeRationale", "")).strip() != str(
+        history[-1].get("reason", "")
+    ).strip():
+        errors.append(
+            "routeRationale must match the reason on the final routeHistory transition"
+        )
+    return errors
+
+
+def skip_policy_error(state: dict[str, Any], step_id: str) -> str | None:
+    if effective_route_step_policy(state).get(step_id) != STEP_REQUIRED:
+        return f"Step {step_id} is not skippable on route {state.get('route')}"
+    mode = state.get("executionMode")
+    customer = state.get("customerTesting", {})
+    if step_id == "11-customer-sessions":
+        if mode != "live":
+            return None
+        if (
+            customer.get("status") == "blocked"
+            and customer.get("sessionsCompleted") == 0
+        ):
+            return None
+        return (
+            "Live customer sessions may be skipped only when customer testing is "
+            "blocked with zero completed sessions; otherwise record suitable sessions"
+        )
+    if step_id == "12-synthesis" and "11-customer-sessions" in state.get(
+        "skippedSteps", []
+    ):
+        if mode != "live" or (
+            customer.get("status") == "blocked"
+            and customer.get("sessionsCompleted") == 0
+        ):
+            return None
+    return (
+        f"Step {step_id} is required for route {state.get('route')} in "
+        f"{mode} mode and cannot be skipped"
+    )
+
+
+def customer_testing_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    customer = state.get("customerTesting", {})
+    if not isinstance(customer, dict):
+        return ["customerTesting must be an object"]
+    status = customer.get("status")
+    planned = customer.get("sessionsPlanned")
+    completed = customer.get("sessionsCompleted")
+    if not isinstance(planned, int) or isinstance(planned, bool):
+        errors.append("Customer sessionsPlanned must be an integer")
+        return errors
+    if not isinstance(completed, int) or isinstance(completed, bool):
+        errors.append("Customer sessionsCompleted must be an integer")
+        return errors
+    if planned < 0 or completed < 0:
+        errors.append("Customer session counts cannot be negative")
+        return errors
+    if completed > planned:
+        errors.append("Completed customer sessions cannot exceed planned sessions")
+    target = str(customer.get("target", ""))
+    rationale = str(customer.get("targetRationale", ""))
+    if planned > 0 and not target.strip():
+        errors.append("Planned customer sessions require a non-empty target audience")
+    if planned > 0 and not rationale.strip():
+        errors.append("Planned customer sessions require a non-empty target rationale")
+
+    if status == "not-planned":
+        if completed != 0:
+            errors.append(
+                "Customer status not-planned requires zero completed sessions"
+            )
+    elif status == "recruiting":
+        if planned < 1 or completed != 0:
+            errors.append(
+                "Customer status recruiting requires planned sessions and zero "
+                "completed sessions; use in-progress or partial after a session"
+            )
+    elif status == "scheduled":
+        if planned < 1 or completed != 0:
+            errors.append(
+                "Customer status scheduled requires planned sessions and zero completed sessions"
+            )
+    elif status == "in-progress":
+        if planned < 2 or not 0 < completed < planned:
+            errors.append(
+                "Customer status in-progress requires 0 < completed sessions < planned sessions"
+            )
+    elif status == "complete":
+        if planned < 1 or completed != planned:
+            errors.append(
+                "Customer status complete requires completed sessions to equal a positive planned count"
+            )
+    elif status == "partial":
+        if planned < 2 or not 0 < completed < planned:
+            errors.append(
+                "Customer status partial requires 0 < completed sessions < planned sessions"
+            )
+    elif status == "blocked":
+        if planned > 0 and completed >= planned:
+            errors.append(
+                "Customer status blocked requires fewer completed sessions than planned"
+            )
+
+    if state.get("executionMode") != "live":
+        if status != "not-planned" or planned != 0 or completed != 0:
+            errors.append(
+                "Non-live execution modes require customer status not-planned and "
+                "zero planned/completed sessions"
+            )
+    return errors
+
+
+def step_history_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    completed = list(state.get("completedSteps", []))
+    skipped = list(state.get("skippedSteps", []))
+    not_applicable = list(state.get("notApplicableSteps", []))
+    policy = effective_route_step_policy(state)
+    completed_set = set(completed)
+    skipped_set = set(skipped)
+    current = state.get("currentStep")
+    current_index = STEP_INDEX.get(str(current), -1)
+
+    for label, values in (
+        ("completedSteps", completed),
+        ("skippedSteps", skipped),
+    ):
+        if values != sorted(
+            values, key=lambda item: STEP_INDEX.get(item, len(STEPS))
+        ):
+            errors.append(f"{label} must preserve workflow order")
+    expected_not_applicable = {
+        step_id
+        for step_id, disposition in policy.items()
+        if disposition == STEP_NOT_APPLICABLE
+    }
+    if set(not_applicable) != expected_not_applicable:
+        errors.append(
+            "notApplicableSteps does not match the selected route history; "
+            f"expected {sorted(expected_not_applicable)}"
+        )
+    skip_reasons = state.get("skipReasons", {})
+    if set(skip_reasons) != skipped_set:
+        errors.append(
+            "skipReasons must contain exactly one non-empty reason for each skipped step"
+        )
+    elif any(
+        not isinstance(skip_reasons.get(step_id), str)
+        or not skip_reasons[step_id].strip()
+        for step_id in skipped
+    ):
+        errors.append(
+            "skipReasons must contain exactly one non-empty reason for each skipped step"
+        )
+    for step_id in skipped:
+        policy_error = skip_policy_error(state, step_id)
+        if policy_error:
+            errors.append(policy_error)
+    for step_id in completed_set | skipped_set:
+        disposition = policy.get(step_id)
+        if disposition != STEP_REQUIRED:
+            errors.append(
+                f"Step {step_id} is {disposition or 'undefined'} for route "
+                f"{state.get('route')} and cannot be completed or skipped"
+            )
+        if STEP_INDEX.get(step_id, len(STEPS)) > current_index:
+            errors.append(
+                f"Future step {step_id} cannot appear before currentStep {current}"
+            )
+
+    if "11-customer-sessions" in completed_set:
+        customer = state.get("customerTesting", {})
+        if state.get("executionMode") != "live":
+            errors.append(
+                "Non-live execution modes cannot complete 11-customer-sessions; "
+                "record the policy-eligible skip instead"
+            )
+        elif (
+            customer.get("status") not in {"complete", "partial"}
+            or customer.get("sessionsCompleted", 0) < 1
+        ):
+            errors.append(
+                "Completed 11-customer-sessions requires complete or partial "
+                "customer status with at least one recorded session"
+            )
+
+    for step in STEPS[: max(0, current_index)]:
+        step_id = step["id"]
+        if (
+            policy.get(step_id) == STEP_REQUIRED
+            and step_id not in completed_set | skipped_set
+        ):
+            errors.append(
+                f"Route history is missing required step {step_id} before currentStep {current}"
+            )
+    if current in skipped_set or current in set(not_applicable):
+        errors.append(
+            f"currentStep {current} cannot already be skipped or not applicable"
+        )
+    if current in completed_set:
+        pending_gate = state.get("pendingGate")
+        waiting_for_reroute = (
+            state.get("route") == "research-first"
+            and current == "03-evidence"
+            and state.get("status") == "waiting-for-human"
+        )
+        terminal = (
+            state.get("status") == "complete" and current == "13-outcome"
+        )
+        if not (
+            pending_gate == GATE_BY_STEP.get(str(current))
+            or waiting_for_reroute
+            or terminal
+        ):
+            errors.append(
+                f"Completed currentStep {current} must be awaiting its gate, "
+                "awaiting the research reroute, or be terminal"
+            )
+    if policy.get(str(current)) == STEP_DEFERRED:
+        errors.append(
+            f"Step {current} is deferred until the required route transition is recorded"
+        )
+    return errors
+
+
+def gate_history_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    gates = {
+        gate.get("id"): gate
+        for gate in state.get("humanGates", [])
+        if isinstance(gate, dict)
+    }
+    decisions_by_gate: dict[str, list[dict[str, Any]]] = {
+        gate_id: [] for gate_id in GATE_NAMES
+    }
+    for decision in state.get("decisions", []):
+        if (
+            isinstance(decision, dict)
+            and decision.get("gate") in decisions_by_gate
+        ):
+            decisions_by_gate[str(decision["gate"])].append(decision)
+    gate_1_complete = gates.get("gate-1", {}).get("status") == "complete"
+    expected_not_applicable = (
+        NO_SPRINT_NOT_APPLICABLE_GATES
+        if state.get("route") == "no-sprint" and gate_1_complete
+        else set()
+    )
+    completed = set(state.get("completedSteps", []))
+    for step_id, gate_id in GATE_BY_STEP.items():
+        gate = gates.get(gate_id, {})
+        status = gate.get("status")
+        expected_status = (
+            "not-applicable" if gate_id in expected_not_applicable else None
+        )
+        if expected_status and status != expected_status:
+            errors.append(
+                f"{gate_id} must be not-applicable on the approved no-sprint route"
+            )
+        if not expected_status and status == "not-applicable":
+            errors.append(
+                f"{gate_id} cannot be not-applicable on route {state.get('route')}"
+            )
+        decisions = decisions_by_gate[gate_id]
+        if status == "complete":
+            if not str(gate.get("decision", "")).strip() or not str(
+                gate.get("rationale", "")
+            ).strip():
+                errors.append(
+                    f"{gate_id} complete requires a non-empty decision and rationale"
+                )
+            if step_id not in completed:
+                errors.append(
+                    f"{gate_id} cannot close before completed step {step_id}"
+                )
+            if len(decisions) != 1:
+                errors.append(
+                    f"{gate_id} complete requires exactly one matching decision record"
+                )
+            elif gate.get("decision") != decisions[0].get("decision"):
+                errors.append(
+                    f"{gate_id} decision does not match the decision history"
+                )
+            elif not str(decisions[0].get("decision", "")).strip() or not str(
+                decisions[0].get("rationale", "")
+            ).strip():
+                errors.append(
+                    f"{gate_id} decision history requires a non-empty decision and rationale"
+                )
+        elif decisions:
+            errors.append(
+                f"{gate_id} has a decision record but is not complete"
+            )
+        if (
+            step_id in completed
+            and status == "pending"
+            and state.get("pendingGate") != gate_id
+        ):
+            errors.append(
+                f"Completed gated step {step_id} must make {gate_id} the pendingGate"
+            )
+    pending_gate = state.get("pendingGate")
+    if pending_gate is not None:
+        step_id = next(
+            step for step, gate in GATE_BY_STEP.items() if gate == pending_gate
+        )
+        if (
+            gates.get(pending_gate, {}).get("status") != "pending"
+            or state.get("currentStep") != step_id
+            or step_id not in completed
+            or state.get("status") != "waiting-for-human"
+        ):
+            errors.append(
+                f"pendingGate {pending_gate} requires completed current step "
+                f"{step_id} and waiting-for-human status"
+            )
+    completed_gate_ids = [
+        gate_id
+        for gate_id in GATE_NAMES
+        if gates.get(gate_id, {}).get("status") == "complete"
+    ]
+    for gate_id in completed_gate_ids:
+        index = list(GATE_NAMES).index(gate_id)
+        for prior_gate in list(GATE_NAMES)[:index]:
+            if prior_gate in expected_not_applicable:
+                continue
+            if gates.get(prior_gate, {}).get("status") != "complete":
+                errors.append(f"{gate_id} cannot close before {prior_gate}")
+    if gate_1_complete and state.get("route") == "undecided":
+        errors.append("Gate 1 cannot close while the route is undecided")
+    return errors
+
+
+def terminal_state_errors(state: dict[str, Any]) -> list[str]:
+    if state.get("status") != "complete":
+        if state.get("outcome") is not None:
+            return ["Only a terminal complete workspace may record outcome"]
+        return []
+    errors: list[str] = []
+    if state.get("route") in {"undecided", "research-first"}:
+        errors.append(
+            "A terminal workspace requires a final route, not undecided or research-first"
+        )
+    if state.get("currentStep") != "13-outcome":
+        errors.append("A terminal workspace must end at 13-outcome")
+    if state.get("pendingGate") is not None:
+        errors.append("A terminal workspace cannot have a pending gate")
+    outcome = str(state.get("outcome", "")).lower()
+    if outcome not in FINAL_OUTCOMES:
+        errors.append("A terminal workspace requires a valid final outcome")
+    gate_5 = next(
+        (
+            gate
+            for gate in state.get("humanGates", [])
+            if isinstance(gate, dict) and gate.get("id") == "gate-5"
+        ),
+        None,
+    )
+    if (
+        gate_5 is not None
+        and gate_5.get("status") == "complete"
+        and str(gate_5.get("decision", "")).strip().lower() != outcome
+    ):
+        errors.append("Terminal outcome must match the recorded Gate 5 decision")
+    policy = effective_route_step_policy(state)
+    completed = set(state.get("completedSteps", []))
+    skipped = set(state.get("skippedSteps", []))
+    for step_id, disposition in policy.items():
+        if (
+            disposition == STEP_REQUIRED
+            and step_id not in completed | skipped
+        ):
+            errors.append(f"Terminal route is missing required step {step_id}")
+        if disposition == STEP_DEFERRED:
+            errors.append(
+                f"Terminal route still defers step {step_id}; record the final route first"
+            )
+    customer = state.get("customerTesting", {})
+    if state.get("route") == "no-sprint":
+        if outcome not in {"investigate", "stop"}:
+            errors.append(
+                "A no-sprint terminal state may close only as Investigate or Stop"
+            )
+    elif state.get("executionMode") != "live":
+        if "11-customer-sessions" not in skipped:
+            errors.append(
+                "A non-live terminal state requires 11-customer-sessions to be "
+                "explicitly skipped"
+            )
+        if outcome not in {"investigate", "stop"}:
+            errors.append(
+                "A non-live terminal state may close only as Investigate or Stop"
+            )
+    elif "11-customer-sessions" in skipped:
+        if outcome not in {"investigate", "stop"}:
+            errors.append(
+                "A live run without customer sessions may close only as Investigate or Stop"
+            )
+        if (
+            customer.get("status") != "blocked"
+            or customer.get("sessionsCompleted") != 0
+        ):
+            errors.append(
+                "A live untested terminal state requires blocked customer testing with zero sessions"
+            )
+    else:
+        if (
+            "11-customer-sessions" not in completed
+            or "12-synthesis" not in completed
+        ):
+            errors.append(
+                "A tested live terminal state requires completed customer sessions and synthesis"
+            )
+        if customer.get("status") not in {"complete", "partial"}:
+            errors.append(
+                "A tested live terminal state requires complete or partial customer status"
+            )
+    return errors
+
+
 def validate_state(state: dict[str, Any]) -> list[str]:
-    """Return the pre-existing cross-record workflow checks.
+    """Return cross-record workflow and transition-model checks.
 
     JSON shape, types, enums, formats, and nested conditions are enforced by the
-    workspace-state schema before this function is called. Route-history and
-    transition policy intentionally remain outside this issue.
+    workspace-state schema before this function is called. This layer enforces
+    semantic relationships that JSON Schema cannot express cleanly.
     """
 
     errors: list[str] = []
@@ -2628,6 +3666,7 @@ def validate_state(state: dict[str, Any]) -> list[str]:
         "methodProfileSelection",
         "executionModeSelection",
         "fidelity",
+        "routeHistory",
         "status",
         "currentStep",
         "completedSteps",
@@ -2680,45 +3719,18 @@ def validate_state(state: dict[str, Any]) -> list[str]:
         if set(skipped) & set(not_applicable):
             errors.append("A step cannot be both skipped and not applicable")
         expected_not_applicable = set(
-            route_not_applicable_steps(str(state.get("route")))
+            route_not_applicable_steps(
+                str(state.get("route")), state.get("routeHistory", [])
+            )
         )
         if set(not_applicable) != expected_not_applicable:
             errors.append(
                 "notApplicableSteps does not match the selected route"
             )
+    errors.extend(customer_testing_errors(state))
     customer = state.get("customerTesting", {})
-    if not isinstance(customer, dict):
-        errors.append("customerTesting must be an object")
-    else:
-        if customer.get("status") not in CUSTOMER_STATUSES:
-            errors.append(f"Invalid customer-testing status: {customer.get('status')}")
+    if isinstance(customer, dict):
         planned = customer.get("sessionsPlanned")
-        completed_sessions = customer.get("sessionsCompleted")
-        if not isinstance(planned, int) or not isinstance(completed_sessions, int):
-            errors.append("Customer session counts must be integers")
-        elif planned < 0 or completed_sessions < 0:
-            errors.append("Customer session counts cannot be negative")
-        elif planned and completed_sessions > planned:
-            errors.append("Completed customer sessions exceed planned sessions")
-        if (
-            state.get("executionMode") != "live"
-            and isinstance(completed_sessions, int)
-            and (
-                completed_sessions > 0
-                or customer.get("status") in {"in-progress", "complete", "partial"}
-            )
-        ):
-            errors.append(
-                "Non-live execution modes cannot record live customer sessions or completion"
-            )
-        if (
-            state.get("executionMode") == "live"
-            and isinstance(completed_sessions, int)
-            and isinstance(completed, list)
-            and "12-synthesis" in completed
-            and completed_sessions < 1
-        ):
-            errors.append("Synthesis cannot be complete without a real customer session")
         if (
             state.get("methodProfile") == "sprint-book"
             and state.get("executionMode") == "live"
@@ -2739,6 +3751,10 @@ def validate_state(state: dict[str, Any]) -> list[str]:
                 errors.append(
                     "Sprint-book live profiles default to five suitable customers; another target requires a documented deviation"
                 )
+    errors.extend(route_history_errors(state))
+    errors.extend(step_history_errors(state))
+    errors.extend(gate_history_errors(state))
+    errors.extend(terminal_state_errors(state))
     errors.extend(fidelity_errors(state))
     gates = state.get("humanGates", [])
     if not isinstance(gates, list) or {item.get("id") for item in gates if isinstance(item, dict)} != set(GATE_NAMES):
@@ -2852,7 +3868,7 @@ def workspace_errors(workspace: Path) -> list[str]:
     registrations = (
         {item["id"]: item for item in state["artifacts"]} if state_is_valid else {}
     )
-    artifact_statuses: dict[str, str] = {}
+    artifact_documents: dict[str, dict[str, Any]] = {}
     for data_path in sorted((workspace / "artifact-data").glob("*.json")):
         try:
             data = read_json(data_path)
@@ -2874,19 +3890,17 @@ def workspace_errors(workspace: Path) -> list[str]:
         if evidence_errors:
             workspace_json_is_valid = False
         artifact_id = data["id"]
-        artifact_statuses[artifact_id] = data["status"]
+        artifact_documents[artifact_id] = data
         if artifact_id in specs:
             output = workspace / "artifacts" / specs[artifact_id]["filename"]
             if not output.exists():
                 errors.append(f"Missing rendered artifact: {output}")
             if artifact_id not in registrations:
                 errors.append(f"Artifact is not registered in state: {artifact_id}")
-    for step_id in state["completedSteps"] if state_is_valid else []:
-        for artifact_id in required_artifacts_for_step(step_id):
-            status = artifact_statuses.get(artifact_id)
-            allowed = {"ready-for-decision", "complete"} if step_id in GATE_BY_STEP else {"complete"}
-            if status not in allowed:
-                errors.append(f"Completed step {step_id} has incomplete artifact {artifact_id}")
+    if state_is_valid:
+        errors.extend(
+            artifact_workflow_errors(state, specs, artifact_documents)
+        )
     if state_is_valid and "10-prototype" in state["completedSteps"] and not (workspace / "prototype" / "index.html").exists():
         errors.append("Completed prototype step is missing prototype/index.html")
     html_files = [workspace / "index.html", *sorted((workspace / "artifacts").glob("*.html"))]
@@ -2975,6 +3989,14 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
                 f"Migration output error: {item}" for item in migrated_errors
             )
             continue
+        if family == "workspace-state":
+            semantic_errors = validate_state(migrated)
+            if semantic_errors:
+                errors.extend(
+                    f"Migration output error: {path}: {item}"
+                    for item in semantic_errors
+                )
+                continue
         plan.append((path, family, migrated))
     if errors:
         detail = "\n".join(f"- {item}" for item in errors)

@@ -79,6 +79,12 @@ class SprintWorkspaceTests(unittest.TestCase):
         data["status"] = "complete"
         data["summary"] = ["Established for the automated test."]
         for section in data["sections"]:
+            if (
+                artifact_id == "11-customer-evidence"
+                and section["title"] == "Session register"
+                and section.get("type") == "table"
+            ):
+                continue
             section["type"] = "paragraphs"
             section["paragraphs"] = [f"{section['title']} established for the test."]
             for key in ("items", "rows", "cards", "body"):
@@ -86,6 +92,100 @@ class SprintWorkspaceTests(unittest.TestCase):
         data["nextActions"] = ["Continue to the next sprint step."]
         self.write_json(path, data)
         self.run_cli("render", "--workspace", str(self.workspace))
+
+    def complete_intake(self) -> None:
+        self.complete_artifact("01-sprint-brief")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "01-intake",
+        )
+
+    def prepare_customer_session_register(self, *session_ids: str) -> None:
+        path = "artifact-data/11-customer-evidence.json"
+        data = self.read_json(path)
+        register = next(
+            section
+            for section in data["sections"]
+            if section["title"] == "Session register"
+        )
+        register.clear()
+        register.update(
+            {
+                "title": "Session register",
+                "eyebrow": "Recorded sessions",
+                "type": "table",
+                "columns": ["Session ID", "Recorded evidence"],
+                "rows": [
+                    [session_id, f"Observed evidence recorded for {session_id}."]
+                    for session_id in session_ids
+                ],
+            }
+        )
+        self.write_json(path, data)
+
+    def set_valid_state_at_customer_step(self) -> None:
+        state = self.read_json("sprint-state.json")
+        now = state["updatedAt"]
+        state.update(
+            {
+                "route": "full-design-sprint",
+                "routeRationale": "The strategic foundation already exists.",
+                "routeHistory": [
+                    {
+                        "from": "undecided",
+                        "to": "full-design-sprint",
+                        "reason": "The strategic foundation already exists.",
+                        "selectedAt": now,
+                    }
+                ],
+                "notApplicableSteps": ["04-foundation"],
+                "completedSteps": [
+                    "01-intake",
+                    "02-qualify",
+                    "03-evidence",
+                    "05-map",
+                    "06-questions",
+                    "07-explore",
+                    "08-decide",
+                    "09-experiment",
+                    "10-prototype",
+                ],
+                "currentStep": "11-customer-sessions",
+                "status": "active",
+                "pendingGate": None,
+            }
+        )
+        state["fidelity"]["routeExclusions"] = [
+            {
+                "step": "04-foundation",
+                "reason": "The approved route starts from an existing strategic foundation.",
+            }
+        ]
+        decisions = []
+        for gate in state["humanGates"]:
+            if gate["id"] == "gate-5":
+                continue
+            decision = {
+                "gate": gate["id"],
+                "decision": "Approve",
+                "rationale": "Approved for the transition fixture.",
+                "reservations": "",
+                "decidedAt": now,
+            }
+            decisions.append(decision)
+            gate.update(
+                {
+                    "status": "complete",
+                    "decision": decision["decision"],
+                    "rationale": decision["rationale"],
+                    "decidedAt": now,
+                }
+            )
+        state["decisions"] = decisions
+        self.write_json("sprint-state.json", state)
 
     def test_init_renders_valid_escaped_workspace(self) -> None:
         challenge = "Help <parents> avoid <script>alert('x')</script>"
@@ -632,6 +732,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         status = self.run_cli("status", "--workspace", str(self.workspace))
         self.assertIn("Canonical purpose:", status.stdout)
         self.assertIn("30 minutes suggested", status.stdout)
+        self.complete_intake()
         self.run_cli(
             "set-route",
             "--workspace",
@@ -694,6 +795,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--output",
             str(self.workspace),
         )
+        self.complete_intake()
         self.run_cli(
             "set-route",
             "--workspace",
@@ -711,20 +813,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "self-test-rehearsal",
         )
 
-        result = self.run_cli(
-            "set-route",
-            "--workspace",
-            str(self.workspace),
-            "--route",
-            "focused-design-sprint",
-            "--rationale",
-            "Try a shorter route.",
-            check=False,
+        errors = WORKSPACE_MODULE.profile_mode_route_errors(
+            "sprint-book", "self-test", "focused-design-sprint"
         )
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("incompatible", result.stderr)
-        unchanged = self.read_json("sprint-state.json")
-        self.assertEqual(unchanged["route"], "full-design-sprint")
+        self.assertTrue(any("incompatible" in item for item in errors))
 
     def test_adaptive_planning_research_route_is_valid(self) -> None:
         self.run_cli(
@@ -740,6 +832,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--output",
             str(self.workspace),
         )
+        self.complete_intake()
         self.run_cli(
             "set-route",
             "--workspace",
@@ -810,6 +903,14 @@ class SprintWorkspaceTests(unittest.TestCase):
 
     def test_directional_evidence_cannot_claim_statistical_validation(self) -> None:
         self.initialise()
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "11-customer-evidence",
+        )
+        self.prepare_customer_session_register("P01")
         self.run_cli(
             "customer",
             "--workspace",
@@ -1015,6 +1116,843 @@ class SprintWorkspaceTests(unittest.TestCase):
             "Can we recruit suitable founders this week?",
         )
 
+    def test_transition_tables_cover_every_route_step_and_route_change(self) -> None:
+        step_ids = {step["id"] for step in WORKSPACE_MODULE.STEPS}
+        self.assertEqual(
+            set(WORKSPACE_MODULE.ROUTE_STEP_TRANSITIONS),
+            WORKSPACE_MODULE.ROUTES,
+        )
+        self.assertEqual(
+            set(WORKSPACE_MODULE.ROUTE_TRANSITION_TABLE),
+            WORKSPACE_MODULE.ROUTES,
+        )
+        for route, policy in WORKSPACE_MODULE.ROUTE_STEP_TRANSITIONS.items():
+            with self.subTest(route=route):
+                self.assertEqual(set(policy), step_ids)
+                self.assertLessEqual(
+                    set(policy.values()),
+                    {
+                        WORKSPACE_MODULE.STEP_REQUIRED,
+                        WORKSPACE_MODULE.STEP_NOT_APPLICABLE,
+                        WORKSPACE_MODULE.STEP_DEFERRED,
+                    },
+                )
+        required_by_route = {
+            "undecided": {"01-intake", "02-qualify"},
+            "research-first": {
+                "01-intake",
+                "02-qualify",
+                "03-evidence",
+            },
+            "foundation-plus-design": step_ids,
+            "full-design-sprint": step_ids - {"04-foundation"},
+            "focused-design-sprint": step_ids - {"04-foundation"},
+            "no-sprint": {"01-intake", "02-qualify", "13-outcome"},
+        }
+        not_applicable_by_route = {
+            "undecided": set(),
+            "research-first": set(),
+            "foundation-plus-design": set(),
+            "full-design-sprint": {"04-foundation"},
+            "focused-design-sprint": {"04-foundation"},
+            "no-sprint": step_ids
+            - {"01-intake", "02-qualify", "13-outcome"},
+        }
+        for route, policy in WORKSPACE_MODULE.ROUTE_STEP_TRANSITIONS.items():
+            with self.subTest(exact_policy=route):
+                required = {
+                    step_id
+                    for step_id, disposition in policy.items()
+                    if disposition == WORKSPACE_MODULE.STEP_REQUIRED
+                }
+                not_applicable = {
+                    step_id
+                    for step_id, disposition in policy.items()
+                    if disposition == WORKSPACE_MODULE.STEP_NOT_APPLICABLE
+                }
+                deferred = {
+                    step_id
+                    for step_id, disposition in policy.items()
+                    if disposition == WORKSPACE_MODULE.STEP_DEFERRED
+                }
+                self.assertEqual(required, required_by_route[route])
+                self.assertEqual(
+                    not_applicable, not_applicable_by_route[route]
+                )
+                self.assertEqual(
+                    deferred, step_ids - required - not_applicable
+                )
+        post_research_no_sprint = {
+            "route": "no-sprint",
+            "routeHistory": [
+                {
+                    "from": "undecided",
+                    "to": "research-first",
+                },
+                {
+                    "from": "research-first",
+                    "to": "no-sprint",
+                },
+            ],
+        }
+        effective = WORKSPACE_MODULE.effective_route_step_policy(
+            post_research_no_sprint
+        )
+        self.assertEqual(
+            {
+                step_id
+                for step_id, disposition in effective.items()
+                if disposition == WORKSPACE_MODULE.STEP_REQUIRED
+            },
+            {"01-intake", "02-qualify", "03-evidence", "13-outcome"},
+        )
+
+        self.assertEqual(
+            WORKSPACE_MODULE.ROUTE_TRANSITION_TABLE["undecided"],
+            WORKSPACE_MODULE.ROUTES - {"undecided"},
+        )
+        self.assertEqual(
+            WORKSPACE_MODULE.ROUTE_TRANSITION_TABLE["research-first"],
+            {
+                "foundation-plus-design",
+                "full-design-sprint",
+                "focused-design-sprint",
+                "no-sprint",
+            },
+        )
+
+        self.initialise()
+        pre_qualification = self.read_json("sprint-state.json")
+        self.complete_intake()
+        qualification = self.read_json("sprint-state.json")
+        for route in sorted(
+            WORKSPACE_MODULE.ROUTE_TRANSITION_TABLE["undecided"]
+        ):
+            with self.subTest(initial_route=route):
+                self.assertEqual(
+                    WORKSPACE_MODULE.route_change_errors(qualification, route),
+                    [],
+                )
+        self.assertTrue(
+            WORKSPACE_MODULE.route_change_errors(qualification, "undecided")
+        )
+        early_error = WORKSPACE_MODULE.route_change_errors(
+            pre_qualification, "full-design-sprint"
+        )
+        self.assertTrue(any("during 02-qualify" in item for item in early_error))
+
+        research = json.loads(json.dumps(qualification))
+        research.update(
+            {
+                "route": "research-first",
+                "routeRationale": "Research is required first.",
+                "routeHistory": [
+                    {
+                        "from": "undecided",
+                        "to": "research-first",
+                        "reason": "Research is required first.",
+                        "selectedAt": research["updatedAt"],
+                    }
+                ],
+                "currentStep": "03-evidence",
+                "completedSteps": [
+                    "01-intake",
+                    "02-qualify",
+                    "03-evidence",
+                ],
+                "status": "waiting-for-human",
+            }
+        )
+        gate_1 = research["humanGates"][0]
+        gate_1.update(
+            {
+                "status": "complete",
+                "decision": "Approve research",
+                "rationale": "Evidence is needed.",
+                "decidedAt": research["updatedAt"],
+            }
+        )
+        for route in sorted(
+            WORKSPACE_MODULE.ROUTE_TRANSITION_TABLE["research-first"]
+        ):
+            with self.subTest(post_research_route=route):
+                self.assertEqual(
+                    WORKSPACE_MODULE.route_change_errors(research, route), []
+                )
+        self.assertTrue(
+            WORKSPACE_MODULE.route_change_errors(research, "research-first")
+        )
+        for route in (
+            "foundation-plus-design",
+            "full-design-sprint",
+            "focused-design-sprint",
+            "no-sprint",
+        ):
+            locked = dict(qualification, route=route)
+            with self.subTest(locked_route=route):
+                self.assertTrue(
+                    WORKSPACE_MODULE.route_change_errors(
+                        locked, "full-design-sprint"
+                    )
+                )
+
+    def test_contradictory_route_step_and_gate_histories_are_rejected(self) -> None:
+        self.initialise()
+        initial = self.read_json("sprint-state.json")
+
+        missing_history = json.loads(json.dumps(initial))
+        missing_history.update(
+            {
+                "route": "full-design-sprint",
+                "routeRationale": "Run a design sprint.",
+                "notApplicableSteps": ["04-foundation"],
+            }
+        )
+        route_errors = WORKSPACE_MODULE.route_history_errors(missing_history)
+        self.assertTrue(
+            any("requires routeHistory" in item for item in route_errors)
+        )
+
+        discontinuous = json.loads(json.dumps(missing_history))
+        discontinuous["routeHistory"] = [
+            {
+                "from": "research-first",
+                "to": "full-design-sprint",
+                "reason": "This cannot be the first transition.",
+                "selectedAt": initial["updatedAt"],
+            }
+        ]
+        route_errors = WORKSPACE_MODULE.route_history_errors(discontinuous)
+        self.assertTrue(
+            any("continuous route history" in item for item in route_errors)
+        )
+
+        missing_prior_step = json.loads(json.dumps(missing_history))
+        missing_prior_step.update(
+            {
+                "route": "foundation-plus-design",
+                "routeHistory": [
+                    {
+                        "from": "undecided",
+                        "to": "foundation-plus-design",
+                        "reason": "Build the foundation first.",
+                        "selectedAt": initial["updatedAt"],
+                    }
+                ],
+                "notApplicableSteps": [],
+                "currentStep": "03-evidence",
+                "completedSteps": ["02-qualify"],
+            }
+        )
+        step_errors = WORKSPACE_MODULE.step_history_errors(
+            missing_prior_step
+        )
+        self.assertTrue(
+            any("missing required step 01-intake" in item for item in step_errors)
+        )
+
+        closed_gate = json.loads(json.dumps(initial))
+        closed_gate["humanGates"][0].update(
+            {
+                "status": "complete",
+                "decision": "Approve",
+                "rationale": "Impossible fixture.",
+                "decidedAt": initial["updatedAt"],
+            }
+        )
+        gate_errors = WORKSPACE_MODULE.gate_history_errors(closed_gate)
+        self.assertTrue(
+            any("before completed step 02-qualify" in item for item in gate_errors)
+        )
+        self.assertTrue(
+            any("exactly one matching decision" in item for item in gate_errors)
+        )
+
+    def test_skip_policy_matrix_allows_only_customer_dependent_paths(self) -> None:
+        base = {
+            "route": "full-design-sprint",
+            "routeHistory": [
+                {
+                    "from": "undecided",
+                    "to": "full-design-sprint",
+                    "reason": "Use the full route.",
+                    "selectedAt": "2026-08-17T10:00:00Z",
+                }
+            ],
+            "executionMode": "live",
+            "skippedSteps": [],
+            "customerTesting": {
+                "status": "not-planned",
+                "sessionsPlanned": 0,
+                "sessionsCompleted": 0,
+            },
+        }
+        for step in WORKSPACE_MODULE.STEPS:
+            with self.subTest(mode="live", step=step["id"]):
+                self.assertIsNotNone(
+                    WORKSPACE_MODULE.skip_policy_error(base, step["id"])
+                )
+
+        blocked = json.loads(json.dumps(base))
+        blocked["customerTesting"]["status"] = "blocked"
+        self.assertIsNone(
+            WORKSPACE_MODULE.skip_policy_error(
+                blocked, "11-customer-sessions"
+            )
+        )
+        blocked["skippedSteps"] = ["11-customer-sessions"]
+        self.assertIsNone(
+            WORKSPACE_MODULE.skip_policy_error(blocked, "12-synthesis")
+        )
+
+        for mode in ("self-test", "planning-rehearsal"):
+            non_live = json.loads(json.dumps(base))
+            non_live["executionMode"] = mode
+            with self.subTest(mode=mode, step="11-customer-sessions"):
+                self.assertIsNone(
+                    WORKSPACE_MODULE.skip_policy_error(
+                        non_live, "11-customer-sessions"
+                    )
+                )
+            non_live["skippedSteps"] = ["11-customer-sessions"]
+            with self.subTest(mode=mode, step="12-synthesis"):
+                self.assertIsNone(
+                    WORKSPACE_MODULE.skip_policy_error(
+                        non_live, "12-synthesis"
+                    )
+                )
+            for step_id in (
+                "01-intake",
+                "02-qualify",
+                "03-evidence",
+                "05-map",
+                "06-questions",
+                "07-explore",
+                "08-decide",
+                "09-experiment",
+                "10-prototype",
+                "13-outcome",
+            ):
+                with self.subTest(mode=mode, required_step=step_id):
+                    self.assertIsNotNone(
+                        WORKSPACE_MODULE.skip_policy_error(non_live, step_id)
+                    )
+
+        no_sprint = json.loads(json.dumps(base))
+        no_sprint["route"] = "no-sprint"
+        no_sprint["routeHistory"][0]["to"] = "no-sprint"
+        for step in WORKSPACE_MODULE.STEPS:
+            with self.subTest(route="no-sprint", step=step["id"]):
+                self.assertIsNotNone(
+                    WORKSPACE_MODULE.skip_policy_error(
+                        no_sprint, step["id"]
+                    )
+                )
+
+    def test_customer_status_and_recorded_session_matrix(self) -> None:
+        def customer_state(
+            status: str,
+            planned: int,
+            completed: int,
+            mode: str = "live",
+        ) -> dict:
+            return {
+                "executionMode": mode,
+                "customerTesting": {
+                    "status": status,
+                    "target": "Qualified participants" if planned else "",
+                    "targetRationale": "Selected for the test." if planned else "",
+                    "sessionsPlanned": planned,
+                    "sessionsCompleted": completed,
+                },
+            }
+
+        valid = [
+            ("not-planned", 0, 0),
+            ("not-planned", 5, 0),
+            ("recruiting", 3, 0),
+            ("scheduled", 3, 0),
+            ("in-progress", 3, 1),
+            ("complete", 3, 3),
+            ("partial", 3, 1),
+            ("blocked", 3, 0),
+        ]
+        for status, planned, completed in valid:
+            with self.subTest(valid=status):
+                self.assertEqual(
+                    WORKSPACE_MODULE.customer_testing_errors(
+                        customer_state(status, planned, completed)
+                    ),
+                    [],
+                )
+
+        invalid = [
+            ("not-planned", 1, 1),
+            ("recruiting", 0, 0),
+            ("recruiting", 3, 1),
+            ("scheduled", 3, 1),
+            ("in-progress", 3, 0),
+            ("in-progress", 3, 3),
+            ("complete", 3, 2),
+            ("partial", 3, 0),
+            ("partial", 3, 3),
+            ("blocked", 3, 3),
+        ]
+        for status, planned, completed in invalid:
+            with self.subTest(invalid=status, planned=planned, completed=completed):
+                self.assertTrue(
+                    WORKSPACE_MODULE.customer_testing_errors(
+                        customer_state(status, planned, completed)
+                    )
+                )
+        for mode in ("self-test", "planning-rehearsal"):
+            self.assertEqual(
+                WORKSPACE_MODULE.customer_testing_errors(
+                    customer_state("not-planned", 0, 0, mode)
+                ),
+                [],
+            )
+            self.assertTrue(
+                WORKSPACE_MODULE.customer_testing_errors(
+                    customer_state("recruiting", 1, 0, mode)
+                )
+            )
+
+        state = customer_state("partial", 3, 2)
+        evidence = {
+            "id": "11-customer-evidence",
+            "status": "draft",
+            "sections": [
+                {
+                    "title": "Session register",
+                    "type": "table",
+                    "columns": ["Session ID", "Evidence"],
+                    "rows": [
+                        ["P01", "Observed behavior"],
+                        ["P02", "Observed behavior"],
+                    ],
+                }
+            ],
+        }
+        self.assertEqual(
+            WORKSPACE_MODULE.recorded_session_errors(
+                state, {"11-customer-evidence": evidence}
+            ),
+            [],
+        )
+        evidence["sections"][0]["rows"][1] = [" ", []]
+        errors = WORKSPACE_MODULE.recorded_session_errors(
+            state, {"11-customer-evidence": evidence}
+        )
+        self.assertTrue(any("non-empty session ID" in item for item in errors))
+
+    def test_terminal_state_matrix_covers_supported_and_impossible_closures(self) -> None:
+        all_steps = [step["id"] for step in WORKSPACE_MODULE.STEPS]
+
+        def terminal(
+            *,
+            route: str,
+            mode: str,
+            completed: list[str],
+            skipped: list[str],
+            outcome: str,
+            customer_status: str,
+            planned: int,
+            session_count: int,
+        ) -> dict:
+            return {
+                "route": route,
+                "routeHistory": [
+                    {
+                        "from": "undecided",
+                        "to": route,
+                        "reason": "Terminal matrix fixture.",
+                        "selectedAt": "2026-08-17T10:00:00Z",
+                    }
+                ],
+                "executionMode": mode,
+                "status": "complete",
+                "currentStep": "13-outcome",
+                "pendingGate": None,
+                "completedSteps": completed,
+                "skippedSteps": skipped,
+                "outcome": outcome,
+                "customerTesting": {
+                    "status": customer_status,
+                    "sessionsPlanned": planned,
+                    "sessionsCompleted": session_count,
+                },
+            }
+
+        full_steps = [item for item in all_steps if item != "04-foundation"]
+        valid = [
+            terminal(
+                route="full-design-sprint",
+                mode="live",
+                completed=full_steps,
+                skipped=[],
+                outcome="Proceed",
+                customer_status="complete",
+                planned=2,
+                session_count=2,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="live",
+                completed=[
+                    item
+                    for item in full_steps
+                    if item not in {"11-customer-sessions", "12-synthesis"}
+                ],
+                skipped=["11-customer-sessions", "12-synthesis"],
+                outcome="Stop",
+                customer_status="blocked",
+                planned=2,
+                session_count=0,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="self-test",
+                completed=[
+                    item for item in full_steps if item != "11-customer-sessions"
+                ],
+                skipped=["11-customer-sessions"],
+                outcome="Investigate",
+                customer_status="not-planned",
+                planned=0,
+                session_count=0,
+            ),
+            terminal(
+                route="no-sprint",
+                mode="live",
+                completed=["01-intake", "02-qualify", "13-outcome"],
+                skipped=[],
+                outcome="Stop",
+                customer_status="not-planned",
+                planned=0,
+                session_count=0,
+            ),
+        ]
+        for index, state in enumerate(valid):
+            with self.subTest(valid_terminal=index):
+                self.assertEqual(
+                    WORKSPACE_MODULE.terminal_state_errors(state), []
+                )
+
+        invalid = [
+            terminal(
+                route="research-first",
+                mode="live",
+                completed=["01-intake", "02-qualify", "03-evidence", "13-outcome"],
+                skipped=[],
+                outcome="Stop",
+                customer_status="not-planned",
+                planned=0,
+                session_count=0,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="self-test",
+                completed=full_steps,
+                skipped=[],
+                outcome="Investigate",
+                customer_status="not-planned",
+                planned=0,
+                session_count=0,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="self-test",
+                completed=[
+                    item for item in full_steps if item != "11-customer-sessions"
+                ],
+                skipped=["11-customer-sessions"],
+                outcome="Proceed",
+                customer_status="not-planned",
+                planned=0,
+                session_count=0,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="live",
+                completed=[
+                    item
+                    for item in full_steps
+                    if item not in {"11-customer-sessions", "12-synthesis"}
+                ],
+                skipped=["11-customer-sessions", "12-synthesis"],
+                outcome="Proceed",
+                customer_status="blocked",
+                planned=2,
+                session_count=0,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="live",
+                completed=["13-outcome"],
+                skipped=[],
+                outcome="Stop",
+                customer_status="not-planned",
+                planned=0,
+                session_count=0,
+            ),
+        ]
+        for index, state in enumerate(invalid):
+            with self.subTest(invalid_terminal=index):
+                self.assertTrue(
+                    WORKSPACE_MODULE.terminal_state_errors(state)
+                )
+
+    def test_empty_nested_content_never_satisfies_artifact_readiness(self) -> None:
+        empty_values = [
+            "",
+            "   ",
+            [],
+            {},
+            [[], {}],
+            {"outer": {"inner": []}},
+        ]
+        for value in empty_values:
+            with self.subTest(value=value):
+                self.assertFalse(WORKSPACE_MODULE.nested_has_content(value))
+        sections = [
+            {"type": "paragraphs", "paragraphs": ["  "]},
+            {
+                "type": "table",
+                "columns": ["Evidence"],
+                "rows": [[]],
+            },
+            {"type": "cards", "cards": []},
+            {
+                "type": "cards",
+                "cards": [
+                    {"title": "Structural label", "body": "   "}
+                ],
+            },
+            {
+                "type": "key-value",
+                "items": [{"label": "Evidence", "value": "  "}],
+            },
+        ]
+        for section in sections:
+            with self.subTest(section_type=section["type"]):
+                self.assertFalse(
+                    WORKSPACE_MODULE.section_has_content(section)
+                )
+
+        self.initialise()
+        data = self.read_json("artifact-data/01-sprint-brief.json")
+        data["status"] = "complete"
+        data["summary"] = ["   "]
+        for section in data["sections"]:
+            section["type"] = "paragraphs"
+            section["paragraphs"] = ["   "]
+            for key in ("items", "rows", "cards", "body", "columns", "caption"):
+                section.pop(key, None)
+        self.write_json("artifact-data/01-sprint-brief.json", data)
+        result = self.run_cli(
+            "render", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("non-empty summary", result.stderr)
+        self.assertIn("Required section is still empty", result.stderr)
+
+    def test_gate_closure_requires_complete_not_ready_artifact(self) -> None:
+        self.initialise()
+        self.complete_intake()
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "The strategic foundation already exists.",
+        )
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve",
+            "--rationale",
+            "Proceed.",
+        )
+        for step_id, artifact_id in (
+            ("03-evidence", "02-evidence-ledger"),
+            ("05-map", "04-journey-map"),
+        ):
+            self.run_cli(
+                "new-artifact",
+                "--workspace",
+                str(self.workspace),
+                "--id",
+                artifact_id,
+            )
+            self.complete_artifact(artifact_id)
+            self.run_cli(
+                "complete-step",
+                "--workspace",
+                str(self.workspace),
+                "--step",
+                step_id,
+            )
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "05-sprint-questions",
+        )
+        questions = self.read_json(
+            "artifact-data/05-sprint-questions.json"
+        )
+        questions["status"] = "ready-for-decision"
+        questions["summary"] = ["Questions ready for the human gate."]
+        for section in questions["sections"]:
+            section["paragraphs"] = [
+                f"{section['title']} is ready for review."
+            ]
+        self.write_json(
+            "artifact-data/05-sprint-questions.json", questions
+        )
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("validate", "--workspace", str(self.workspace))
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "06-questions",
+        )
+        self.run_cli("validate", "--workspace", str(self.workspace))
+        result = self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-2",
+            "--decision",
+            "Approve",
+            "--rationale",
+            "The questions are accepted.",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("must be complete", result.stderr)
+        self.assertIn("ready-for-decision", result.stderr)
+
+    def test_ready_artifact_is_rejected_outside_its_current_gate(self) -> None:
+        self.initialise()
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "05-sprint-questions",
+        )
+        questions = self.read_json(
+            "artifact-data/05-sprint-questions.json"
+        )
+        questions["summary"] = ["Questions prepared too early."]
+        for section in questions["sections"]:
+            section["paragraphs"] = [
+                f"{section['title']} has meaningful content."
+            ]
+        self.write_json(
+            "artifact-data/05-sprint-questions.json", questions
+        )
+        result = self.run_cli(
+            "artifact-status",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "05-sprint-questions",
+            "--status",
+            "ready-for-decision",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("only while 06-questions is the current step", result.stderr)
+
+    def test_research_first_can_close_only_after_recorded_final_route(self) -> None:
+        self.initialise()
+        self.complete_intake()
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "research-first",
+            "--rationale",
+            "Evidence is needed before selecting a sprint route.",
+        )
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve research",
+            "--rationale",
+            "Reduce problem uncertainty.",
+        )
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "02-evidence-ledger",
+        )
+        self.complete_artifact("02-evidence-ledger")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "03-evidence",
+        )
+        waiting = self.read_json("sprint-state.json")
+        waiting["status"] = "complete"
+        waiting["outcome"] = "Stop"
+        self.assertTrue(
+            WORKSPACE_MODULE.terminal_state_errors(waiting)
+        )
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "no-sprint",
+            "--rationale",
+            "The evidence shows no design sprint is warranted.",
+        )
+        rerouted = self.read_json("sprint-state.json")
+        self.assertEqual(
+            [item["to"] for item in rerouted["routeHistory"]],
+            ["research-first", "no-sprint"],
+        )
+        self.assertIn("03-evidence", rerouted["completedSteps"])
+        self.assertNotIn("03-evidence", rerouted["notApplicableSteps"])
+        self.assertEqual(rerouted["currentStep"], "13-outcome")
+
     def test_full_route_enforces_gate_and_skips_foundation(self) -> None:
         self.initialise()
         self.complete_artifact("01-sprint-brief")
@@ -1093,11 +2031,7 @@ class SprintWorkspaceTests(unittest.TestCase):
 
     def test_customer_step_requires_real_session(self) -> None:
         self.initialise()
-        state = self.read_json("sprint-state.json")
-        state["route"] = "full-design-sprint"
-        state["status"] = "active"
-        state["currentStep"] = "11-customer-sessions"
-        self.write_json("sprint-state.json", state)
+        self.set_valid_state_at_customer_step()
         for artifact_id in ("10-test-plan", "11-customer-evidence"):
             self.run_cli(
                 "new-artifact",
@@ -1121,6 +2055,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         blocked = self.read_json("sprint-state.json")
         self.assertEqual(blocked["status"], "waiting-for-customers")
 
+        self.prepare_customer_session_register("P01")
         self.run_cli(
             "customer",
             "--workspace",
@@ -1274,6 +2209,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
         self.complete_artifact("10-test-plan")
+        self.prepare_customer_session_register("P01", "P02")
         self.run_cli(
             "customer",
             "--workspace",
@@ -1412,6 +2348,32 @@ class SprintWorkspaceTests(unittest.TestCase):
         state = self.read_json("sprint-state.json")
         self.assertEqual(state["customerTesting"]["sessionsCompleted"], 0)
         self.assertEqual(state["outcome"], "Stop")
+        contradictory = json.loads(json.dumps(state))
+        contradictory["outcome"] = "Investigate"
+        self.assertTrue(
+            any(
+                "must match the recorded Gate 5 decision" in item
+                for item in WORKSPACE_MODULE.terminal_state_errors(
+                    contradictory
+                )
+            )
+        )
+        reopen = self.run_cli(
+            "next-action",
+            "--workspace",
+            str(self.workspace),
+            "--title",
+            "Resume work",
+            "--body",
+            "This must not reopen the terminal state.",
+            "--human-input",
+            "Continue.",
+            "--status",
+            "active",
+            check=False,
+        )
+        self.assertEqual(reopen.returncode, 2)
+        self.assertIn("terminal state cannot be reopened", reopen.stderr)
 
 
 if __name__ == "__main__":
