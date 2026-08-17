@@ -896,6 +896,53 @@ class SprintWorkspaceTests(unittest.TestCase):
                 self.assertIn("live URL", recommendation["readinessBoundary"])
                 self.assertEqual(len(recommendation["approvalBoundaries"]), 6)
 
+    def test_prototype_brief_html_renders_the_complete_structured_boundary(self) -> None:
+        self.initialise()
+        self.complete_prototype_brief()
+
+        brief_html = (
+            self.workspace / "artifacts" / "10-prototype-brief.html"
+        ).read_text(encoding="utf-8")
+
+        expected_content = (
+            "Complete the primary onboarding decision.",
+            "Enter; Review; Choose; Confirm",
+            "Synthetic founder workspace data",
+            "No prior choices",
+            "Short loading state",
+            "Recoverable synthetic error",
+            "Moderated remote session",
+            "All non-required capabilities remain simulated.",
+            "Use synthetic operational data",
+            "Confirm participant consent before the session",
+            "Do not include secrets or production access",
+            "Moderated observation is sufficient and analytics are not approved.",
+            "240 minutes",
+            "Prototype Builder",
+            "Cost, data exposure, and deployment",
+            "No account connection, spend, real customer data, or public deploy",
+            "Fits the four-hour build timebox",
+            "Versioned through immutable workspace records",
+            "Retain portable source files in the private repository.",
+            "Explicitly decided for this synthetic test fixture.",
+        )
+        for content in expected_content:
+            with self.subTest(content=content):
+                self.assertIn(content, brief_html)
+
+        for heading in (
+            "Exact task and journey",
+            "Content and interface states",
+            "Environment and capabilities",
+            "Capability requirements",
+            "Safety and evidence capture",
+            "Build boundary",
+            "Tool-selection assessment",
+            "Supporting tool categories",
+        ):
+            with self.subTest(heading=heading):
+                self.assertIn(f">{heading}</h2>", brief_html)
+
     def test_prototype_lifecycle_requires_approvals_trial_and_immutable_session_links(self) -> None:
         self.initialise()
         self.complete_prototype_brief()
