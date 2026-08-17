@@ -10,6 +10,7 @@ dependency-free and reports instance locations as JSONPath, for example
 | Family | Files | Current version | Compatibility |
 |---|---|---:|---|
 | Workspace state | `sprint-state.json` | `2.0` | `1.0` is migratable |
+| Assignment manifest | `assignment-manifest.json` | `1.0` | Current only; created when absent during workspace migration |
 | Artifact data | `artifact-data/*.json` | `2.0` | `1.0` is migratable |
 | Artifact specifications | `references/artifact-specs.json` | `1.0` | Current only |
 | Role contracts | `references/role-contracts.json` | `1.0` | Current only |
@@ -20,10 +21,12 @@ The state schema includes its separate method-profile, execution-mode, and
 route selectors; fidelity principles, step records, participation, timeboxes,
 deviations, impacts, and summary; plus nested gate, decision,
 artifact-registration, customer-testing, resolved-question, and next-action
-records. The artifact schema includes evidence records and the `paragraphs`,
+records. Gate decisions include a stable decision ID, decider label, considered-input content digests, a route/concept/gate subject snapshot, lifecycle status, and supersession provenance. The artifact schema includes evidence records and the `paragraphs`,
 `list`, `ordered-list`, `table`, `cards`, and `key-value` section families.
 Conditional schema rules require every artifact ID's declared section titles
-and complete gate records' decision fields.
+and completed gate records' explicit decision reference. The assignment schema
+requires packet/input and result digests, assignee/run identity, timestamps,
+lifecycle status, required outputs, and independence metadata.
 
 There is no standalone customer-session JSON format or session-import command
 in the current engine. Customer-testing counts remain a nested state record.
@@ -42,11 +45,18 @@ be validated before an import writes a file or changes those counts.
   legacy run as `adaptive-design-sprint` and `live`, creates canonical fidelity
   records, translates route exclusions into `notApplicableSteps`, and records
   a compatibility note for human review. Existing user content, decisions,
-  timestamps, and workflow history remain unchanged. Migration-derived
+  timestamps, and workflow history remain unchanged. Migration also creates an
+  empty assignment manifest when one is absent, allowing pre-manifest
+  workspaces to resume with explicit provenance for new assignments. Migration-derived
   timestamps reuse the source state's `updatedAt`, and object keys are
   serialized in canonical sorted order, so repeated migration inputs produce
   identical JSON.
-- The packaged artifact, role, and method-profile registries and public
+- A state already labelled `2.0` may contain the older gate-decision shape from
+  before attestation provenance was introduced. `migrate` upgrades those
+  records in place with a conservative legacy label and a digest of the prior
+  record; it does not invent considered evidence. New decisions always use the
+  attested shape.
+- The assignment manifest, packaged artifact, role, and method-profile registries and public
   usage-evidence records currently have no legacy line. Their loaders reject
   any version other than `1.0`.
 - Adding fields to a strict document requires a new compatible schema version;
@@ -54,13 +64,14 @@ be validated before an import writes a file or changes those counts.
 - Loaders accept standards-compliant JSON only; non-finite extensions such as
   `NaN` and `Infinity` are rejected before schema evaluation.
 
-Schema validation runs when state, artifact specifications, role contracts, or
-artifact data are loaded; immediately before state or artifact mutations are
-persisted; before gate logic; before any artifact or dashboard rendering; and
-as part of whole-workspace validation. The publication checker validates usage
-records before evaluating them for release. Completion and customer-evidence
-checks remain separate cross-record rules. Route-history and skip-policy
-invariants are intentionally not changed here.
+Schema validation runs when state, assignment manifests, artifact specifications,
+role contracts, or artifact data are loaded; immediately before canonical
+mutations are persisted; before gate logic; before any artifact or dashboard
+rendering; and as part of whole-workspace validation. Cross-record assignment
+validation additionally enforces immutable digests, freshness, required memo
+sections, uniqueness, lifecycle linkage, and independent-run boundaries. The
+publication checker validates usage records before evaluating them for release.
+Completion and customer-evidence checks remain separate cross-record rules.
 
 ## Migrating a workspace
 

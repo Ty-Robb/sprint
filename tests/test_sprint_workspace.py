@@ -87,6 +87,104 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.write_json(path, data)
         self.run_cli("render", "--workspace", str(self.workspace))
 
+    def write_result_memo(self, relative_path: str, marker: str) -> None:
+        path = self.workspace / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        sections = [
+            "Findings",
+            "Evidence and provenance",
+            "Assumptions and inferences",
+            "Recommendation",
+            "Risks or disagreements",
+            "Open questions",
+            "Stop condition reached",
+        ]
+        path.write_text(
+            "# Specialist result\n\n"
+            + "\n\n".join(
+                f"## {section}\n\n{marker}: {section}." for section in sections
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def complete_required_assignments(self, step_id: str) -> None:
+        roles = WORKSPACE_MODULE.REQUIRED_ROLES_BY_STEP.get(step_id, ())
+        assignment_ids = []
+        for index, role in enumerate(roles, start=1):
+            run_id = f"{step_id}-{role}-run-{index}"
+            assignment_id = f"{step_id}-{role}-assignment"
+            assignment_ids.append((assignment_id, role))
+            self.run_cli(
+                "role-packet",
+                "--workspace",
+                str(self.workspace),
+                "--role",
+                role,
+                "--task",
+                f"Return the bounded {role} analysis for {step_id}.",
+                "--assignee",
+                f"Synthetic {role}",
+                "--run-id",
+                run_id,
+                "--assignment-id",
+                assignment_id,
+                "--output",
+                f"working/{step_id}/{role}.packet.md",
+            )
+        for assignment_id, role in assignment_ids:
+            memo = f"working/{step_id}/{role}.result.md"
+            self.write_result_memo(memo, assignment_id)
+            self.run_cli(
+                "role-result",
+                "--workspace",
+                str(self.workspace),
+                "--assignment",
+                assignment_id,
+                "--memo",
+                memo,
+            )
+
+    def advance_to_qualify(self) -> None:
+        self.initialise()
+        self.complete_artifact("01-sprint-brief")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "01-intake",
+        )
+
+    def create_qualify_packets(self, *, include_brief: bool = False) -> list[str]:
+        assignment_ids = []
+        for index, role in enumerate(
+            WORKSPACE_MODULE.REQUIRED_ROLES_BY_STEP["02-qualify"], start=1
+        ):
+            assignment_id = f"02-qualify-{role}-test"
+            arguments = [
+                "role-packet",
+                "--workspace",
+                str(self.workspace),
+                "--role",
+                role,
+                "--task",
+                f"Assess qualification from the {role} boundary.",
+                "--assignee",
+                f"Synthetic {role}",
+                "--run-id",
+                f"isolated-run-{index}",
+                "--assignment-id",
+                assignment_id,
+                "--output",
+                f"working/02-qualify/{role}.packet.md",
+            ]
+            if include_brief:
+                arguments.extend(["--input", "artifact-data/01-sprint-brief.json"])
+            self.run_cli(*arguments)
+            assignment_ids.append(assignment_id)
+        return assignment_ids
+
     def test_init_renders_valid_escaped_workspace(self) -> None:
         challenge = "Help <parents> avoid <script>alert('x')</script>"
         self.initialise(challenge)
@@ -110,6 +208,12 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.write_json(
             "sprint-state.json",
             self.fixture_document("schemas/valid/workspace-state-v2.synthetic.json"),
+        )
+        self.write_json(
+            "assignment-manifest.json",
+            self.fixture_document(
+                "schemas/valid/assignment-manifest-v1.synthetic.json"
+            ),
         )
         self.write_json(
             "artifact-data/01-sprint-brief.json",
@@ -191,6 +295,12 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.write_json(
             "sprint-state.json",
             self.fixture_document("schemas/valid/workspace-state-v2.synthetic.json"),
+        )
+        self.write_json(
+            "assignment-manifest.json",
+            self.fixture_document(
+                "schemas/valid/assignment-manifest-v1.synthetic.json"
+            ),
         )
         artifact_path = self.workspace / "artifact-data" / "01-sprint-brief.json"
         self.write_json(
@@ -457,6 +567,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             os.umask(previous_umask)
         expected = [
             self.workspace / "sprint-state.json",
+            self.workspace / "assignment-manifest.json",
             self.workspace / "artifact-data" / "01-sprint-brief.json",
             self.workspace / "index.html",
             self.workspace / "artifacts" / "01-sprint-brief.html",
@@ -902,6 +1013,24 @@ class SprintWorkspaceTests(unittest.TestCase):
         state["skipReasons"] = {
             "04-foundation": "The strategic foundation already exists."
         }
+        legacy_decided_at = state["updatedAt"]
+        state["decisions"] = [
+            {
+                "gate": "gate-1",
+                "decision": "Approve full route",
+                "rationale": "The legacy record approved this route.",
+                "reservations": "",
+                "decidedAt": legacy_decided_at,
+            }
+        ]
+        state["humanGates"][0].update(
+            {
+                "status": "complete",
+                "decision": "Approve full route",
+                "rationale": "The legacy record approved this route.",
+                "decidedAt": legacy_decided_at,
+            }
+        )
         for key in (
             "methodProfile",
             "executionMode",
@@ -937,6 +1066,14 @@ class SprintWorkspaceTests(unittest.TestCase):
             migrated["compatibility"]["migratedFromSchemaVersion"], "1.0"
         )
         self.assertIn("review", migrated["compatibility"]["migrationNote"])
+        self.assertEqual(
+            migrated["humanGates"][0]["decisionId"], "gate-1-decision-1"
+        )
+        self.assertEqual(
+            migrated["decisions"][0]["deciderLabel"],
+            "human Decider (legacy label unavailable)",
+        )
+        self.assertEqual(migrated["decisions"][0]["status"], "active")
         self.run_cli("validate", "--workspace", str(self.workspace))
 
     def test_role_packet_is_bounded_to_declared_inputs(self) -> None:
@@ -949,6 +1086,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "evidence-researcher",
             "--task",
             "Inventory the evidence without proposing a solution.",
+            "--assignee",
+            "Evidence worker",
+            "--run-id",
+            "evidence-run-1",
             "--input",
             "artifact-data/01-sprint-brief.json",
             "--output",
@@ -962,21 +1103,406 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIn("artifact-data/01-sprint-brief.json", packet)
         self.assertIn("Do not read other sprint files", packet)
         self.assertIn("Must not", packet)
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Evidence Researcher", dashboard)
+        self.assertIn("Assigned", dashboard)
 
         result = self.run_cli(
             "role-packet",
             "--workspace",
             str(self.workspace),
             "--role",
-            "evidence-researcher",
+            "product-strategist",
             "--task",
             "Read an undeclared file.",
+            "--assignee",
+            "Evidence worker",
+            "--run-id",
+            "evidence-run-2",
             "--input",
             "../outside.txt",
+            "--output",
+            "working/01-intake/escape.packet.md",
             check=False,
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("escapes the sprint workspace", result.stderr)
+
+    def test_missing_assignment_and_required_output_fail_before_convergence(self) -> None:
+        self.advance_to_qualify()
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "Qualification recommends a complete route.",
+        )
+
+        missing = self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+            check=False,
+        )
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("missing required evidence-researcher assignment", missing.stderr)
+
+        assignment_ids = self.create_qualify_packets()
+        incomplete_memo = "working/02-qualify/incomplete.result.md"
+        self.write_result_memo(incomplete_memo, "missing-output-test")
+        memo_path = self.workspace / incomplete_memo
+        memo_path.write_text(
+            memo_path.read_text(encoding="utf-8").replace(
+                "## Open questions", "## Questions omitted"
+            ),
+            encoding="utf-8",
+        )
+        incomplete = self.run_cli(
+            "role-result",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[0],
+            "--memo",
+            incomplete_memo,
+            check=False,
+        )
+        self.assertEqual(incomplete.returncode, 2)
+        self.assertIn("missing required section 'Open questions'", incomplete.stderr)
+
+    def test_stale_assignment_input_is_rejected(self) -> None:
+        self.advance_to_qualify()
+        assignment_ids = self.create_qualify_packets(include_brief=True)
+        brief = self.read_json("artifact-data/01-sprint-brief.json")
+        brief["summary"] = ["Material research changed after packet assignment."]
+        self.write_json("artifact-data/01-sprint-brief.json", brief)
+        memo = "working/02-qualify/evidence-researcher.result.md"
+        self.write_result_memo(memo, "stale-result")
+
+        result = self.run_cli(
+            "role-result",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[0],
+            "--memo",
+            memo,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("is stale because input", result.stderr)
+        self.run_cli(
+            "assignment-status",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[0],
+            "--status",
+            "rejected",
+            "--note",
+            "The packet input changed before the run returned.",
+        )
+        self.run_cli(
+            "assignment-status",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[1],
+            "--status",
+            "rejected",
+            "--note",
+            "The shared packet input changed before the run returned.",
+        )
+        self.run_cli(
+            "role-packet",
+            "--workspace",
+            str(self.workspace),
+            "--role",
+            "evidence-researcher",
+            "--task",
+            "Re-run qualification against the refreshed brief.",
+            "--assignee",
+            "Replacement evidence worker",
+            "--run-id",
+            "isolated-run-replacement",
+            "--assignment-id",
+            "02-qualify-evidence-researcher-replacement",
+            "--input",
+            "artifact-data/01-sprint-brief.json",
+            "--output",
+            "working/02-qualify/evidence-researcher-replacement.packet.md",
+        )
+
+    def test_duplicate_and_cross_contaminated_assignments_are_rejected(self) -> None:
+        self.advance_to_qualify()
+        assignment_ids = self.create_qualify_packets()
+        duplicate = self.run_cli(
+            "role-packet",
+            "--workspace",
+            str(self.workspace),
+            "--role",
+            "evidence-researcher",
+            "--task",
+            "Duplicate the qualification analysis.",
+            "--assignee",
+            "Another worker",
+            "--run-id",
+            "isolated-run-3",
+            "--assignment-id",
+            "02-qualify-evidence-researcher-duplicate",
+            "--output",
+            "working/02-qualify/evidence-researcher-duplicate.packet.md",
+            check=False,
+        )
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("Duplicate assignment for 02-qualify/evidence-researcher", duplicate.stderr)
+
+        contaminated_memo = "working/02-qualify/evidence-researcher.result.md"
+        self.write_result_memo(contaminated_memo, assignment_ids[1])
+        contaminated = self.run_cli(
+            "role-result",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[0],
+            "--memo",
+            contaminated_memo,
+            check=False,
+        )
+        self.assertEqual(contaminated.returncode, 2)
+        self.assertIn("references peer assignment", contaminated.stderr)
+
+    def test_duplicate_result_content_does_not_satisfy_required_roles(self) -> None:
+        self.advance_to_qualify()
+        assignment_ids = self.create_qualify_packets()
+        first_memo = "working/02-qualify/first.result.md"
+        second_memo = "working/02-qualify/second.result.md"
+        self.write_result_memo(first_memo, "shared-duplicate-content")
+        (self.workspace / second_memo).write_bytes(
+            (self.workspace / first_memo).read_bytes()
+        )
+        self.run_cli(
+            "role-result",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[0],
+            "--memo",
+            first_memo,
+        )
+        duplicate = self.run_cli(
+            "role-result",
+            "--workspace",
+            str(self.workspace),
+            "--assignment",
+            assignment_ids[1],
+            "--memo",
+            second_memo,
+            check=False,
+        )
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("duplicate result memo digest", duplicate.stderr)
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "Test duplicate-result gate enforcement.",
+        )
+        blocked = self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+            check=False,
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("validated returned result memo is required", blocked.stderr)
+
+    def test_valid_assignments_are_traceable_without_rendering_private_memos(self) -> None:
+        self.advance_to_qualify()
+        assignment_ids = self.create_qualify_packets()
+        private_marker = "RAW-PRIVATE-EVIDENCE-MUST-NOT-RENDER"
+        for assignment_id, role in zip(
+            assignment_ids,
+            WORKSPACE_MODULE.REQUIRED_ROLES_BY_STEP["02-qualify"],
+        ):
+            memo = f"working/02-qualify/{role}.result.md"
+            self.write_result_memo(memo, f"{assignment_id}-{private_marker}")
+            self.run_cli(
+                "role-result",
+                "--workspace",
+                str(self.workspace),
+                "--assignment",
+                assignment_id,
+                "--memo",
+                memo,
+            )
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "The returned role results support the route.",
+        )
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+        )
+
+        manifest = self.read_json("assignment-manifest.json")
+        self.assertEqual(
+            {item["status"] for item in manifest["assignments"]}, {"returned"}
+        )
+        self.assertTrue(
+            all(item["resultMemo"]["sourceAssignmentId"] == item["id"] for item in manifest["assignments"])
+        )
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Specialist assignments", dashboard)
+        self.assertIn("Synthetic evidence-researcher", dashboard)
+        self.assertNotIn(private_marker, dashboard)
+        self.assertNotIn("working/02-qualify", dashboard)
+        self.assertNotIn("isolated-run-1", dashboard)
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_human_decisions_are_attested_and_material_changes_require_new_records(self) -> None:
+        self.advance_to_qualify()
+        assignment_ids = self.create_qualify_packets()
+        for assignment_id, role in zip(
+            assignment_ids,
+            WORKSPACE_MODULE.REQUIRED_ROLES_BY_STEP["02-qualify"],
+        ):
+            memo = f"working/02-qualify/{role}.result.md"
+            self.write_result_memo(memo, assignment_id)
+            self.run_cli(
+                "role-result",
+                "--workspace",
+                str(self.workspace),
+                "--assignment",
+                assignment_id,
+                "--memo",
+                memo,
+            )
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "Initial research supports the full route.",
+        )
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve full route",
+            "--decider",
+            "Founder Decider",
+            "--considered-input",
+            f"assignment:{assignment_ids[0]}",
+        )
+        first = self.read_json("sprint-state.json")
+        first_decision = first["decisions"][-1]
+        self.assertEqual(first_decision["deciderLabel"], "Founder Decider")
+        self.assertGreaterEqual(len(first_decision["consideredInputs"]), 3)
+        self.assertEqual(first["humanGates"][0]["decisionId"], first_decision["id"])
+
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "focused-design-sprint",
+            "--rationale",
+            "Material research narrowed the uncertainty.",
+        )
+        reopened = self.read_json("sprint-state.json")
+        self.assertEqual(reopened["pendingGate"], "gate-1")
+        self.assertEqual(reopened["decisions"][0]["status"], "superseded")
+        self.assertEqual(reopened["humanGates"][0]["status"], "pending")
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve focused route",
+            "--decider",
+            "Founder Decider",
+        )
+
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "07-decision",
+        )
+        self.complete_artifact("07-decision")
+        state = self.read_json("sprint-state.json")
+        state["currentStep"] = "08-decide"
+        state["pendingGate"] = "gate-3"
+        self.write_json("sprint-state.json", state)
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-3",
+            "--decision",
+            "Choose concept alpha",
+            "--concept",
+            "concept-alpha",
+            "--decider",
+            "Founder Decider",
+        )
+        self.run_cli(
+            "set-concept",
+            "--workspace",
+            str(self.workspace),
+            "--concept",
+            "concept-beta",
+            "--rationale",
+            "Material research invalidated concept alpha.",
+        )
+        changed = self.read_json("sprint-state.json")
+        self.assertEqual(changed["pendingGate"], "gate-3")
+        self.assertEqual(changed["humanGates"][2]["status"], "pending")
+        self.assertEqual(changed["decisions"][-1]["status"], "superseded")
+
+        duplicate_state = changed
+        duplicate_state["decisions"].append(dict(duplicate_state["decisions"][1]))
+        self.write_json("sprint-state.json", duplicate_state)
+        duplicate = self.run_cli(
+            "validate", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(duplicate.returncode, 1)
+        self.assertIn("Duplicate decision id", duplicate.stderr)
 
     def test_challenge_and_questions_update_through_commands(self) -> None:
         self.initialise()
@@ -1034,6 +1560,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--rationale",
             "The strategic foundation already exists.",
         )
+        self.complete_required_assignments("02-qualify")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -1070,6 +1597,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "02-evidence-ledger",
         )
         self.complete_artifact("02-evidence-ledger")
+        self.complete_required_assignments("03-evidence")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -1107,6 +1635,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
         self.complete_artifact("10-test-plan")
+        self.complete_required_assignments("11-customer-sessions")
 
         result = self.run_cli(
             "complete-step",
@@ -1164,6 +1693,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--rationale",
             "The product needs a founding hypothesis before prototyping.",
         )
+        self.complete_required_assignments("02-qualify")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -1204,6 +1734,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
             self.complete_artifact(artifact_id)
+            self.complete_required_assignments(step_id)
             self.run_cli(
                 "complete-step",
                 "--workspace",
@@ -1234,6 +1765,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
             self.complete_artifact(artifact_id)
+        self.complete_required_assignments("09-experiment")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -1246,6 +1778,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prototype</title></head><body><main><h1>Prototype</h1></main></body></html>\n",
             encoding="utf-8",
         )
+        self.complete_required_assignments("10-prototype")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -1288,6 +1821,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "2",
         )
         self.complete_artifact("11-customer-evidence")
+        self.complete_required_assignments("11-customer-sessions")
         self.run_cli(
             "complete-step",
             "--workspace",
@@ -1308,6 +1842,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
             self.complete_artifact(artifact_id)
+            self.complete_required_assignments(step_id)
             self.run_cli(
                 "complete-step",
                 "--workspace",
@@ -1359,6 +1894,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--rationale",
             "The direction is settled and only delivery remains.",
         )
+        self.complete_required_assignments("02-qualify")
         self.run_cli(
             "complete-step",
             "--workspace",

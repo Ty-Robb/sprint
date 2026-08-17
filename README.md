@@ -38,8 +38,8 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 
 - A guided, resumable workflow with explicit human decision gates
 - Separate method-profile, execution-mode, and route selectors with a versioned fidelity contract
-- Bounded AI roles that cannot silently take over another role
-- A living HTML dashboard showing process completion separately from method fidelity, evidence, decisions, and next action
+- Bounded AI roles with a versioned assignment manifest, immutable packet/input digests, result-memo lifecycle, and enforced independent runs
+- A living HTML dashboard showing process completion separately from method fidelity, evidence, human decision attestations, privacy-safe specialist provenance, and next action
 - HTML sprint artifacts, from the brief and evidence ledger through the outcome report
 - Independent solution directions, a decision record, and a testable prototype
 - A real-customer test plan and traceable synthesis
@@ -47,7 +47,7 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 
 ## How it runs
 
-The skill includes a dependency-free Python workspace engine. It creates and migrates sprint state, safely renders structured artifact data into HTML, generates bounded specialist role packets, enforces stage and human gates, tracks real-customer sessions, records canonical-purpose/method/timebox/participation deviations, and validates the final bundle.
+The skill includes a dependency-free Python workspace engine. It creates and migrates sprint state, safely renders structured artifact data into HTML, registers bounded specialist role packets and returned memos, enforces required roles, freshness, independence, stage and human gates, tracks real-customer sessions, records canonical-purpose/method/timebox/participation deviations, and validates the final bundle.
 
 Persisted JSON uses strict, versioned JSON Schema Draft 2020-12 contracts. See [JSON schemas and workspace migrations](skills/run-design-sprint/references/json-schemas.md) for compatibility, field-level validation errors, dry runs, and protected migrations.
 
@@ -57,14 +57,15 @@ The generated sprint directory contains:
 .gitignore          Sensitive-source fallback rules
 index.html          Disposable generated dashboard
 sprint-state.json   Canonical resumable workflow state
+assignment-manifest.json  Canonical packet, assignee/run, digest, lifecycle, and result provenance
 artifact-data/      Canonical structured artifact content
 artifacts/          Disposable generated HTML documents
 assets/sprint.css   Disposable generated stylesheet
-working/            Isolated specialist packets and memos
+working/            Private isolated specialist packet and result files
 prototype/          Human-authored customer-test prototype
 ```
 
-The whole generated directory is private by default, including its HTML and structured data.
+The whole generated directory is private by default, including its HTML and structured data. The dashboard renders only safe specialist labels, lifecycle states, and abbreviated digests; it never renders packet inputs or result-memo bodies.
 Edit canonical JSON, never generated views. `render` deterministically rebuilds the
 HTML and CSS without advancing workflow timestamps; `render --check` and `validate`
 fail when those views do not match the current JSON and templates. Engine-written

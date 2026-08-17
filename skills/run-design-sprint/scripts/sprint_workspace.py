@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import html
 import json
 import os
@@ -29,6 +30,7 @@ HTML_KIT_DIR = SKILL_DIR / "assets" / "html-kit"
 SCHEMAS_DIR = REFERENCES_DIR / "schemas"
 
 STATE_FILENAME = "sprint-state.json"
+ASSIGNMENT_MANIFEST_FILENAME = "assignment-manifest.json"
 SCHEMA_VERSION = "2.0"
 LEGACY_SCHEMA_VERSION = "1.0"
 REFERENCE_SCHEMA_VERSION = "1.0"
@@ -36,6 +38,8 @@ STATE_SCHEMA_VERSION = SCHEMA_VERSION
 LEGACY_STATE_SCHEMA_VERSION = LEGACY_SCHEMA_VERSION
 ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION
 FIDELITY_SCHEMA_VERSION = "1.0"
+ASSIGNMENT_MANIFEST_SCHEMA_VERSION = "1.0"
+ROLE_PACKET_VERSION = "1.0"
 PORTABLE_FILE_MODE = 0o644
 
 SCHEMA_FAMILIES = {
@@ -78,6 +82,16 @@ SCHEMA_FAMILIES = {
         "current": REFERENCE_SCHEMA_VERSION,
         "schemas": {
             REFERENCE_SCHEMA_VERSION: SCHEMAS_DIR / "method-profiles-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+    "assignment-manifest": {
+        "label": "assignment manifest",
+        "current": ASSIGNMENT_MANIFEST_SCHEMA_VERSION,
+        "schemas": {
+            ASSIGNMENT_MANIFEST_SCHEMA_VERSION: (
+                SCHEMAS_DIR / "assignment-manifest-v1.schema.json"
+            )
         },
         "migratable": set(),
     },
@@ -156,6 +170,61 @@ GATE_NAMES = {
     "gate-3": "Selected solution direction",
     "gate-4": "Prototype readiness",
     "gate-5": "Final outcome",
+}
+
+REQUIRED_RESULT_SECTIONS = (
+    "Findings",
+    "Evidence and provenance",
+    "Assumptions and inferences",
+    "Recommendation",
+    "Risks or disagreements",
+    "Open questions",
+    "Stop condition reached",
+)
+INDEPENDENT_ASSIGNMENT_STEPS = {
+    "02-qualify",
+    "06-questions",
+    "07-explore",
+    "10-prototype",
+}
+REQUIRED_ROLES_BY_STEP = {
+    "02-qualify": ("evidence-researcher", "product-strategist"),
+    "03-evidence": ("evidence-researcher", "research-lead"),
+    "04-foundation": (
+        "product-strategist",
+        "evidence-researcher",
+        "critical-reviewer",
+    ),
+    "05-map": ("experience-designer", "technical-lead"),
+    "06-questions": (
+        "product-strategist",
+        "technical-lead",
+        "critical-reviewer",
+    ),
+    "07-explore": (
+        "product-strategist",
+        "experience-designer",
+        "technical-lead",
+        "critical-reviewer",
+    ),
+    "09-experiment": ("experience-designer", "research-lead", "technical-lead"),
+    "10-prototype": ("prototype-builder", "critical-reviewer", "research-lead"),
+    "11-customer-sessions": ("research-lead",),
+    "12-synthesis": ("synthesis-analyst", "critical-reviewer"),
+}
+ASSIGNMENT_TRANSITIONS = {
+    "assigned": {"in-progress", "rejected"},
+    "in-progress": {"rejected"},
+    "returned": {"accepted", "rejected"},
+    "accepted": set(),
+    "rejected": set(),
+}
+GATE_DEFAULT_INPUTS = {
+    "gate-1": ("artifact", "01-sprint-brief"),
+    "gate-2": ("artifact", "05-sprint-questions"),
+    "gate-3": ("artifact", "07-decision"),
+    "gate-4": ("prototype", "prototype"),
+    "gate-5": ("artifact", "13-outcome"),
 }
 
 WORKSPACE_GITIGNORE = """# This generated workspace is private by default.
@@ -500,6 +569,64 @@ def state_path(workspace: Path) -> Path:
     return workspace / STATE_FILENAME
 
 
+def assignment_manifest_path(workspace: Path) -> Path:
+    return workspace / ASSIGNMENT_MANIFEST_FILENAME
+
+
+def empty_assignment_manifest(timestamp: str | None = None) -> dict[str, Any]:
+    return {
+        "schemaVersion": ASSIGNMENT_MANIFEST_SCHEMA_VERSION,
+        "assignments": [],
+        "updatedAt": timestamp or utc_now(),
+    }
+
+
+def load_assignment_manifest(workspace: Path) -> dict[str, Any]:
+    path = assignment_manifest_path(workspace)
+    manifest = read_json(path)
+    require_valid_schema(manifest, "assignment-manifest", path)
+    return manifest
+
+
+def save_assignment_manifest(
+    workspace: Path, manifest: dict[str, Any], timestamp: str | None = None
+) -> None:
+    manifest["updatedAt"] = timestamp or utc_now()
+    path = assignment_manifest_path(workspace)
+    require_valid_schema(manifest, "assignment-manifest", path)
+    write_json(path, manifest)
+
+
+def digest_bytes(payload: bytes) -> str:
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def file_digest(path: Path) -> str:
+    try:
+        return digest_bytes(path.read_bytes())
+    except FileNotFoundError as error:
+        raise SprintError(f"Missing provenance file: {path}") from error
+    except OSError as error:
+        raise SprintError(f"Could not read provenance file {path}: {error}") from error
+
+
+def resolved_workspace_file(
+    workspace: Path, value: str, *, below: str | None = None
+) -> tuple[Path, str]:
+    candidate = (workspace / value).resolve()
+    root = (workspace / below).resolve() if below else workspace.resolve()
+    try:
+        relative = candidate.relative_to(workspace.resolve()).as_posix()
+        candidate.relative_to(root)
+    except ValueError as error:
+        if below:
+            message = f"Path must stay below {below}/: {value}"
+        else:
+            message = f"Path escapes the sprint workspace: {value}"
+        raise SprintError(message) from error
+    return candidate, relative
+
+
 def load_state(workspace: Path) -> dict[str, Any]:
     path = state_path(workspace)
     state = read_json(path)
@@ -737,6 +864,7 @@ def migrate_legacy_state(state: dict[str, Any]) -> dict[str, Any]:
             add_skip_deviation(
                 migrated, step_id, reason, "legacy-skip", migration_timestamp
             )
+    migrate_legacy_decisions(migrated, migration_timestamp)
     migrated["compatibility"] = {
         "migratedFromSchemaVersion": LEGACY_STATE_SCHEMA_VERSION,
         "migrationNote": "Legacy state was classified as adaptive/live; review and revise the selectors if that historical assumption is inaccurate.",
@@ -744,6 +872,85 @@ def migrate_legacy_state(state: dict[str, Any]) -> dict[str, Any]:
     }
     refresh_fidelity_summary(migrated)
     return migrated
+
+
+def migrate_legacy_decisions(
+    state: dict[str, Any], migration_timestamp: str
+) -> None:
+    """Add conservative attestations to legacy decisions without inventing evidence."""
+
+    legacy_decisions = state.get("decisions", [])
+    if not isinstance(legacy_decisions, list) or not legacy_decisions:
+        return
+    migrated_decisions: list[dict[str, Any]] = []
+    gate_counts: dict[str, int] = {}
+    for legacy in legacy_decisions:
+        if not isinstance(legacy, dict):
+            continue
+        gate_id = str(legacy.get("gate", ""))
+        gate_counts[gate_id] = gate_counts.get(gate_id, 0) + 1
+        decision_id = f"{gate_id}-decision-{gate_counts[gate_id]}"
+        decision_text = str(legacy.get("decision", "Legacy decision"))
+        if gate_id == "gate-1":
+            subject_kind = "route"
+            subject_value = str(state.get("route", "undecided"))
+        elif gate_id == "gate-3":
+            subject_kind = "concept"
+            subject_value = str(state.get("selectedConcept") or decision_text)
+            state.setdefault("selectedConcept", subject_value)
+        else:
+            subject_kind = "gate"
+            subject_value = gate_id
+        legacy_reference = f"legacy-{gate_id}-decision-{gate_counts[gate_id]}"
+        migrated_decisions.append(
+            {
+                "id": decision_id,
+                "gate": gate_id,
+                "decision": decision_text,
+                "deciderLabel": "human Decider (legacy label unavailable)",
+                "consideredInputs": [
+                    provenance_record(
+                        "record",
+                        legacy_reference,
+                        digest_bytes(json_text(legacy).encode("utf-8")),
+                    )
+                ],
+                "subject": {
+                    "kind": subject_kind,
+                    "value": subject_value,
+                    "digest": value_digest(subject_kind, subject_value),
+                },
+                "rationale": str(legacy.get("rationale", "")),
+                "reservations": str(legacy.get("reservations", "")),
+                "status": "active",
+                "decidedAt": str(
+                    legacy.get("decidedAt") or migration_timestamp
+                ),
+            }
+        )
+    for gate_id in gate_counts:
+        same_gate = [
+            item for item in migrated_decisions if item.get("gate") == gate_id
+        ]
+        for superseded in same_gate[:-1]:
+            superseded["status"] = "superseded"
+            superseded["supersededAt"] = migration_timestamp
+            superseded["supersededReason"] = (
+                "A later legacy decision for this gate was active at migration."
+            )
+    state["decisions"] = migrated_decisions
+    active_by_gate = {
+        item["gate"]: item
+        for item in migrated_decisions
+        if item.get("status") == "active"
+    }
+    for gate in state.get("humanGates", []):
+        if not isinstance(gate, dict) or gate.get("status") != "complete":
+            continue
+        decision = active_by_gate.get(gate.get("id"))
+        if decision:
+            gate["decisionId"] = decision["id"]
+            gate["deciderLabel"] = decision["deciderLabel"]
 
 
 def refresh_fidelity_summary(state: dict[str, Any]) -> None:
@@ -866,6 +1073,11 @@ def class_for_status(status: str) -> str:
         "draft": "status--unknown",
         "in-review": "status--active",
         "ready-for-decision": "status--decision",
+        "assigned": "status--unknown",
+        "in-progress": "status--active",
+        "returned": "status--decision",
+        "accepted": "status--complete",
+        "rejected": "status--risk",
         "blocked": "status--risk",
         "observed": "status--observed",
         "assumption": "status--assumption",
@@ -1379,6 +1591,53 @@ def render_artifact_links(artifacts: list[dict[str, Any]]) -> str:
     return "\n".join(output)
 
 
+def short_digest(value: Any) -> str:
+    text = str(value)
+    return text.removeprefix("sha256:")[:12] if text else "pending"
+
+
+def render_assignment_provenance(manifest: dict[str, Any]) -> str:
+    assignments = manifest.get("assignments", [])
+    if not isinstance(assignments, list) or not assignments:
+        return (
+            '<li class="artifact"><div><strong>No specialist assignments yet</strong>'
+            '<p>Registered packets and result-memo provenance will appear here.</p></div></li>'
+        )
+    roles = load_role_contracts()
+    output = []
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            continue
+        role_id = str(assignment.get("role", "specialist"))
+        role_label = roles.get(role_id, {}).get("displayName", display_label(role_id))
+        assignee = assignment.get("assignee", {})
+        safe_run_reference = short_digest(
+            value_digest("run", str(assignee.get("runId", "unknown run")))
+        )
+        result = assignment.get("resultMemo", {})
+        provenance = (
+            f"Packet {short_digest(assignment.get('packet', {}).get('digest'))}"
+            + (
+                f" · result {short_digest(result.get('digest'))}"
+                if isinstance(result, dict) and result
+                else " · result pending"
+            )
+        )
+        output.append(
+            '<li class="artifact">'
+            '<span class="step__marker" aria-hidden="true">#</span>'
+            f'<div><strong>{escape(role_label)}</strong>'
+            f'<p>{escape(step_name(str(assignment.get("step", ""))))} · '
+            f'{escape(assignee.get("label", "unassigned"))} / '
+            f'run {escape(safe_run_reference)}</p>'
+            f'<p>{escape(provenance)}</p></div>'
+            f'<span class="status {class_for_status(str(assignment.get("status", "assigned")))}">'
+            f'{escape(display_label(assignment.get("status")))}</span>'
+            '</li>'
+        )
+    return "\n".join(output)
+
+
 def render_decisions(decisions: Any) -> str:
     if not isinstance(decisions, list) or not decisions:
         return '<li class="decision"><div><strong>No decisions yet</strong><p>Human gate decisions will appear here.</p></div></li>'
@@ -1386,20 +1645,31 @@ def render_decisions(decisions: Any) -> str:
     for decision in decisions:
         if not isinstance(decision, dict):
             continue
+        considered = decision.get("consideredInputs", [])
+        input_summary = ", ".join(
+            f"{item.get('kind')}:{item.get('reference')}@{short_digest(item.get('digest'))}"
+            for item in considered
+            if isinstance(item, dict)
+        )
+        status = str(decision.get("status", "active"))
         output.append(
             '<li class="decision">'
-            '<span class="step__marker" aria-hidden="true">✓</span>'
+            f'<span class="step__marker" aria-hidden="true">{"✓" if status == "active" else "↺"}</span>'
             f'<div><strong>{escape(decision.get("decision", "Decision"))}</strong>'
             f'<p>{escape(GATE_NAMES.get(str(decision.get("gate")), str(decision.get("gate", "Gate"))))}: '
-            f'{escape(decision.get("rationale", "No rationale recorded"))}</p></div>'
-            '<span class="status status--decision">Decision</span>'
+            f'{escape(decision.get("rationale") or "No rationale recorded")}</p>'
+            f'<p>Decider: {escape(decision.get("deciderLabel", "unrecorded"))} · '
+            f'{escape(display_date(str(decision.get("decidedAt", ""))))}</p>'
+            f'<p>Considered: {escape(input_summary or "No inputs recorded")}</p></div>'
+            f'<span class="status {"status--decision" if status == "active" else "status--unknown"}">'
+            f'{escape(display_label(status))}</span>'
             "</li>"
         )
     return "\n".join(output)
 
 
 def render_dashboard(
-    state: dict[str, Any], artifacts: list[dict[str, Any]]
+    state: dict[str, Any], artifacts: list[dict[str, Any]], manifest: dict[str, Any]
 ) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
     skipped = set(state.get("skippedSteps", []))
@@ -1461,6 +1731,8 @@ def render_dashboard(
             "CURRENT_FIDELITY_GUIDANCE": render_current_fidelity_guidance(state),
             "ARTIFACT_COUNT": len(artifacts),
             "ARTIFACT_LINKS": render_artifact_links(artifacts),
+            "ASSIGNMENT_COUNT": len(manifest.get("assignments", [])),
+            "ASSIGNMENT_SUMMARY": render_assignment_provenance(manifest),
             "DECISION_SUMMARY": render_decisions(state.get("decisions", [])),
             "OPEN_QUESTIONS": questions_html,
         },
@@ -1479,6 +1751,13 @@ def load_workspace_documents(
     """Validate all persisted workspace JSON before a mutation or render."""
 
     state = load_state(workspace)
+    manifest = load_assignment_manifest(workspace)
+    manifest_errors = assignment_manifest_errors(workspace, manifest, state)
+    if manifest_errors:
+        raise SprintError(
+            "Assignment manifest is invalid:\n"
+            + "\n".join(f"- {item}" for item in manifest_errors)
+        )
     specs = load_artifact_specs()
     data_dir = workspace / "artifact-data"
     artifact_documents = (
@@ -1511,6 +1790,7 @@ def load_workspace_documents(
 def build_render_plan(workspace: Path) -> RenderPlan:
     source_state = read_json(state_path(workspace))
     state, specs, artifact_documents = load_workspace_documents(workspace)
+    manifest = load_assignment_manifest(workspace)
     registrations: list[dict[str, Any]] = []
     generated_files: dict[Path, str] = {
         workspace / "assets" / "sprint.css": (
@@ -1531,7 +1811,9 @@ def build_render_plan(workspace: Path) -> RenderPlan:
         generated_files[output_path] = rendered
         registrations.append(registration)
     registrations.sort(key=lambda item: item["id"])
-    generated_files[workspace / "index.html"] = render_dashboard(state, registrations)
+    generated_files[workspace / "index.html"] = render_dashboard(
+        state, registrations, manifest
+    )
 
     normalized_state = dict(state)
     normalized_state["artifacts"] = registrations
@@ -1550,7 +1832,11 @@ def build_render_plan(workspace: Path) -> RenderPlan:
         generated_files=generated_files,
         state_update=state_update,
         stale_files=sorted(rendered_artifact_files - expected_artifact_files),
-        canonical_files=[state_path(workspace), *data_paths],
+        canonical_files=[
+            state_path(workspace),
+            assignment_manifest_path(workspace),
+            *data_paths,
+        ],
     )
 
 
@@ -1738,6 +2024,7 @@ def command_init(args: argparse.Namespace) -> None:
         "updatedAt": now,
     }
     save_state(output, state, timestamp=now)
+    save_assignment_manifest(output, empty_assignment_manifest(now), timestamp=now)
     save_artifact_data(
         output / "artifact-data" / "01-sprint-brief.json",
         initial_brief_data(challenge, now),
@@ -1792,10 +2079,36 @@ def command_set_route(args: argparse.Namespace) -> None:
     if args.route not in ROUTES - {"undecided"}:
         raise SprintError(f"Invalid sprint route: {args.route}")
     state, _specs, _artifacts = load_workspace_documents(workspace)
+    existing_decision_errors = decision_record_errors(state)
+    if existing_decision_errors:
+        raise SprintError(
+            "Decision provenance is invalid: " + "; ".join(existing_decision_errors)
+        )
     previous_route = state.get("route")
     apply_route(state, args.route)
     state["routeRationale"] = args.rationale.strip()
+    now = utc_now()
+    route_changed_after_decision = (
+        previous_route != args.route
+        and active_gate_decision(state, "gate-1") is not None
+    )
+    if route_changed_after_decision:
+        supersede_gate_decision(
+            state,
+            "gate-1",
+            f"Material research changed the sprint route from {previous_route} to {args.route}.",
+            now,
+        )
+        if "03-evidence" in state.get("completedSteps", []):
+            state["currentStep"] = "03-evidence"
+        state["nextAction"] = {
+            "title": "Re-approve the post-research route",
+            "body": "Material research changed the route, so the earlier Gate 1 attestation was superseded.",
+            "humanInput": "Record a new human decision for the changed route.",
+        }
     if (
+        not route_changed_after_decision
+        and
         previous_route == "research-first"
         and "03-evidence" in state.get("completedSteps", [])
     ):
@@ -1810,15 +2123,55 @@ def command_set_route(args: argparse.Namespace) -> None:
                 "body": "The route was updated after the research-first stage.",
                 "humanInput": "None unless the next step requires a decision.",
             }
-    else:
+    elif not route_changed_after_decision:
         state["nextAction"] = {
             "title": "Approve the sprint route",
             "body": f"Review the recommendation for {args.route.replace('-', ' ')}.",
             "humanInput": "Approve the challenge and route, or request a revision.",
         }
-    save_state(workspace, state)
+    save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print(f"Set sprint route: {args.route}")
+
+
+def command_set_concept(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    existing_decision_errors = decision_record_errors(state)
+    if existing_decision_errors:
+        raise SprintError(
+            "Decision provenance is invalid: " + "; ".join(existing_decision_errors)
+        )
+    concept = args.concept.strip()
+    if not concept:
+        raise SprintError("Selected concept cannot be empty")
+    previous = state.get("selectedConcept")
+    state["selectedConcept"] = concept
+    state["selectedConceptRationale"] = args.rationale.strip()
+    now = utc_now()
+    if previous and previous != concept and active_gate_decision(state, "gate-3"):
+        supersede_gate_decision(
+            state,
+            "gate-3",
+            "Material research changed the selected concept from "
+            f"{previous!r} to {concept!r}.",
+            now,
+        )
+        state["currentStep"] = "08-decide"
+        state["nextAction"] = {
+            "title": "Re-approve the selected concept",
+            "body": "Material research changed the concept, so the earlier Gate 3 attestation was superseded.",
+            "humanInput": "Record a new human decision for the changed concept.",
+        }
+    else:
+        state["nextAction"] = {
+            "title": "Approve the selected concept",
+            "body": "Review the selected direction and its evidence-backed rationale.",
+            "humanInput": "Approve the concept at Gate 3 or request a revision.",
+        }
+    save_state(workspace, state, timestamp=now)
+    render_workspace(workspace)
+    print(f"Set selected concept: {concept}")
 
 
 def command_set_method_profile(args: argparse.Namespace) -> None:
@@ -2070,6 +2423,7 @@ def artifact_status(workspace: Path, artifact_id: str) -> str | None:
 def command_complete_step(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest = load_assignment_manifest(workspace)
     step_id = args.step
     if step_id not in STEP_INDEX:
         raise SprintError(f"Unknown step: {step_id}")
@@ -2106,6 +2460,12 @@ def command_complete_step(args: argparse.Namespace) -> None:
             raise SprintError(
                 f"Artifact {artifact_id} must have status {' or '.join(sorted(allowed))}; found {status or 'missing'}"
             )
+    assignment_errors = required_assignment_errors(manifest, step_id)
+    if assignment_errors:
+        raise SprintError(
+            f"Required specialist results are incomplete for {step_id}: "
+            + "; ".join(assignment_errors)
+        )
     state.setdefault("completedSteps", []).append(step_id)
     gate_id = GATE_BY_STEP.get(step_id)
     if gate_id:
@@ -2166,9 +2526,191 @@ def command_skip_step(args: argparse.Namespace) -> None:
     print(f"Skipped step: {step_id}")
 
 
+def active_gate_decision(
+    state: dict[str, Any], gate_id: str
+) -> dict[str, Any] | None:
+    return next(
+        (
+            item
+            for item in reversed(state.get("decisions", []))
+            if isinstance(item, dict)
+            and item.get("gate") == gate_id
+            and item.get("status") == "active"
+        ),
+        None,
+    )
+
+
+def clear_gate_attestation(gate: dict[str, Any]) -> None:
+    for key in (
+        "decisionId",
+        "decision",
+        "deciderLabel",
+        "rationale",
+        "decidedAt",
+    ):
+        gate.pop(key, None)
+
+
+def supersede_gate_decision(
+    state: dict[str, Any], gate_id: str, reason: str, timestamp: str
+) -> None:
+    decision = active_gate_decision(state, gate_id)
+    if decision is None:
+        return
+    decision["status"] = "superseded"
+    decision["supersededAt"] = timestamp
+    decision["supersededReason"] = reason
+    for gate in state.get("humanGates", []):
+        if isinstance(gate, dict) and gate.get("id") == gate_id:
+            clear_gate_attestation(gate)
+            gate["status"] = "pending"
+            break
+    state["pendingGate"] = gate_id
+    state["status"] = "waiting-for-human"
+
+
+def provenance_record(kind: str, reference: str, digest: str) -> dict[str, str]:
+    return {"kind": kind, "reference": reference, "digest": digest}
+
+
+def value_digest(kind: str, value: str) -> str:
+    return digest_bytes(f"{kind}\0{value}".encode("utf-8"))
+
+
+def resolve_decision_input(
+    workspace: Path,
+    state: dict[str, Any],
+    manifest: dict[str, Any],
+    value: str,
+) -> dict[str, str]:
+    raw = value.strip()
+    if not raw:
+        raise SprintError("Considered input cannot be empty")
+    if ":" in raw:
+        requested_kind, reference = raw.split(":", 1)
+    elif assignment_by_id(manifest, raw):
+        requested_kind, reference = "assignment", raw
+    elif (workspace / "artifact-data" / f"{raw}.json").is_file():
+        requested_kind, reference = "artifact", raw
+    else:
+        raise SprintError(
+            f"Unknown considered input {raw!r}; use artifact:<id>, assignment:<id>, "
+            "route:<route>, concept:<label>, or record:<label>"
+        )
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}", reference):
+        raise SprintError(
+            "Considered-input references must be safe labels, not paths or raw evidence"
+        )
+    if requested_kind == "artifact":
+        path = workspace / "artifact-data" / f"{reference}.json"
+        if not path.is_file():
+            raise SprintError(f"Unknown considered artifact: {reference}")
+        return provenance_record("artifact", reference, file_digest(path))
+    if requested_kind in {"assignment", "assignment-result"}:
+        assignment = assignment_by_id(manifest, reference)
+        result = assignment.get("resultMemo") if assignment else None
+        if (
+            not isinstance(result, dict)
+            or assignment.get("status") not in {"returned", "accepted"}
+        ):
+            raise SprintError(
+                f"Considered assignment {reference} has no valid returned result memo"
+            )
+        return provenance_record(
+            "assignment-result", reference, str(result["digest"])
+        )
+    if requested_kind == "prototype":
+        if reference != "prototype":
+            raise SprintError("Prototype provenance reference must be prototype")
+        path = workspace / "prototype" / "index.html"
+        return provenance_record("prototype", reference, file_digest(path))
+    if requested_kind == "route":
+        if reference != state.get("route"):
+            raise SprintError(
+                f"Considered route {reference!r} does not match the current route"
+            )
+        return provenance_record("route", reference, value_digest("route", reference))
+    if requested_kind == "concept":
+        selected_concept = str(state.get("selectedConcept", ""))
+        if reference not in {selected_concept, "selected-concept"}:
+            raise SprintError(
+                f"Considered concept {reference!r} does not match the selected concept"
+            )
+        return provenance_record(
+            "concept", "selected-concept", value_digest("concept", selected_concept)
+        )
+    if requested_kind == "record":
+        return provenance_record("record", reference, value_digest("record", reference))
+    raise SprintError(f"Unsupported considered-input kind: {requested_kind}")
+
+
+def gate_considered_inputs(
+    workspace: Path,
+    state: dict[str, Any],
+    manifest: dict[str, Any],
+    gate_id: str,
+    supplied: list[str],
+) -> list[dict[str, str]]:
+    default_kind, default_reference = GATE_DEFAULT_INPUTS[gate_id]
+    records = [
+        resolve_decision_input(
+            workspace,
+            state,
+            manifest,
+            f"{default_kind}:{default_reference}",
+        )
+    ]
+    if gate_id == "gate-1":
+        records.append(
+            resolve_decision_input(
+                workspace, state, manifest, f"route:{state['route']}"
+            )
+        )
+    elif gate_id == "gate-3":
+        records.append(
+            resolve_decision_input(
+                workspace,
+                state,
+                manifest,
+                "concept:selected-concept",
+            )
+        )
+    records.extend(
+        resolve_decision_input(workspace, state, manifest, value)
+        for value in supplied
+    )
+    unique = {
+        (item["kind"], item["reference"], item["digest"]): item
+        for item in records
+    }
+    return [unique[key] for key in sorted(unique)]
+
+
+def decision_subject(
+    state: dict[str, Any], gate_id: str, decision: str
+) -> dict[str, str]:
+    if gate_id == "gate-1":
+        kind = "route"
+        value = str(state["route"])
+    elif gate_id == "gate-3":
+        kind = "concept"
+        value = str(state.get("selectedConcept") or decision)
+    else:
+        kind = "gate"
+        value = gate_id
+    return {"kind": kind, "value": value, "digest": value_digest(kind, value)}
+
+
 def command_gate(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest = load_assignment_manifest(workspace)
+    existing_decision_errors = decision_record_errors(state)
+    if existing_decision_errors:
+        raise SprintError(
+            "Decision provenance is invalid: " + "; ".join(existing_decision_errors)
+        )
     gate_id = args.gate
     if gate_id not in GATE_NAMES:
         raise SprintError(f"Unknown gate: {gate_id}")
@@ -2176,6 +2718,11 @@ def command_gate(args: argparse.Namespace) -> None:
         raise SprintError(f"Pending gate is {state.get('pendingGate')}; cannot record {gate_id}")
     if gate_id == "gate-1" and state.get("route") == "undecided":
         raise SprintError("Gate 1 requires an approved sprint route")
+    if gate_id == "gate-3":
+        concept = (args.concept or state.get("selectedConcept") or args.decision).strip()
+        if not concept:
+            raise SprintError("Gate 3 requires a selected concept")
+        state["selectedConcept"] = concept
     normalized = args.decision.strip().lower()
     customer = state.get("customerTesting", {})
     if gate_id == "gate-5":
@@ -2189,20 +2736,37 @@ def command_gate(args: argparse.Namespace) -> None:
             raise SprintError(
                 "Proceed, Iterate, or Pivot requires at least one real customer session; use Investigate or Stop otherwise"
             )
+    now = utc_now()
+    decision_count = sum(
+        1
+        for item in state.get("decisions", [])
+        if isinstance(item, dict) and item.get("gate") == gate_id
+    )
     decision = {
+        "id": f"{gate_id}-decision-{decision_count + 1}",
         "gate": gate_id,
         "decision": args.decision.strip(),
-        "rationale": args.rationale.strip(),
+        "deciderLabel": args.decider.strip(),
+        "consideredInputs": gate_considered_inputs(
+            workspace, state, manifest, gate_id, args.considered_input
+        ),
+        "subject": decision_subject(state, gate_id, args.decision.strip()),
+        "rationale": (args.rationale or "").strip(),
         "reservations": args.reservations.strip() if args.reservations else "",
-        "decidedAt": utc_now(),
+        "status": "active",
+        "decidedAt": now,
     }
+    if not decision["decision"] or not decision["deciderLabel"]:
+        raise SprintError("Decision and decider label cannot be empty")
     state.setdefault("decisions", []).append(decision)
     for gate in state.get("humanGates", []):
         if gate.get("id") == gate_id:
             gate.update(
                 {
                     "status": "complete",
+                    "decisionId": decision["id"],
                     "decision": decision["decision"],
+                    "deciderLabel": decision["deciderLabel"],
                     "rationale": decision["rationale"],
                     "decidedAt": decision["decidedAt"],
                 }
@@ -2235,7 +2799,7 @@ def command_gate(args: argparse.Namespace) -> None:
             "body": "The human gate is complete. Begin the next sprint step.",
             "humanInput": "None unless the Orchestrator identifies a required decision.",
         }
-    save_state(workspace, state)
+    save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print(f"Recorded {gate_id}: {args.decision.strip()}")
 
@@ -2334,36 +2898,399 @@ def command_next_action(args: argparse.Namespace) -> None:
     print("Updated the next action")
 
 
+def memo_section_errors(text: str, required_outputs: list[str]) -> list[str]:
+    matches = list(
+        re.finditer(r"^##\s+(?:\d+\.\s*)?(.+?)\s*$", text, re.MULTILINE)
+    )
+    headings = [match.group(1).strip().rstrip(":") for match in matches]
+    errors = []
+    for required in required_outputs:
+        matching_indexes = [
+            index
+            for index, item in enumerate(headings)
+            if item.casefold() == required.casefold()
+        ]
+        count = len(matching_indexes)
+        if count == 0:
+            errors.append(f"result memo is missing required section {required!r}")
+        elif count > 1:
+            errors.append(f"result memo duplicates required section {required!r}")
+        else:
+            match_index = matching_indexes[0]
+            body_start = matches[match_index].end()
+            body_end = (
+                matches[match_index + 1].start()
+                if match_index + 1 < len(matches)
+                else len(text)
+            )
+            if not text[body_start:body_end].strip():
+                errors.append(f"result memo section {required!r} is empty")
+    return errors
+
+
+def assignment_by_id(
+    manifest: dict[str, Any], assignment_id: str
+) -> dict[str, Any] | None:
+    return next(
+        (
+            item
+            for item in manifest.get("assignments", [])
+            if isinstance(item, dict) and item.get("id") == assignment_id
+        ),
+        None,
+    )
+
+
+def assignment_manifest_errors(
+    workspace: Path, manifest: dict[str, Any], state: dict[str, Any]
+) -> list[str]:
+    errors: list[str] = []
+    assignments = manifest.get("assignments", [])
+    if not isinstance(assignments, list):
+        return ["assignments must be a list"]
+    ids: dict[str, int] = {}
+    packet_paths: dict[str, str] = {}
+    result_paths: dict[str, str] = {}
+    result_digests: dict[str, str] = {}
+    step_roles: dict[tuple[str, str], str] = {}
+    independent_runs: dict[tuple[str, str], str] = {}
+    completed_steps = set(state.get("completedSteps", []))
+
+    for index, assignment in enumerate(assignments):
+        if not isinstance(assignment, dict):
+            continue
+        assignment_id = str(assignment.get("id", f"index-{index}"))
+        step = str(assignment.get("step", ""))
+        role = str(assignment.get("role", ""))
+        ids[assignment_id] = ids.get(assignment_id, 0) + 1
+        key = (step, role)
+        if assignment.get("status") != "rejected":
+            if key in step_roles:
+                errors.append(
+                    f"duplicate assignment for {step}/{role}: "
+                    f"{step_roles[key]} and {assignment_id}"
+                )
+            else:
+                step_roles[key] = assignment_id
+        expected_independence = step in INDEPENDENT_ASSIGNMENT_STEPS
+        independence = assignment.get("independence", {})
+        if independence.get("required") is not expected_independence:
+            errors.append(
+                f"assignment {assignment_id} has the wrong independence requirement for {step}"
+            )
+        if expected_independence:
+            if not independence.get("isolated") or independence.get("group") != step:
+                errors.append(
+                    f"assignment {assignment_id} must be isolated in independence group {step}"
+                )
+            run_id = str(assignment.get("assignee", {}).get("runId", ""))
+            run_key = (step, run_id)
+            if run_key in independent_runs:
+                errors.append(
+                    f"independent assignments {independent_runs[run_key]} and "
+                    f"{assignment_id} reuse run {run_id!r}"
+                )
+            else:
+                independent_runs[run_key] = assignment_id
+        if assignment.get("requiredOutputs") != list(REQUIRED_RESULT_SECTIONS):
+            errors.append(
+                f"assignment {assignment_id} does not declare the canonical required outputs"
+            )
+
+        packet = assignment.get("packet", {})
+        packet_path = str(packet.get("path", ""))
+        if packet_path in packet_paths:
+            errors.append(
+                f"duplicate role packet path {packet_path!r} for "
+                f"{packet_paths[packet_path]} and {assignment_id}"
+            )
+        else:
+            packet_paths[packet_path] = assignment_id
+        try:
+            packet_file, packet_relative = resolved_workspace_file(
+                workspace, packet_path, below="working"
+            )
+            if packet_relative != packet_path:
+                errors.append(
+                    f"assignment {assignment_id} packet path is not normalized: {packet_path}"
+                )
+            elif file_digest(packet_file) != packet.get("digest"):
+                errors.append(
+                    f"assignment {assignment_id} role packet is stale or was modified"
+                )
+        except SprintError as error:
+            errors.append(f"assignment {assignment_id}: {error}")
+
+        for snapshot in packet.get("inputs", []):
+            if not isinstance(snapshot, dict):
+                continue
+            input_path = str(snapshot.get("path", ""))
+            if expected_independence and (
+                input_path == "working" or input_path.startswith("working/")
+            ):
+                errors.append(
+                    f"independent assignment {assignment_id} includes cross-role working input {input_path}"
+                )
+            if step in completed_steps or assignment.get("status") == "rejected":
+                continue
+            try:
+                input_file, normalized = resolved_workspace_file(workspace, input_path)
+                if normalized != input_path:
+                    errors.append(
+                        f"assignment {assignment_id} input path is not normalized: {input_path}"
+                    )
+                elif file_digest(input_file) != snapshot.get("digest"):
+                    errors.append(
+                        f"assignment {assignment_id} is stale because input {input_path} changed"
+                    )
+            except SprintError as error:
+                errors.append(f"assignment {assignment_id}: {error}")
+
+        result = assignment.get("resultMemo")
+        if isinstance(result, dict):
+            result_path = str(result.get("path", ""))
+            if result_path == packet_path:
+                errors.append(
+                    f"assignment {assignment_id} must keep its role packet and result memo separate"
+                )
+            if result_path in result_paths:
+                errors.append(
+                    f"duplicate result memo path {result_path!r} for "
+                    f"{result_paths[result_path]} and {assignment_id}"
+                )
+            else:
+                result_paths[result_path] = assignment_id
+            result_digest = str(result.get("digest", ""))
+            if result_digest in result_digests:
+                errors.append(
+                    f"duplicate result memo digest for {result_digests[result_digest]} "
+                    f"and {assignment_id}"
+                )
+            else:
+                result_digests[result_digest] = assignment_id
+            if result.get("sourceAssignmentId") != assignment_id:
+                errors.append(
+                    f"result memo for {assignment_id} names a different source assignment"
+                )
+            included = result.get("includedAssignmentIds", [])
+            if expected_independence and included:
+                errors.append(
+                    f"independent assignment {assignment_id} includes cross-role results: "
+                    + ", ".join(str(item) for item in included)
+                )
+            try:
+                result_file, normalized = resolved_workspace_file(
+                    workspace, result_path, below="working"
+                )
+                if normalized != result_path:
+                    errors.append(
+                        f"assignment {assignment_id} result path is not normalized: {result_path}"
+                    )
+                else:
+                    memo_text = result_file.read_text(encoding="utf-8")
+                    if file_digest(result_file) != result_digest:
+                        errors.append(
+                            f"assignment {assignment_id} result memo is stale or was modified"
+                        )
+                    errors.extend(
+                        f"assignment {assignment_id}: {item}"
+                        for item in memo_section_errors(
+                            memo_text, list(assignment.get("requiredOutputs", []))
+                        )
+                    )
+                    if expected_independence:
+                        for peer in assignments:
+                            if not isinstance(peer, dict) or peer is assignment:
+                                continue
+                            if peer.get("step") != step:
+                                continue
+                            peer_tokens = [
+                                str(peer.get("id", "")),
+                                str(peer.get("packet", {}).get("path", "")),
+                            ]
+                            if isinstance(peer.get("resultMemo"), dict):
+                                peer_tokens.append(str(peer["resultMemo"].get("path", "")))
+                            if any(token and token in memo_text for token in peer_tokens):
+                                errors.append(
+                                    f"independent assignment {assignment_id} result memo "
+                                    f"references peer assignment {peer.get('id')}"
+                                )
+                                break
+            except (OSError, UnicodeError, SprintError) as error:
+                errors.append(f"assignment {assignment_id}: {error}")
+            if str(result.get("returnedAt", "")) < str(assignment.get("assignedAt", "")):
+                errors.append(
+                    f"assignment {assignment_id} result predates its assignment"
+                )
+
+    for assignment_id, count in ids.items():
+        if count > 1:
+            errors.append(f"duplicate assignment id {assignment_id!r}")
+    known_ids = set(ids)
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            continue
+        result = assignment.get("resultMemo")
+        if not isinstance(result, dict):
+            continue
+        included_ids = set(result.get("includedAssignmentIds", []))
+        packet_input_paths = {
+            str(item.get("path"))
+            for item in assignment.get("packet", {}).get("inputs", [])
+            if isinstance(item, dict)
+        }
+        inferred_ids = {
+            owner
+            for path, owner in result_paths.items()
+            if path in packet_input_paths and owner != assignment.get("id")
+        }
+        if not inferred_ids.issubset(included_ids):
+            errors.append(
+                f"assignment {assignment.get('id')} does not declare included result assignments: "
+                + ", ".join(sorted(inferred_ids - included_ids))
+            )
+        for included_id in included_ids:
+            if included_id not in known_ids:
+                errors.append(
+                    f"assignment {assignment.get('id')} includes unknown assignment {included_id}"
+                )
+            if included_id == assignment.get("id"):
+                errors.append(
+                    f"assignment {assignment.get('id')} cannot include itself as a peer result"
+                )
+    return errors
+
+
+def required_assignment_errors(
+    manifest: dict[str, Any], step_id: str
+) -> list[str]:
+    errors = []
+    assignments = [
+        item
+        for item in manifest.get("assignments", [])
+        if isinstance(item, dict)
+        and item.get("step") == step_id
+        and item.get("status") != "rejected"
+    ]
+    for role in REQUIRED_ROLES_BY_STEP.get(step_id, ()):
+        matches = [item for item in assignments if item.get("role") == role]
+        if not matches:
+            errors.append(f"missing required {role} assignment for {step_id}")
+            continue
+        if len(matches) > 1:
+            errors.append(f"duplicate required {role} assignments for {step_id}")
+            continue
+        status = matches[0].get("status")
+        if status not in {"returned", "accepted"}:
+            errors.append(
+                f"required {role} assignment for {step_id} has status {status}; "
+                "a validated returned result memo is required"
+            )
+    return errors
+
+
 def command_role_packet(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest = load_assignment_manifest(workspace)
     roles = load_role_contracts()
     if args.role not in roles:
         raise SprintError(f"Unknown role: {args.role}")
-    contract = roles[args.role]
-    inputs = []
+    task = args.task.strip()
+    assignee = args.assignee.strip()
+    run_id = args.run_id.strip()
+    if not task or not assignee or not run_id:
+        raise SprintError("Role task, assignee label, and run ID cannot be empty")
+    step = str(state["currentStep"])
+    assignment_id = (
+        args.assignment_id.strip()
+        if args.assignment_id
+        else f"{step}-{args.role}-{slugify(run_id)}"
+    )
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", assignment_id):
+        raise SprintError(
+            "Assignment ID must contain lowercase letters, numbers, and single hyphens"
+        )
+    existing = manifest.get("assignments", [])
+    if assignment_by_id(manifest, assignment_id):
+        raise SprintError(f"Duplicate assignment ID: {assignment_id}")
+    if any(
+        item.get("step") == step
+        and item.get("role") == args.role
+        and item.get("status") != "rejected"
+        for item in existing
+        if isinstance(item, dict)
+    ):
+        raise SprintError(f"Duplicate assignment for {step}/{args.role}")
+    independent = step in INDEPENDENT_ASSIGNMENT_STEPS
+    if independent and any(
+        item.get("step") == step and isinstance(item.get("resultMemo"), dict)
+        for item in existing
+        if isinstance(item, dict)
+    ):
+        raise SprintError(
+            f"All independent {step} role packets must be created before any result returns"
+        )
+    if independent and any(
+        item.get("step") == step
+        and item.get("assignee", {}).get("runId") == run_id
+        for item in existing
+        if isinstance(item, dict)
+    ):
+        raise SprintError(
+            f"Independent assignments in {step} must use distinct run IDs"
+        )
+
+    output, output_relative = resolved_workspace_file(
+        workspace, args.output, below="working"
+    )
+    if output.exists():
+        raise SprintError(f"Refusing to overwrite an existing role packet: {output_relative}")
+    if any(
+        item.get("packet", {}).get("path") == output_relative
+        for item in existing
+        if isinstance(item, dict)
+    ):
+        raise SprintError(f"Duplicate role packet path: {output_relative}")
+    input_snapshots = []
+    input_labels = []
     for value in args.input:
-        candidate = (workspace / value).resolve()
-        try:
-            candidate.relative_to(workspace)
-        except ValueError as error:
-            raise SprintError(f"Input escapes the sprint workspace: {value}") from error
-        if not candidate.exists():
-            raise SprintError(f"Role input does not exist: {value}")
-        inputs.append(value)
+        candidate, relative = resolved_workspace_file(workspace, value)
+        if not candidate.is_file():
+            raise SprintError(f"Role input is not a file: {value}")
+        if independent and (relative == "working" or relative.startswith("working/")):
+            raise SprintError(
+                f"Independent role packets cannot include cross-role working input: {relative}"
+            )
+        input_snapshots.append({"path": relative, "digest": file_digest(candidate)})
+        input_labels.append(relative)
+
+    contract = roles[args.role]
     may = "\n".join(f"- {item}" for item in contract["may"])
     must_not = "\n".join(f"- {item}" for item in contract["mustNot"])
-    permitted = "\n".join(f"- {item}" for item in inputs) or "- No files; use only the task context"
-    fidelity_step = state["fidelity"]["steps"][str(state["currentStep"])]
+    permitted = (
+        "\n".join(f"- {item}" for item in input_labels)
+        or "- No files; use only the task context"
+    )
+    fidelity_step = state["fidelity"]["steps"][step]
+    required_headings = "\n".join(
+        f"## {item}" for item in REQUIRED_RESULT_SECTIONS
+    )
+    now = utc_now()
     packet = f"""# Bounded specialist assignment
 
+Assignment ID: `{assignment_id}`
+Packet version: {ROLE_PACKET_VERSION}
+Assignee: {assignee}
+Run ID: `{run_id}`
 Role: {contract['displayName']} (`{args.role}`)
 Sprint: {state['title']}
 Method profile: {state['methodProfile']}
 Execution mode: {state['executionMode']}
-Current step: {state['currentStep']} — {step_name(str(state['currentStep']))}
+Current step: {step} — {step_name(step)}
 Canonical purpose: {fidelity_step['canonicalPurpose']}
 Selected method: {fidelity_step['selectedMethod']}
+Independence: {'isolated; do not consume peer packets or results' if independent else 'bounded; declared inputs only'}
 
 ## Mission
 
@@ -2377,7 +3304,7 @@ Do not read other sprint files unless the Sprint Orchestrator issues a new assig
 
 ## Bounded task
 
-{args.task.strip()}
+{task}
 
 ## May
 
@@ -2386,33 +3313,197 @@ Do not read other sprint files unless the Sprint Orchestrator issues a new assig
 ## Must not
 
 {must_not}
-- Edit `index.html`, `sprint-state.json`, canonical files in `artifact-data/`, or generated files in `artifacts/`
+- Edit `index.html`, `sprint-state.json`, `assignment-manifest.json`, canonical files in `artifact-data/`, or generated files in `artifacts/`
 - Continue beyond the bounded task after returning the deliverable
 
 ## Required return
 
 Deliverable: {contract['deliverable']}
 
-Return exactly these sections:
+Return one separate result memo with each heading exactly once:
 
-1. Findings
-2. Evidence and provenance
-3. Assumptions and inferences
-4. Recommendation
-5. Risks or disagreements
-6. Open questions
-7. Stop condition reached: yes or no
+{required_headings}
 """
-    if args.output:
-        output = (workspace / args.output).resolve()
-        try:
-            output.relative_to(workspace / "working")
-        except ValueError as error:
-            raise SprintError("Role packets may only be written below working/") from error
-        write_text(output, packet)
-        print(f"Wrote role packet: {output}")
+    assignment = {
+        "id": assignment_id,
+        "step": step,
+        "role": args.role,
+        "objective": task,
+        "assignee": {"label": assignee, "runId": run_id},
+        "packet": {
+            "path": output_relative,
+            "digest": digest_bytes(packet.encode("utf-8")),
+            "version": ROLE_PACKET_VERSION,
+            "createdAt": now,
+            "inputs": input_snapshots,
+        },
+        "requiredOutputs": list(REQUIRED_RESULT_SECTIONS),
+        "independence": {
+            "required": independent,
+            "isolated": independent,
+            "group": step if independent else "",
+        },
+        "status": "assigned",
+        "assignedAt": now,
+        "updatedAt": now,
+    }
+    manifest["assignments"].append(assignment)
+    manifest["updatedAt"] = now
+    require_valid_schema(
+        manifest, "assignment-manifest", assignment_manifest_path(workspace)
+    )
+    write_texts_atomically(
+        {
+            output: packet,
+            assignment_manifest_path(workspace): json_text(manifest),
+        }
+    )
+    render_workspace(workspace)
+    print(f"Wrote role packet and registered assignment {assignment_id}: {output}")
+
+
+def command_role_result(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest = load_assignment_manifest(workspace)
+    assignment = assignment_by_id(manifest, args.assignment)
+    if assignment is None:
+        raise SprintError(f"Unknown assignment: {args.assignment}")
+    if assignment.get("status") not in {"assigned", "in-progress"}:
+        raise SprintError(
+            f"Assignment {args.assignment} cannot return from status {assignment.get('status')}"
+        )
+    memo_path, memo_relative = resolved_workspace_file(
+        workspace, args.memo, below="working"
+    )
+    if not memo_path.is_file():
+        raise SprintError(f"Result memo does not exist: {memo_relative}")
+    if memo_relative == assignment.get("packet", {}).get("path"):
+        raise SprintError("The result memo must be separate from the immutable role packet")
+    if any(
+        item.get("resultMemo", {}).get("path") == memo_relative
+        for item in manifest.get("assignments", [])
+        if isinstance(item, dict) and isinstance(item.get("resultMemo"), dict)
+    ):
+        raise SprintError(f"Duplicate result memo path: {memo_relative}")
+    memo_text = memo_path.read_text(encoding="utf-8")
+    section_errors = memo_section_errors(
+        memo_text, list(assignment.get("requiredOutputs", []))
+    )
+    if section_errors:
+        raise SprintError("Invalid result memo: " + "; ".join(section_errors))
+    packet_input_paths = {
+        str(item.get("path"))
+        for item in assignment.get("packet", {}).get("inputs", [])
+        if isinstance(item, dict)
+    }
+    inferred_included = {
+        str(item.get("id"))
+        for item in manifest.get("assignments", [])
+        if isinstance(item, dict)
+        and item.get("id") != args.assignment
+        and isinstance(item.get("resultMemo"), dict)
+        and item["resultMemo"].get("path") in packet_input_paths
+    }
+    included = sorted(set(args.include_assignment) | inferred_included)
+    for included_id in included:
+        if included_id == args.assignment:
+            raise SprintError("A result memo cannot include its own assignment as a peer")
+        if assignment_by_id(manifest, included_id) is None:
+            raise SprintError(f"Unknown included assignment: {included_id}")
+    if assignment.get("independence", {}).get("required"):
+        missing_packets = sorted(
+            set(REQUIRED_ROLES_BY_STEP.get(str(assignment.get("step")), ()))
+            - {
+                str(item.get("role"))
+                for item in manifest.get("assignments", [])
+                if isinstance(item, dict)
+                and item.get("step") == assignment.get("step")
+                and item.get("status") != "rejected"
+            }
+        )
+        if missing_packets:
+            raise SprintError(
+                "All independent role packets must exist before a result returns; missing "
+                + ", ".join(missing_packets)
+            )
+        if included:
+            raise SprintError(
+                "Independent result memos cannot include cross-role assignments"
+            )
+    now = utc_now()
+    assignment["resultMemo"] = {
+        "path": memo_relative,
+        "digest": file_digest(memo_path),
+        "sourceAssignmentId": args.assignment,
+        "includedAssignmentIds": included,
+        "returnedAt": now,
+    }
+    assignment["status"] = "returned"
+    assignment["updatedAt"] = now
+    manifest["updatedAt"] = now
+    errors = assignment_manifest_errors(workspace, manifest, state)
+    if errors:
+        raise SprintError(
+            "Returned result violates assignment provenance:\n"
+            + "\n".join(f"- {item}" for item in errors)
+        )
+    save_assignment_manifest(workspace, manifest, timestamp=now)
+    render_workspace(workspace)
+    print(f"Registered result memo for assignment {args.assignment}")
+
+
+def command_assignment_status(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    if args.status == "rejected":
+        state = load_state(workspace)
+        manifest = load_assignment_manifest(workspace)
     else:
-        print(packet)
+        state, _specs, _artifacts = load_workspace_documents(workspace)
+        manifest = load_assignment_manifest(workspace)
+    assignment = assignment_by_id(manifest, args.assignment)
+    if assignment is None:
+        raise SprintError(f"Unknown assignment: {args.assignment}")
+    current = str(assignment.get("status"))
+    target = args.status
+    if target not in ASSIGNMENT_TRANSITIONS.get(current, set()):
+        raise SprintError(
+            f"Assignment status cannot move from {current} to {target}"
+        )
+    now = utc_now()
+    if target == "in-progress":
+        assignment["startedAt"] = now
+    if target in {"accepted", "rejected"}:
+        note = (args.note or "").strip()
+        if not note:
+            raise SprintError(f"Changing an assignment to {target} requires --note")
+        assignment["reviewedAt"] = now
+        assignment["reviewNote"] = note
+    assignment["status"] = target
+    assignment["updatedAt"] = now
+    manifest_errors = assignment_manifest_errors(workspace, manifest, state)
+    tolerated_stale_errors = (
+        target == "rejected"
+        and manifest_errors
+        and all("is stale because input" in item for item in manifest_errors)
+    )
+    if manifest_errors and not tolerated_stale_errors:
+        raise SprintError(
+            "Assignment lifecycle update would leave invalid provenance:\n"
+            + "\n".join(f"- {item}" for item in manifest_errors)
+        )
+    save_assignment_manifest(workspace, manifest, timestamp=now)
+    if tolerated_stale_errors:
+        print(
+            "Warning: other stale assignments must also be rejected or replaced before rendering:",
+            file=sys.stderr,
+        )
+        for error in manifest_errors:
+            print(f"- {error}", file=sys.stderr)
+        print(f"Updated assignment {args.assignment} to {target}")
+        return
+    render_workspace(workspace)
+    print(f"Updated assignment {args.assignment} to {target}")
 
 
 def fidelity_errors(state: dict[str, Any]) -> list[str]:
@@ -2608,6 +3699,94 @@ def fidelity_errors(state: dict[str, Any]) -> list[str]:
     return errors
 
 
+def decision_record_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    decisions = state.get("decisions", [])
+    gates = state.get("humanGates", [])
+    if not isinstance(decisions, list) or not isinstance(gates, list):
+        return errors
+    by_id: dict[str, dict[str, Any]] = {}
+    active_by_gate: dict[str, list[dict[str, Any]]] = {}
+    for decision in decisions:
+        if not isinstance(decision, dict):
+            continue
+        decision_id = str(decision.get("id", ""))
+        if decision_id in by_id:
+            errors.append(f"Duplicate decision id: {decision_id}")
+        else:
+            by_id[decision_id] = decision
+        gate_id = str(decision.get("gate", ""))
+        if decision.get("status") == "active":
+            active_by_gate.setdefault(gate_id, []).append(decision)
+        subject = decision.get("subject", {})
+        if isinstance(subject, dict):
+            expected_digest = value_digest(
+                str(subject.get("kind", "")), str(subject.get("value", ""))
+            )
+            if subject.get("digest") != expected_digest:
+                errors.append(f"Decision {decision_id} has an invalid subject digest")
+        if decision.get("status") == "superseded" and str(
+            decision.get("supersededAt", "")
+        ) < str(decision.get("decidedAt", "")):
+            errors.append(f"Decision {decision_id} was superseded before it was made")
+    for gate_id, active in active_by_gate.items():
+        if len(active) > 1:
+            errors.append(f"Gate {gate_id} has duplicate active decisions")
+
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        gate_id = str(gate.get("id", ""))
+        if gate.get("status") == "complete":
+            decision_id = str(gate.get("decisionId", ""))
+            decision = by_id.get(decision_id)
+            if decision is None:
+                errors.append(
+                    f"Completed {gate_id} does not reference an explicit decision record"
+                )
+            elif decision.get("gate") != gate_id or decision.get("status") != "active":
+                errors.append(
+                    f"Completed {gate_id} must reference its active decision record"
+                )
+            elif gate.get("decision") != decision.get("decision"):
+                errors.append(
+                    f"Completed {gate_id} does not match decision {decision_id}"
+                )
+        elif gate.get("status") == "pending" and active_by_gate.get(gate_id):
+            errors.append(f"Pending {gate_id} cannot retain an active decision")
+    pending_gate = state.get("pendingGate")
+    if pending_gate:
+        pending_record = next(
+            (
+                gate
+                for gate in gates
+                if isinstance(gate, dict) and gate.get("id") == pending_gate
+            ),
+            None,
+        )
+        if pending_record is None or pending_record.get("status") != "pending":
+            errors.append("pendingGate must reference a pending human gate")
+
+    gate_1 = active_by_gate.get("gate-1", [])
+    if gate_1:
+        subject = gate_1[0].get("subject", {})
+        if subject.get("kind") != "route" or subject.get("value") != state.get("route"):
+            errors.append(
+                "The current route materially differs from Gate 1; a new human decision is required"
+            )
+    gate_3 = active_by_gate.get("gate-3", [])
+    if gate_3:
+        subject = gate_3[0].get("subject", {})
+        if (
+            subject.get("kind") != "concept"
+            or subject.get("value") != state.get("selectedConcept")
+        ):
+            errors.append(
+                "The selected concept materially differs from Gate 3; a new human decision is required"
+            )
+    return errors
+
+
 def validate_state(state: dict[str, Any]) -> list[str]:
     """Return the pre-existing cross-record workflow checks.
 
@@ -2740,6 +3919,7 @@ def validate_state(state: dict[str, Any]) -> list[str]:
                     "Sprint-book live profiles default to five suitable customers; another target requires a documented deviation"
                 )
     errors.extend(fidelity_errors(state))
+    errors.extend(decision_record_errors(state))
     gates = state.get("humanGates", [])
     if not isinstance(gates, list) or {item.get("id") for item in gates if isinstance(item, dict)} != set(GATE_NAMES):
         errors.append("humanGates must contain gate-1 through gate-5")
@@ -2845,6 +4025,39 @@ def workspace_errors(workspace: Path) -> list[str]:
     workspace_json_is_valid = state_is_valid
     if state_is_valid:
         errors.extend(validate_state(state))
+    manifest: dict[str, Any] | None = None
+    manifest_path = assignment_manifest_path(workspace)
+    try:
+        manifest = read_json(manifest_path)
+    except SprintError as error:
+        errors.append(str(error))
+        workspace_json_is_valid = False
+    if manifest is not None:
+        manifest_schema_errors = formatted_schema_errors(
+            manifest, "assignment-manifest", manifest_path
+        )
+        errors.extend(manifest_schema_errors)
+        if manifest_schema_errors:
+            workspace_json_is_valid = False
+        elif state_is_valid:
+            manifest_content_errors = assignment_manifest_errors(
+                workspace, manifest, state
+            )
+            errors.extend(
+                f"{manifest_path}: {item}" for item in manifest_content_errors
+            )
+            if manifest_content_errors:
+                workspace_json_is_valid = False
+            for step_id in state.get("completedSteps", []):
+                step_assignment_errors = required_assignment_errors(
+                    manifest, step_id
+                )
+                errors.extend(
+                    f"Completed step {step_id}: {item}"
+                    for item in step_assignment_errors
+                )
+                if step_assignment_errors:
+                    workspace_json_is_valid = False
     try:
         specs = load_artifact_specs()
     except SprintError as error:
@@ -2954,7 +4167,31 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
         version = data.get("schemaVersion")
         current = SCHEMA_FAMILIES[family]["current"]
         if version == current:
-            errors.extend(formatted_schema_errors(data, family, path))
+            current_errors = formatted_schema_errors(data, family, path)
+            errors.extend(current_errors)
+            if (
+                not current_errors
+                and family == "workspace-state"
+                and any(
+                    isinstance(item, dict) and "id" not in item
+                    for item in data.get("decisions", [])
+                )
+            ):
+                upgraded = copy.deepcopy(data)
+                migrate_legacy_decisions(
+                    upgraded,
+                    str(upgraded.get("updatedAt") or upgraded.get("createdAt") or utc_now()),
+                )
+                upgraded_errors = formatted_schema_errors(
+                    upgraded, family, path
+                )
+                if upgraded_errors:
+                    errors.extend(
+                        f"Decision attestation upgrade error: {item}"
+                        for item in upgraded_errors
+                    )
+                else:
+                    plan.append((path, family, upgraded))
             continue
         legacy_errors = formatted_schema_errors(
             data, family, path, accept_legacy=True
@@ -2976,6 +4213,35 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
             )
             continue
         plan.append((path, family, migrated))
+    manifest_path = assignment_manifest_path(workspace)
+    if manifest_path.exists():
+        try:
+            manifest = read_json(manifest_path)
+            errors.extend(
+                formatted_schema_errors(
+                    manifest, "assignment-manifest", manifest_path
+                )
+            )
+        except SprintError as error:
+            errors.append(str(error))
+    else:
+        try:
+            source_state = read_json(state_path(workspace))
+            manifest_timestamp = str(
+                source_state.get("updatedAt")
+                or source_state.get("createdAt")
+                or utc_now()
+            )
+            manifest = empty_assignment_manifest(manifest_timestamp)
+            manifest_errors = formatted_schema_errors(
+                manifest, "assignment-manifest", manifest_path
+            )
+            if manifest_errors:
+                errors.extend(manifest_errors)
+            else:
+                plan.append((manifest_path, "assignment-manifest", manifest))
+        except SprintError as error:
+            errors.append(str(error))
     if errors:
         detail = "\n".join(f"- {item}" for item in errors)
         raise SprintError(f"Workspace cannot be migrated:\n{detail}")
@@ -2995,7 +4261,9 @@ def command_migrate(args: argparse.Namespace) -> None:
     print("Migration plan:")
     for path, family, migrated in plan:
         relative = path.relative_to(workspace)
-        old_version = read_json(path).get("schemaVersion")
+        old_version = (
+            read_json(path).get("schemaVersion") if path.exists() else "missing"
+        )
         print(
             f"- {relative}: {SCHEMA_FAMILIES[family]['label']} "
             f"{old_version} -> {migrated['schemaVersion']}"
@@ -3021,7 +4289,7 @@ def command_migrate(args: argparse.Namespace) -> None:
         raise SprintError(f"Could not create migration backup {backup}: {error}") from error
     write_texts_atomically({path: json_text(migrated) for path, _family, migrated in plan})
     print(f"Untouched backup: {backup}")
-    print(f"Migrated {len(plan)} JSON file(s) to schema version {SCHEMA_VERSION}")
+    print(f"Migrated or created {len(plan)} canonical JSON file(s)")
 
 
 def command_render(args: argparse.Namespace) -> None:
@@ -3055,7 +4323,8 @@ def command_validate(args: argparse.Namespace) -> None:
 
 def command_status(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = load_state(workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest = load_assignment_manifest(workspace)
     if args.json:
         print(json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True))
         return
@@ -3084,6 +4353,13 @@ def command_status(args: argparse.Namespace) -> None:
         f"{timebox.get('actualMinutes') if timebox.get('actualMinutes') is not None else 'not recorded'} actual"
     )
     print(f"Pending gate: {state.get('pendingGate') or 'none'}")
+    assignments = manifest.get("assignments", [])
+    returned = sum(
+        1
+        for item in assignments
+        if isinstance(item, dict) and item.get("status") in {"returned", "accepted"}
+    )
+    print(f"Specialist assignments: {returned}/{len(assignments)} returned or accepted")
     customer = state.get("customerTesting", {})
     print(
         "Customer testing: "
@@ -3136,6 +4412,14 @@ def build_parser() -> argparse.ArgumentParser:
     route_parser.add_argument("--route", required=True, choices=sorted(ROUTES - {"undecided"}))
     route_parser.add_argument("--rationale", required=True)
     route_parser.set_defaults(handler=command_set_route)
+
+    concept_parser = subparsers.add_parser(
+        "set-concept", help="Record or materially revise the selected concept"
+    )
+    concept_parser.add_argument("--workspace", required=True)
+    concept_parser.add_argument("--concept", required=True)
+    concept_parser.add_argument("--rationale", required=True)
+    concept_parser.set_defaults(handler=command_set_concept)
 
     profile_parser = subparsers.add_parser(
         "set-method-profile", help="Select the canonical method profile"
@@ -3212,7 +4496,15 @@ def build_parser() -> argparse.ArgumentParser:
     gate_parser.add_argument("--workspace", required=True)
     gate_parser.add_argument("--gate", required=True, choices=sorted(GATE_NAMES))
     gate_parser.add_argument("--decision", required=True)
-    gate_parser.add_argument("--rationale", required=True)
+    gate_parser.add_argument("--decider", default="human Decider")
+    gate_parser.add_argument(
+        "--considered-input",
+        action="append",
+        default=[],
+        help="Safe provenance reference such as artifact:<id> or assignment:<id>",
+    )
+    gate_parser.add_argument("--concept", help="Selected concept attested at Gate 3")
+    gate_parser.add_argument("--rationale")
     gate_parser.add_argument("--reservations")
     gate_parser.set_defaults(handler=command_gate)
 
@@ -3237,9 +4529,37 @@ def build_parser() -> argparse.ArgumentParser:
     role_parser.add_argument("--workspace", required=True)
     role_parser.add_argument("--role", required=True)
     role_parser.add_argument("--task", required=True)
+    role_parser.add_argument("--assignee", required=True, help="Human-safe assignee label")
+    role_parser.add_argument("--run-id", required=True, help="Unique execution/run identifier")
+    role_parser.add_argument("--assignment-id", help="Stable assignment identifier")
     role_parser.add_argument("--input", action="append", default=[])
-    role_parser.add_argument("--output", help="Path below working/; omit to print")
+    role_parser.add_argument("--output", required=True, help="Packet path below working/")
     role_parser.set_defaults(handler=command_role_packet)
+
+    result_parser = subparsers.add_parser(
+        "role-result", help="Register and validate a specialist result memo"
+    )
+    result_parser.add_argument("--workspace", required=True)
+    result_parser.add_argument("--assignment", required=True)
+    result_parser.add_argument("--memo", required=True, help="Result path below working/")
+    result_parser.add_argument(
+        "--include-assignment",
+        action="append",
+        default=[],
+        help="A peer assignment intentionally included in this non-independent result",
+    )
+    result_parser.set_defaults(handler=command_role_result)
+
+    assignment_status_parser = subparsers.add_parser(
+        "assignment-status", help="Advance or review an assignment lifecycle status"
+    )
+    assignment_status_parser.add_argument("--workspace", required=True)
+    assignment_status_parser.add_argument("--assignment", required=True)
+    assignment_status_parser.add_argument(
+        "--status", required=True, choices=["in-progress", "accepted", "rejected"]
+    )
+    assignment_status_parser.add_argument("--note")
+    assignment_status_parser.set_defaults(handler=command_assignment_status)
 
     render_parser = subparsers.add_parser("render", help="Render artifacts and dashboard")
     render_parser.add_argument("--workspace", required=True)

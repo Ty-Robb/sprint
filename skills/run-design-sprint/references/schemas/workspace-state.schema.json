@@ -63,6 +63,8 @@
     "fidelity": {"$ref": "#/$defs/fidelity"},
     "route": {"$ref": "#/$defs/route"},
     "routeRationale": {"type": "string"},
+    "selectedConcept": {"type": "string", "minLength": 1},
+    "selectedConceptRationale": {"type": "string"},
     "status": {"$ref": "#/$defs/workspaceStatus"},
     "currentStep": {"$ref": "#/$defs/stepId"},
     "completedSteps": {
@@ -449,13 +451,23 @@
           ]
         },
         "status": {"enum": ["pending", "complete", "not-applicable"]},
+        "decisionId": {"type": "string", "minLength": 1},
         "decision": {"type": "string", "minLength": 1},
-        "rationale": {"type": "string", "minLength": 1},
+        "deciderLabel": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string"},
         "decidedAt": {"$ref": "#/$defs/timestamp"}
       },
       "additionalProperties": false,
       "allOf": [
-        {"if": {"properties": {"status": {"const": "complete"}}, "required": ["status"]}, "then": {"required": ["decision", "rationale", "decidedAt"]}},
+        {
+          "if": {"properties": {"status": {"const": "complete"}}, "required": ["status"]},
+          "then": {
+            "anyOf": [
+              {"required": ["decisionId", "decision", "deciderLabel", "decidedAt"]},
+              {"required": ["decision", "rationale", "decidedAt"]}
+            ]
+          }
+        },
         {"if": {"properties": {"id": {"const": "gate-1"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Challenge and sprint route"}}}},
         {"if": {"properties": {"id": {"const": "gate-2"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Target and top risks"}}}},
         {"if": {"properties": {"id": {"const": "gate-3"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Selected solution direction"}}}},
@@ -465,13 +477,62 @@
     },
     "decision": {
       "type": "object",
-      "required": ["gate", "decision", "rationale", "reservations", "decidedAt"],
+      "required": ["gate", "decision", "reservations", "decidedAt"],
       "properties": {
+        "id": {"type": "string", "minLength": 1},
         "gate": {"$ref": "#/$defs/gateId"},
         "decision": {"type": "string", "minLength": 1},
-        "rationale": {"type": "string", "minLength": 1},
+        "deciderLabel": {"type": "string", "minLength": 1},
+        "consideredInputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/consideredInput"},
+          "uniqueItems": true
+        },
+        "subject": {"$ref": "#/$defs/decisionSubject"},
+        "rationale": {"type": "string"},
         "reservations": {"type": "string"},
+        "status": {"enum": ["active", "superseded"]},
+        "supersededAt": {"$ref": "#/$defs/timestamp"},
+        "supersededReason": {"type": "string", "minLength": 1},
         "decidedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {"required": ["id", "deciderLabel", "consideredInputs", "subject", "status"]},
+            {"required": ["rationale"], "not": {"required": ["id"]}}
+          ]
+        },
+        {
+          "if": {"properties": {"status": {"const": "superseded"}}, "required": ["status"]},
+          "then": {"required": ["supersededAt", "supersededReason"]}
+        }
+      ]
+    },
+    "consideredInput": {
+      "type": "object",
+      "required": ["kind", "reference", "digest"],
+      "properties": {
+        "kind": {"enum": ["artifact", "assignment-result", "prototype", "route", "concept", "record"]},
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "decisionSubject": {
+      "type": "object",
+      "required": ["kind", "value", "digest"],
+      "properties": {
+        "kind": {"enum": ["route", "concept", "gate"]},
+        "value": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
       },
       "additionalProperties": false
     },

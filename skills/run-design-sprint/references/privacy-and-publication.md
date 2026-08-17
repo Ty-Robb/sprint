@@ -22,6 +22,8 @@ Keep these materials private by default:
 
 Anonymised does not automatically mean public. A combination of a participant ID, date, quotation, job detail, and company context can still identify someone. Keep a private case-study repository private; neither this skill nor its tests require that repository to be public or copied here.
 
+The generated dashboard's specialist provenance view is deliberately narrow: role, human-safe assignee label, hashed run reference, lifecycle status, and abbreviated packet/result digests. It does not render the raw run ID, objective, permitted-input paths, packet body, or result-memo contents. That minimisation reduces accidental exposure but does not make the dashboard or assignment manifest public; both remain private by default.
+
 ## Storage before starting a sprint
 
 Choose an access-controlled private root outside the checkout of any public repository. Confirm that its sharing, backup, encryption, retention, and deletion settings are appropriate for the evidence before collecting it.
