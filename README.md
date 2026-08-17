@@ -39,10 +39,10 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 - A guided, resumable workflow with explicit human decision gates
 - Separate method-profile, execution-mode, and route selectors with a versioned fidelity contract
 - Bounded AI roles with a versioned assignment manifest, immutable packet/input digests, result-memo lifecycle, and enforced independent runs
-- A living HTML dashboard showing process completion separately from method fidelity, evidence, human decision attestations, privacy-safe specialist provenance, and next action
+- A living HTML dashboard showing process status, method fidelity, descriptive evidence strength, and action-specific decision readiness independently
 - HTML sprint artifacts, from the brief and evidence ledger through the outcome report
 - Independent solution directions, a decision record, and a testable prototype
-- A real-customer test plan and traceable synthesis
+- A real-customer test plan with separate planned, invited, attempted, completed, qualified, excluded, and usable counts plus traceable material findings
 - A final proceed, iterate, pivot, investigate, or stop decision
 
 ## How it runs
@@ -97,7 +97,7 @@ python3 scripts/check_publication.py
 
 ## Status
 
-The skill supports a Sprint-book profile for full live sprints and an adaptive profile for research-first, foundation-plus-design, full, focused, and no-sprint routes. Live, self-test, and planning/rehearsal modes are explicit. One-human-plus-AI substitutions and their limitations remain visible; AI-generated customer reactions are rehearsal only and never count as validation. Live Sprint-book work defaults to five suitable customer sessions.
+The skill supports a Sprint-book profile for full live sprints and an adaptive profile for research-first, foundation-plus-design, full, focused, and no-sprint routes. Live, self-test, and planning/rehearsal modes are explicit. One-human-plus-AI substitutions and their limitations remain visible; AI-generated customer reactions are rehearsal only and never count as validation. Live Sprint-book work defaults to five suitable customer sessions. One or two usable sessions are reported as early/limited, three or four as partial directional, five as the book target met, and more than five as extended—never as statistical confidence or population validation.
 
 ## License
 

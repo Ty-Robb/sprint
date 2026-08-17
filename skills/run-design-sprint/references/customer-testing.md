@@ -112,8 +112,10 @@ AI may help transcribe or moderate only when the participant has consented and s
 
 Every new workspace has one canonical
 `customer-testing/session-manifest.json`. It is the only source for session
-membership and counted completion; the aggregate count in `sprint-state.json`
-is derived from it. Do not edit `sessionsCompleted` directly.
+membership, lifecycle, participant fit, protocol quality, and usability. The
+attempted, completed, qualified, excluded, and usable aggregates in
+`sprint-state.json` are derived from it. Planned and invited counts remain
+separate inputs. Do not edit derived counts directly.
 
 Each participant/test session is isolated:
 
@@ -156,7 +158,8 @@ python3 <skill-dir>/scripts/sprint_workspace.py customer \
   --workspace <sprint-directory> \
   --status scheduled \
   --target "People matching the approved behavioural criteria" \
-  --planned 5
+  --planned 5 \
+  --invited 7
 ```
 
 Initialize one isolated record. `--prior-decision` may be repeated and should
@@ -167,6 +170,9 @@ python3 <skill-dir>/scripts/sprint_workspace.py session-init \
   --workspace <sprint-directory> \
   --session-id S01 \
   --participant-id P01 \
+  --participant-segment "Primary target segment" \
+  --participant-fit qualified \
+  --fit-rationale "Matches the approved behavioural recruitment criteria" \
   --session-date 2026-08-17 \
   --run-mode human-run \
   --prototype-version proto-v1 \
@@ -219,12 +225,18 @@ python3 <skill-dir>/scripts/sprint_workspace.py session-complete \
   --consent-reference "restricted-consent-register:S01" \
   --redaction-status complete \
   --removed-category direct-identifiers \
+  --protocol-fidelity consistent \
+  --critical-scenario TASK-1 \
+  --usable \
   --limitation "Remote session; cursor movement was not captured" \
   --usage-unavailable-reason "The runtime did not expose request usage."
 ```
 
-`session-complete` counts a unique record once. Calling it again fails rather
-than incrementing the aggregate. To revise a completed/blocked/withdrawn
+`session-complete` counts a unique completed record once, but only an explicitly
+qualified, protocol-assessed session with covered critical scenarios and
+`--usable` enters synthesis. Use `--exclude-from-evidence` with
+`--exclusion-reason` for a completed but unusable session. Calling completion
+again fails rather than incrementing any aggregate. To revise a completed/blocked/withdrawn
 record, reopen it; this removes its counted and synthesis-eligible status until
 it passes completion again:
 
@@ -292,7 +304,7 @@ python3 <skill-dir>/scripts/sprint_workspace.py synthesis-packet \
   --workspace <sprint-directory>
 ```
 
-By default the command selects every complete, counted,
+By default the command selects every complete, counted, usable,
 `includeInSynthesis` session. Repeat `--session-id` to select a subset. It
 refuses to mix questions versions. The generated packet contains the shared
 scorecard and sanitized structured summaries only. It removes raw-reference
@@ -308,6 +320,15 @@ trace IDs. Opening raw evidence is a separate, human-authorized audit pass,
 never the default synthesis context. Any session
 completion, reopen, or summary change makes the recorded synthesis input stale;
 regenerate it before completing the synthesis step.
+
+For each material finding in synthesis and outcome JSON, record a stable ID,
+statement, directness, supporting, contradictory, and outlier evidence, limitations,
+remaining uncertainty, and the appropriate next decision. Every support or
+contradiction entry must name the session ID, anonymized participant ID,
+prototype and question versions, direct-observation or inference type, and
+the exact evidence IDs. The renderer displays unique-session `n/N` support and
+adds limitations automatically for shortfall, unusable completions, mixed
+segments, mixed versions, protocol deviations, and contradictions.
 
 ## Context and usage measurements
 

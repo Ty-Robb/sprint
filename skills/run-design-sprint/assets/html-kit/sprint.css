@@ -227,6 +227,57 @@ ol {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.assessment-grid,
+.count-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.assessment-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.count-grid {
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+}
+
+.assessment-card,
+.finding-card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.assessment-card > strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.05rem;
+}
+
+.assessment-card p,
+.finding-card > :last-child {
+  margin-bottom: 0;
+}
+
+.finding-card + .finding-card {
+  margin-top: 1rem;
+}
+
+.definition-list {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.65rem 1rem;
+}
+
+.definition-list dt {
+  font-weight: 800;
+}
+
+.definition-list dd {
+  margin: 0;
+}
+
 .fidelity-detail {
   margin-top: 1.25rem;
 }
@@ -497,6 +548,8 @@ pre {
   .hero-grid,
   .two-column,
   .three-column,
+  .assessment-grid,
+  .definition-list,
   .guidance-grid {
     grid-template-columns: 1fr;
   }

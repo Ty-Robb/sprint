@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/session-manifest-v2.schema.json",
+  "title": "Customer-testing session manifest 2.0",
+  "allOf": [
+    {"$ref": "session-manifest-v1.schema.json"},
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {"const": "2.0"},
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "participantSegment",
+              "participantFit",
+              "protocolFidelity",
+              "criticalScenariosCovered",
+              "attempted",
+              "usable",
+              "exclusionReason"
+            ]
+          }
+        }
+      },
+      "required": ["schemaVersion"]
+    }
+  ]
+}

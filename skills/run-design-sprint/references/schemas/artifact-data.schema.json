@@ -28,6 +28,11 @@
       "type": "array",
       "items": {"$ref": "#/$defs/evidence"}
     },
+    "materialFindings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/materialFinding"}
+    },
+    "outcomeAssessment": {"$ref": "#/$defs/outcomeAssessment"},
     "unknowns": {"$ref": "#/$defs/stringList"},
     "nextActions": {"$ref": "#/$defs/stringList"}
   },
@@ -152,7 +157,7 @@
         {"$ref": "#/$defs/sectionPatterns"},
         {"$ref": "#/$defs/sectionContradictions"},
         {"$ref": "#/$defs/sectionOutliers"},
-        {"$ref": "#/$defs/sectionConfidence"},
+        {"$ref": "#/$defs/sectionEvidenceStrength"},
         {"$ref": "#/$defs/sectionEvidenceGaps"}
       ]}}}
     },
@@ -161,7 +166,7 @@
       "then": {"properties": {"sections": {"allOf": [
         {"$ref": "#/$defs/sectionOutcomeDecision"},
         {"$ref": "#/$defs/sectionSupportingEvidence"},
-        {"$ref": "#/$defs/sectionConfidence"},
+        {"$ref": "#/$defs/sectionEvidenceStrength"},
         {"$ref": "#/$defs/sectionUnresolvedRisks"},
         {"$ref": "#/$defs/sectionNextActions"}
       ]}}}
@@ -295,6 +300,59 @@
       },
       "additionalProperties": false
     },
+    "findingEvidence": {
+      "type": "object",
+      "required": ["sessionId", "participantId", "prototypeVersion", "questionsVersion", "sourceType", "evidenceIds"],
+      "properties": {
+        "sessionId": {"type": "string", "pattern": "^S[0-9][A-Z0-9-]{0,30}$"},
+        "participantId": {"type": "string", "pattern": "^P[0-9][A-Z0-9-]{0,30}$"},
+        "prototypeVersion": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "questionsVersion": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "sourceType": {"enum": ["direct-observation", "inference"]},
+        "evidenceIds": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "materialFinding": {
+      "type": "object",
+      "required": ["id", "statement", "directness", "support", "contradictions", "outliers", "limitations", "remainingUncertainty", "nextDecision"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "statement": {"type": "string", "minLength": 1},
+        "directness": {"enum": ["direct-observation", "inference", "mixed"]},
+        "support": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/findingEvidence"}},
+        "contradictions": {"type": "array", "items": {"$ref": "#/$defs/findingEvidence"}},
+        "outliers": {"type": "array", "items": {"$ref": "#/$defs/findingEvidence"}},
+        "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "remainingUncertainty": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "nextDecision": {
+          "type": "object",
+          "required": ["impact", "action", "rationale", "smallestNextLearningAction"],
+          "properties": {
+            "impact": {"enum": ["investigate-or-retest", "correct-observed-failure", "bounded-reversible-investment", "defer-large-or-irreversible-investment"]},
+            "action": {"type": "string", "minLength": 1},
+            "rationale": {"type": "string", "minLength": 1},
+            "smallestNextLearningAction": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "outcomeAssessment": {
+      "type": "object",
+      "required": ["processCompleted", "methodAdaptations", "evidenceSupports", "evidenceCannotSupport", "justifiedDecision", "decisionImpact", "smallestNextLearningAction"],
+      "properties": {
+        "processCompleted": {"type": "string"},
+        "methodAdaptations": {"type": "string"},
+        "evidenceSupports": {"type": "string"},
+        "evidenceCannotSupport": {"type": "string"},
+        "justifiedDecision": {"type": "string"},
+        "decisionImpact": {"enum": ["investigate-or-retest", "correct-observed-failure", "bounded-reversible-investment", "defer-large-or-irreversible-investment"]},
+        "smallestNextLearningAction": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
     "sectionChallenge": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Challenge"}}, "required": ["title"]}, "minContains": 1},
     "sectionDesiredOutcome": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Desired outcome"}}, "required": ["title"]}, "minContains": 1},
     "sectionConstraints": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Constraints"}}, "required": ["title"]}, "minContains": 1},
@@ -354,7 +412,7 @@
     "sectionQuestionByQuestionFindings": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Question-by-question findings"}}, "required": ["title"]}, "minContains": 1},
     "sectionPatterns": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Patterns"}}, "required": ["title"]}, "minContains": 1},
     "sectionOutliers": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Outliers"}}, "required": ["title"]}, "minContains": 1},
-    "sectionConfidence": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Confidence"}}, "required": ["title"]}, "minContains": 1},
+    "sectionEvidenceStrength": {"type": "array", "contains": {"type": "object", "properties": {"title": {"enum": ["Confidence", "Evidence strength"]}}, "required": ["title"]}, "minContains": 1},
     "sectionOutcomeDecision": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Outcome decision"}}, "required": ["title"]}, "minContains": 1},
     "sectionSupportingEvidence": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Supporting evidence"}}, "required": ["title"]}, "minContains": 1},
     "sectionNextActions": {"type": "array", "contains": {"type": "object", "properties": {"title": {"const": "Next actions"}}, "required": ["title"]}, "minContains": 1}

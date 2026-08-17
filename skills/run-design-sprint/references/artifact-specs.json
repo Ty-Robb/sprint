@@ -94,16 +94,16 @@
       "filename": "12-synthesis.html",
       "title": "Evidence Synthesis",
       "phase": "Synthesis",
-      "purpose": "Compare structured customer-session summaries with sprint questions and show traceable patterns, contradictions, outliers, confidence, and gaps.",
-      "requiredSections": ["Question-by-question findings", "Patterns", "Contradictions", "Outliers", "Confidence", "Evidence gaps"]
+      "purpose": "Compare structured customer-session summaries with sprint questions and show traceable patterns, contradictions, outliers, evidence strength, and gaps.",
+      "requiredSections": ["Question-by-question findings", "Patterns", "Contradictions", "Outliers", "Evidence strength", "Evidence gaps"]
     },
     "13-outcome": {
       "step": "13-outcome",
       "filename": "13-outcome.html",
       "title": "Sprint Outcome",
       "phase": "Decision",
-      "purpose": "Record the human's final outcome, supporting evidence, confidence, unresolved risks, owned next actions, and the generated method-fidelity summary.",
-      "requiredSections": ["Outcome decision", "Supporting evidence", "Confidence", "Unresolved risks", "Next actions"]
+      "purpose": "Record the human's final outcome, supporting evidence, evidence strength, decision readiness, unresolved risks, owned next actions, and generated four-dimensional assessment.",
+      "requiredSections": ["Outcome decision", "Supporting evidence", "Evidence strength", "Unresolved risks", "Next actions"]
     }
   }
 }

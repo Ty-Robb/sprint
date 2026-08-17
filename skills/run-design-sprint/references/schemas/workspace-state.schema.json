@@ -584,7 +584,12 @@
         "target": {"type": "string"},
         "targetRationale": {"type": "string"},
         "sessionsPlanned": {"type": "integer", "minimum": 0},
-        "sessionsCompleted": {"type": "integer", "minimum": 0}
+        "sessionsInvited": {"type": "integer", "minimum": 0},
+        "sessionsAttempted": {"type": "integer", "minimum": 0},
+        "sessionsCompleted": {"type": "integer", "minimum": 0},
+        "sessionsQualified": {"type": "integer", "minimum": 0},
+        "sessionsExcluded": {"type": "integer", "minimum": 0},
+        "sessionsUsable": {"type": "integer", "minimum": 0}
       },
       "additionalProperties": false
     },

@@ -90,7 +90,12 @@ ownership; it is not a complete schema-valid record because `init` supplies all
     "status": "not-planned",
     "target": "",
     "sessionsPlanned": 0,
-    "sessionsCompleted": 0
+    "sessionsInvited": 0,
+    "sessionsAttempted": 0,
+    "sessionsCompleted": 0,
+    "sessionsQualified": 0,
+    "sessionsExcluded": 0,
+    "sessionsUsable": 0
   },
   "openQuestions": [],
   "nextAction": {
@@ -297,8 +302,9 @@ generate one `session-packet` per participant, persist checkpoints when needed,
 then use `session-complete` only after its structured summary, consent, and
 redaction metadata pass validation. A generated handoff is the complete input
 to one fresh session chat; it must not be supplemented with earlier participant
-chats or unrelated sprint history. `sessionsCompleted` is derived from unique
-complete manifest entries and cannot be set directly.
+chats or unrelated sprint history. Planned and invited counts remain explicit;
+attempted, completed, qualified, excluded, and usable counts reconcile to
+unique manifest entries and cannot be set directly.
 
 If sessions cannot occur, set the state to `waiting-for-customers`. Do not skip forward to a customer-tested conclusion.
 
@@ -306,7 +312,7 @@ For a live Sprint-book profile, five suitable one-to-one sessions are the defaul
 
 ### Step 12: Synthesise
 
-Compare all session evidence against the sprint questions and scorecard. Show patterns, contradictions, outliers, confidence, and unanswered questions. Keep findings traceable to anonymised session evidence.
+Compare all session evidence against the sprint questions and scorecard. Show patterns, contradictions, outliers, descriptive evidence strength, and unanswered questions. Keep findings traceable to anonymised participant/session evidence and tested prototype/question versions. Never translate participant count into statistical confidence.
 
 **Primary roles:** Synthesis Analyst, Critical Reviewer
 

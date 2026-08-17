@@ -76,13 +76,14 @@ Create an artifact with `new-artifact`, then replace its draft values. Keep this
 
 ```json
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "3.0",
   "id": "05-sprint-questions",
   "status": "draft",
   "updatedAt": "2026-01-01T12:00:00Z",
   "summary": ["A concise conclusion."],
   "sections": [],
   "evidence": [],
+  "materialFindings": [],
   "unknowns": [],
   "nextActions": []
 }
@@ -137,19 +138,21 @@ Include a unique page title, UTF-8 charset, responsive viewport, link to the loc
 Make `index.html` the control centre, not a decorative cover. Show:
 
 - sprint title, method profile, execution mode, route, status, and current step;
-- process completion with completed, skipped, and not-applicable stages;
+- process status with completed, skipped, blocked, not-applicable, and not-started stages;
 - method fidelity as a separate assessment with adaptations and limitations;
+- descriptive evidence strength based on usable sessions, participant fit, protocol fidelity, tested versions, segment/scenario coverage, contradiction, directness, and uncertainty;
+- decision readiness for the specific proposed action, with a plain-language reason rather than a numeric score;
 - progressively disclosed current-step purpose, default and selected methods, participants, and timebox;
 - the exact next action;
 - human decisions and unresolved questions;
-- customer-testing status and session count;
+- customer-testing status plus separate planned, invited, attempted, completed, qualified, excluded, and usable counts;
 - links to every created artifact and prototype;
 - prominent blockers;
 - evidence-status legend.
 
 Never show a later stage as complete merely because a placeholder file exists.
 
-Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same generated method-fidelity summary in the final outcome artifact so exported conclusions cannot lose their method limitations.
+Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same four-dimensional assessment and automatically generated limitations in the final outcome artifact so exported conclusions cannot lose their method or evidence boundaries. Five suitable usable sessions means the book target was met; it never means statistically validated or representative.
 
 ## Artifact requirements
 
