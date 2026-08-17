@@ -1722,9 +1722,22 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
     selection = brief["selection"]
     customer = brief["customer"]
     experience = brief["experience"]
+    content = brief["content"]
+    environment = brief["environment"]
+    capabilities = brief["capabilities"]
+    safety = brief["safety"]
+    evidence_capture = brief["evidenceCapture"]
+    build = brief["build"]
     tool = brief["toolSelection"]
     deployment = brief["deploymentPlan"]
     approvals = brief["approvals"]
+
+    def joined(values: list[str]) -> str:
+        return "; ".join(values) or "None"
+
+    def yes_no(value: bool) -> str:
+        return "Yes" if value else "No"
+
     sections: list[str] = []
     sections.append(
         render_section(
@@ -1736,6 +1749,10 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                     {"label": "Selected level", "value": display_label(brief["artifactLevel"])},
                     {"label": "Target customer", "value": customer["target"]},
                     {"label": "Entry context", "value": customer["entryContext"]},
+                    {
+                        "label": "Sprint questions",
+                        "value": joined(selection["sprintQuestions"]),
+                    },
                     {"label": "Hypothesis", "value": selection["hypothesis"]},
                     {"label": "Selection rationale", "value": selection["rationale"]},
                     {
@@ -1750,7 +1767,21 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
     sections.append(
         render_section(
             {
-                "title": "Task, journey, and critical scenes",
+                "title": "Exact task and journey",
+                "eyebrow": "Participant path",
+                "type": "key-value",
+                "items": [
+                    {"label": "Task", "value": experience["task"]},
+                    {"label": "Journey", "value": joined(experience["journey"])},
+                ],
+            },
+            102,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Critical scenes",
                 "eyebrow": "Four to six test moments",
                 "type": "table",
                 "caption": "Critical scenes mapped to sprint questions",
@@ -1760,7 +1791,7 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                     for item in experience["criticalScenes"]
                 ],
             },
-            102,
+            103,
         )
     )
     sections.append(
@@ -1776,7 +1807,7 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                     for label in ("success", "ambiguity", "failure")
                 ],
             },
-            103,
+            104,
         )
     )
     reality = brief["realityBoundary"]
@@ -1793,32 +1824,134 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                     for key in ("mustBeReal", "simulated", "manuallyOperated", "delayed", "omitted")
                 ],
             },
-            104,
+            105,
         )
     )
-    capability_names = [
-        display_label(key)
-        for key, value in brief["capabilities"].items()
-        if key != "notes" and value is True
-    ]
     sections.append(
         render_section(
             {
-                "title": "Content, environment, and safety",
+                "title": "Content and interface states",
+                "eyebrow": "Realistic test material",
+                "type": "key-value",
+                "items": [
+                    {
+                        "label": "Required content",
+                        "value": joined(content["required"]),
+                    },
+                    {
+                        "label": "Realistic sample data",
+                        "value": joined(content["sampleData"]),
+                    },
+                    {
+                        "label": "Empty states",
+                        "value": joined(content["states"]["empty"]),
+                    },
+                    {
+                        "label": "Loading states",
+                        "value": joined(content["states"]["loading"]),
+                    },
+                    {
+                        "label": "Error states",
+                        "value": joined(content["states"]["error"]),
+                    },
+                ],
+            },
+            106,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Environment and capabilities",
                 "eyebrow": "Test conditions",
                 "type": "key-value",
                 "items": [
-                    {"label": "Required content", "value": "; ".join(brief["content"]["required"])},
-                    {"label": "Real capabilities", "value": "; ".join(capability_names) or "None"},
-                    {"label": "Devices", "value": "; ".join(brief["environment"]["devices"])},
-                    {"label": "Browsers", "value": "; ".join(brief["environment"]["browsers"])},
-                    {"label": "Languages", "value": "; ".join(brief["environment"]["languages"])},
-                    {"label": "Accessibility", "value": "; ".join(brief["environment"]["accessibility"])},
-                    {"label": "Data class", "value": display_label(brief["safety"]["dataClassification"])},
-                    {"label": "Evidence capture", "value": "; ".join(brief["evidenceCapture"]["methods"])},
+                    {"label": "Devices", "value": joined(environment["devices"])},
+                    {"label": "Browsers", "value": joined(environment["browsers"])},
+                    {"label": "Languages", "value": joined(environment["languages"])},
+                    {
+                        "label": "Accessibility",
+                        "value": joined(environment["accessibility"]),
+                    },
+                    {
+                        "label": "Environmental conditions",
+                        "value": joined(environment["conditions"]),
+                    },
                 ],
             },
-            105,
+            107,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Capability requirements",
+                "eyebrow": "Only what must be operational",
+                "type": "key-value",
+                "items": [
+                    {
+                        "label": display_label(key),
+                        "value": yes_no(value),
+                    }
+                    for key, value in capabilities.items()
+                    if key != "notes"
+                ]
+                + [
+                    {
+                        "label": "Notes",
+                        "value": joined(capabilities["notes"]),
+                    }
+                ],
+            },
+            108,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Safety and evidence capture",
+                "eyebrow": "Privacy, consent, and learning boundary",
+                "type": "key-value",
+                "items": [
+                    {"label": "Privacy", "value": joined(safety["privacy"])},
+                    {"label": "Consent", "value": joined(safety["consent"])},
+                    {"label": "Security", "value": joined(safety["security"])},
+                    {"label": "Regulatory", "value": joined(safety["regulatory"])},
+                    {
+                        "label": "Data classification",
+                        "value": display_label(safety["dataClassification"]),
+                    },
+                    {
+                        "label": "Evidence methods",
+                        "value": joined(evidence_capture["methods"]),
+                    },
+                    {
+                        "label": "Analytics enabled",
+                        "value": yes_no(evidence_capture["analytics"]["enabled"]),
+                    },
+                    {
+                        "label": "Analytics rationale",
+                        "value": evidence_capture["analytics"]["rationale"],
+                    },
+                ],
+            },
+            109,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Build boundary",
+                "eyebrow": "Time, ownership, cost, and checkpoints",
+                "type": "key-value",
+                "items": [
+                    {"label": "Timebox", "value": f'{build["timeboxMinutes"]} minutes'},
+                    {"label": "Owner", "value": build["owner"]},
+                    {"label": "Budget ceiling", "value": build["budgetCeiling"]},
+                    {"label": "Approval points", "value": joined(build["approvalPoints"])},
+                ],
+            },
+            110,
         )
     )
     sections.append(
@@ -1832,11 +1965,60 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                     {"label": "Category", "value": display_label(tool["category"])},
                     {"label": "Selected tool", "value": tool["selectedTool"]},
                     {"label": "Rationale", "value": tool["rationale"]},
+                    {"label": "Constraints", "value": joined(tool["constraints"])},
+                    {
+                        "label": "External account required",
+                        "value": yes_no(tool["requiresExternalAccount"]),
+                    },
                     {"label": "Estimated cost", "value": tool["estimatedCost"]},
-                    {"label": "Export / self-host", "value": tool["exportSelfHosting"]["strategy"]},
+                    {
+                        "label": "Export / self-host available",
+                        "value": yes_no(tool["exportSelfHosting"]["available"]),
+                    },
+                    {
+                        "label": "Export / self-host",
+                        "value": tool["exportSelfHosting"]["strategy"],
+                    },
                 ],
             },
-            106,
+            111,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Tool-selection assessment",
+                "eyebrow": "Every criterion considered",
+                "type": "table",
+                "caption": "Provider-neutral selection criteria and assessment",
+                "columns": ["Criterion", "Assessment"],
+                "rows": [
+                    [display_label(criterion), assessment]
+                    for criterion, assessment in tool["criteria"].items()
+                ],
+            },
+            112,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Supporting tool categories",
+                "eyebrow": "Only when the experiment requires them",
+                "type": "table",
+                "caption": "Approved supporting tools and their purpose",
+                "columns": ["Category", "Selected tool", "Rationale"],
+                "rows": [
+                    [
+                        display_label(item["category"]),
+                        item["selectedTool"],
+                        item["rationale"],
+                    ]
+                    for item in tool["supportingTools"]
+                ]
+                or [["None", "None", "No supporting tool is required."]],
+            },
+            113,
         )
     )
     sections.append(
@@ -1846,13 +2028,19 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                 "eyebrow": "Human-owned decisions",
                 "type": "table",
                 "caption": "Experiment, tool, account, cost, data, and deployment approvals",
-                "columns": ["Boundary", "Status", "Decider", "Rationale"],
+                "columns": ["Boundary", "Status", "Decider", "Rationale", "Decided at"],
                 "rows": [
-                    [display_label(boundary), display_label(item["status"]), item["deciderLabel"] or "Pending", item["rationale"] or "Pending"]
+                    [
+                        display_label(boundary),
+                        display_label(item["status"]),
+                        item["deciderLabel"] or "Pending",
+                        item["rationale"] or "Pending",
+                        item["decidedAt"] or "Pending",
+                    ]
                     for boundary, item in approvals.items()
                 ],
             },
-            107,
+            114,
         )
     )
     sections.append(
@@ -1862,15 +2050,20 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                 "eyebrow": "A URL is not validation",
                 "type": "key-value",
                 "items": [
+                    {
+                        "label": "Deployment required",
+                        "value": yes_no(deployment["required"]),
+                    },
                     {"label": "Target", "value": deployment["target"]},
                     {"label": "Access", "value": display_label(deployment["accessModel"])},
+                    {"label": "Public", "value": yes_no(deployment["public"])},
                     {"label": "Planned URL", "value": deployment["url"] or "No URL planned"},
                     {"label": "Expiry", "value": deployment["expiresAt"] or "No automatic expiry"},
                     {"label": "Cleanup", "value": deployment["cleanupPlan"]},
                     {"label": "Rollback", "value": deployment["rollbackPlan"]},
                 ],
             },
-            108,
+            115,
         )
     )
     operation_rows: list[str] = []
