@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/workspace-state-v3.schema.json",
+  "title": "Design Sprint workspace state 3.0",
+  "allOf": [
+    {"$ref": "workspace-state.schema.json"},
+    {
+      "type": "object",
+      "properties": {"schemaVersion": {"const": "3.0"}},
+      "required": ["schemaVersion"]
+    }
+  ]
+}

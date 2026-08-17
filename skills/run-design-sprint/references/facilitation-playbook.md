@@ -81,7 +81,7 @@ Ask:
 
 > I recommend **[route]** because **[reason]**. Shall we use that route, revise it, or stop?
 
-The `sprint-book` profile pairs with `full-design-sprint` and retains the five-day intent, canonical exercises/timeboxes, and five-customer live-testing target wherever possible. Always disclose that one human plus AI specialists adapts the book's cross-functional human team model. Use `adaptive-design-sprint` for research-first, foundation, focused, and no-sprint routes. Choose `live`, `self-test`, or `planning-rehearsal` independently; non-live modes cannot produce customer evidence.
+The `sprint-book` profile pairs with `full-design-sprint` and retains the five-day intent, canonical exercises/timeboxes, and five-customer live-testing target wherever possible. Always disclose that one human plus AI specialists adapts the book's cross-functional human team model. Use `adaptive-design-sprint` for research-first, foundation, focused, and no-sprint routes. Choose `live`, `self-test`, or `planning-rehearsal` independently; record who chose the mode and why. Non-live modes cannot produce customer evidence and must follow the unvalidated closure and restart rules in [execution-modes.md](execution-modes.md).
 
 **Definition of done:** The route and rationale are recorded. Complete Step 2 and pass Gate 1 with an explicit human decision.
 
@@ -286,7 +286,7 @@ Read [customer-testing.md](customer-testing.md) before this step. Do not substit
 
 The human may conduct sessions or permit AI-assisted moderation when suitable tooling and participant consent exist. Record observations before interpretations.
 
-Plan five suitable customers for a live Sprint-book profile. Use deliberate observation and debrief checkpoints with traceable session summaries when a cross-functional watch party is impractical. In self-test or planning/rehearsal mode, skip the live-session step with a recorded reason and impacts; keep rehearsal material out of the customer-evidence artifact.
+Plan five suitable customers for a live Sprint-book profile. Use deliberate observation and debrief checkpoints with traceable session summaries when a cross-functional watch party is impractical. In self-test or planning/rehearsal mode, auditably skip both live sessions and customer-evidence synthesis with a named approver, reason, and impacts; keep rehearsal material out of the customer-evidence artifact.
 
 **Definition of done:** Recruitment and consent are documented, at least one suitable real session is complete, the planned test was followed or deviations are recorded, and anonymised evidence is stored.
 

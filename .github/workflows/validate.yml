@@ -34,12 +34,31 @@ jobs:
 
       - name: Compile JSON Schemas
         run: |
+          schema_targets=()
+          while IFS= read -r schema; do
+            schema_targets+=(-s "$schema")
+          done < <(find skills/run-design-sprint/references/schemas \
+            -name '*-v*.schema.json' \
+            ! -name 'prototype-brief-v1.schema.json' \
+            ! -name 'tested-version-v1.schema.json' \
+            -print | sort)
           npx --yes ajv-cli@5.0.0 compile \
             --spec=draft2020 \
             --validate-formats=false \
-            -s 'skills/run-design-sprint/references/schemas/*-v*.schema.json' \
+            "${schema_targets[@]}" \
             -r skills/run-design-sprint/references/schemas/workspace-state.schema.json \
-            -r skills/run-design-sprint/references/schemas/artifact-data.schema.json
+            -r skills/run-design-sprint/references/schemas/artifact-data.schema.json \
+            -r skills/run-design-sprint/references/schemas/prototype-brief-v1.schema.json \
+            -r skills/run-design-sprint/references/schemas/tested-version-v1.schema.json
+          npx --yes ajv-cli@5.0.0 compile \
+            --spec=draft2020 \
+            --validate-formats=false \
+            -s skills/run-design-sprint/references/schemas/prototype-brief-v1.schema.json
+          npx --yes ajv-cli@5.0.0 compile \
+            --spec=draft2020 \
+            --validate-formats=false \
+            -s skills/run-design-sprint/references/schemas/tested-version-v1.schema.json \
+            -r skills/run-design-sprint/references/schemas/prototype-brief-v1.schema.json
 
       - name: Check public/private evidence boundary
         run: python scripts/check_publication.py
@@ -53,6 +72,8 @@ jobs:
           python skills/run-design-sprint/scripts/sprint_workspace.py init \
             --title "CI Sprint" \
             --challenge "Validate generated HTML" \
+            --selected-by "CI validation fixture" \
+            --mode-reason "Exercise the generated live-mode workspace." \
             --output "$workspace"
           python skills/run-design-sprint/scripts/sprint_workspace.py render \
             --workspace "$workspace" \

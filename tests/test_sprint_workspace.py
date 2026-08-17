@@ -55,6 +55,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "Test Sprint",
             "--challenge",
             challenge,
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Run the automated live-mode fixture.",
             "--output",
             str(self.workspace),
         )
@@ -700,6 +704,22 @@ class SprintWorkspaceTests(unittest.TestCase):
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
 
+    def test_init_requires_explicit_execution_mode_selector_and_reason(self) -> None:
+        result = self.run_cli(
+            "init",
+            "--title",
+            "Unaudited Sprint",
+            "--challenge",
+            "Attempt an implicit mode selection",
+            "--output",
+            str(self.workspace),
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--selected-by", result.stderr)
+        self.assertIn("--mode-reason", result.stderr)
+        self.assertFalse(self.workspace.exists())
+
     def test_test_artifact_recommendations_cover_required_routes(self) -> None:
         scenarios = {
             "clickable": (
@@ -972,7 +992,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         (self.workspace / "artifact-data").mkdir(parents=True)
         self.write_json(
             "sprint-state.json",
-            self.fixture_document("schemas/valid/workspace-state-v2.synthetic.json"),
+            self.fixture_document("schemas/valid/workspace-state-v3.synthetic.json"),
         )
         self.write_json(
             "assignment-manifest.json",
@@ -1044,7 +1064,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.workspace.mkdir()
         self.write_json(
             "sprint-state.json",
-            self.fixture_document("schemas/invalid/workspace-state-v2.synthetic.json"),
+            self.fixture_document("schemas/invalid/workspace-state-v3.synthetic.json"),
         )
 
         result = self.run_cli(
@@ -1059,7 +1079,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         (self.workspace / "artifact-data").mkdir(parents=True)
         self.write_json(
             "sprint-state.json",
-            self.fixture_document("schemas/valid/workspace-state-v2.synthetic.json"),
+            self.fixture_document("schemas/valid/workspace-state-v3.synthetic.json"),
         )
         self.write_json(
             "assignment-manifest.json",
@@ -1112,7 +1132,7 @@ class SprintWorkspaceTests(unittest.TestCase):
     def test_unsupported_schema_version_fails_with_remediation(self) -> None:
         self.workspace.mkdir()
         state = self.fixture_document(
-            "schemas/valid/workspace-state-v2.synthetic.json"
+            "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["schemaVersion"] = "99.0"
         self.write_json("sprint-state.json", state)
@@ -1124,13 +1144,14 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("$.schemaVersion", result.stderr)
         self.assertIn("unsupported version '99.0'", result.stderr)
-        self.assertIn("2.0 (current)", result.stderr)
+        self.assertIn("3.0 (current)", result.stderr)
         self.assertIn("1.0 (migratable)", result.stderr)
+        self.assertIn("2.0 (migratable)", result.stderr)
 
     def test_schema_rejects_bad_formats_and_undeclared_fields(self) -> None:
         self.workspace.mkdir()
         state = self.fixture_document(
-            "schemas/valid/workspace-state-v2.synthetic.json"
+            "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["updatedAt"] = "2026-08-17"
         state["undeclared"] = True
@@ -1147,7 +1168,7 @@ class SprintWorkspaceTests(unittest.TestCase):
     def test_loader_rejects_nonstandard_json_numbers(self) -> None:
         self.workspace.mkdir()
         state = self.fixture_document(
-            "schemas/valid/workspace-state-v2.synthetic.json"
+            "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["customerTesting"]["sessionsPlanned"] = float("nan")
         self.write_json("sprint-state.json", state)
@@ -1162,7 +1183,7 @@ class SprintWorkspaceTests(unittest.TestCase):
     def test_gate_rejects_invalid_nested_state_before_decision_mutation(self) -> None:
         self.workspace.mkdir()
         state = self.fixture_document(
-            "schemas/valid/workspace-state-v2.synthetic.json"
+            "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["route"] = "full-design-sprint"
         state["currentStep"] = "02-qualify"
@@ -1291,7 +1312,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--backup",
             str(unused_backup),
         )
-        self.assertIn("already uses schema version 2.0", no_op.stdout)
+        self.assertIn("already uses state schema version 3.0", no_op.stdout)
         self.assertFalse(unused_backup.exists())
         self.run_cli("render", "--workspace", str(self.workspace))
         self.run_cli("validate", "--workspace", str(self.workspace))
@@ -1322,6 +1343,35 @@ class SprintWorkspaceTests(unittest.TestCase):
             self.read_json("artifact-data/01-sprint-brief.json")["updatedAt"],
             artifact_before["updatedAt"],
         )
+
+    def test_schema_two_state_migrates_to_explicit_terminal_and_skip_records(self) -> None:
+        self.initialise()
+        state = self.read_json("sprint-state.json")
+        state["schemaVersion"] = "2.0"
+        state.pop("terminalState")
+        state.pop("skipRecords")
+        self.write_json("sprint-state.json", state)
+
+        blocked = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("version '2.0' is legacy", blocked.stderr)
+
+        backup = Path(self.temporary_directory.name) / "schema-two-backup"
+        self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(backup),
+        )
+        migrated = self.read_json("sprint-state.json")
+        self.assertEqual(migrated["schemaVersion"], "3.0")
+        self.assertEqual(migrated["terminalState"], "not-terminal")
+        self.assertEqual(migrated["skipRecords"], [])
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("validate", "--workspace", str(self.workspace))
 
     @unittest.skipUnless(os.name == "posix", "POSIX permission bits are required")
     def test_generated_and_canonical_files_have_portable_permissions(self) -> None:
@@ -1474,9 +1524,17 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(self.workspace),
         )
         state = self.read_json("sprint-state.json")
-        self.assertEqual(state["schemaVersion"], "2.0")
+        self.assertEqual(state["schemaVersion"], "3.0")
         self.assertEqual(state["methodProfile"], "sprint-book")
         self.assertEqual(state["executionMode"], "live")
+        self.assertEqual(
+            state["executionModeSelection"]["selectedBy"], "human Decider"
+        )
+        self.assertEqual(
+            state["executionModeSelection"]["reason"],
+            "Suitable real customers are available.",
+        )
+        self.assertTrue(state["executionModeSelection"]["selectedAt"])
         self.assertEqual(state["route"], "undecided")
         self.assertEqual(state["customerTesting"]["sessionsPlanned"], 5)
         self.assertEqual(len(state["fidelity"]["steps"]), 13)
@@ -1568,6 +1626,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "sprint-book",
             "--execution-mode",
             "self-test",
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Exercise the process without customer validation.",
             "--output",
             str(self.workspace),
         )
@@ -1605,6 +1667,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "adaptive-design-sprint",
             "--execution-mode",
             "planning-rehearsal",
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Plan the process without claiming it occurred.",
             "--output",
             str(self.workspace),
         )
@@ -1629,6 +1695,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "Exercise the workflow",
             "--execution-mode",
             "self-test",
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Exercise the workflow without customer sessions.",
             "--output",
             str(self.workspace),
         )
@@ -1676,6 +1746,83 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIn("cannot complete a customer-evidence artifact", render_result.stderr)
         self.assertIn("claims live customer evidence", render_result.stderr)
         self.assertIn("labels a customer claim Observed", render_result.stderr)
+        self.assertIn("cannot label a synthetic", render_result.stderr)
+
+    def test_invalid_cross_mode_transitions_preserve_auditable_history(self) -> None:
+        self.initialise()
+        self.set_customer_plan(1)
+        self.initialise_customer_session("S01", "P01")
+        recorded_session = self.run_cli(
+            "set-execution-mode",
+            "--workspace",
+            str(self.workspace),
+            "--mode",
+            "self-test",
+            "--selected-by",
+            "Test Decider",
+            "--reason",
+            "Attempt to relabel a live-session workspace.",
+            check=False,
+        )
+        self.assertEqual(recorded_session.returncode, 2)
+        self.assertIn("live customer-session record exists", recorded_session.stderr)
+        self.assertEqual(
+            self.read_json("sprint-state.json")["executionMode"], "live"
+        )
+
+        self.workspace = Path(self.temporary_directory.name) / "early-conversion"
+        self.run_cli(
+            "init",
+            "--title",
+            "Convertible Rehearsal",
+            "--challenge",
+            "Decide whether to start live work",
+            "--execution-mode",
+            "self-test",
+            "--selected-by",
+            "Initial Decider",
+            "--mode-reason",
+            "Check the workflow before beginning the sprint.",
+            "--output",
+            str(self.workspace),
+        )
+        self.run_cli(
+            "set-execution-mode",
+            "--workspace",
+            str(self.workspace),
+            "--mode",
+            "live",
+            "--selected-by",
+            "Conversion Decider",
+            "--reason",
+            "Suitable real customers and approval are now available.",
+        )
+        converted = self.read_json("sprint-state.json")
+        self.assertEqual(converted["executionMode"], "live")
+        self.assertEqual(
+            converted["executionModeSelection"]["selectedBy"],
+            "Conversion Decider",
+        )
+        self.assertEqual(converted["terminalState"], "not-terminal")
+
+        self.complete_intake()
+        after_work = self.run_cli(
+            "set-execution-mode",
+            "--workspace",
+            str(self.workspace),
+            "--mode",
+            "planning-rehearsal",
+            "--selected-by",
+            "Conversion Decider",
+            "--reason",
+            "Attempt to relabel completed live work.",
+            check=False,
+        )
+        self.assertEqual(after_work.returncode, 2)
+        self.assertIn("cannot change after a step is complete", after_work.stderr)
+        self.assertEqual(
+            self.read_json("sprint-state.json")["executionMode"], "live"
+        )
 
     def test_directional_evidence_cannot_claim_statistical_validation(self) -> None:
         self.initialise()
@@ -1836,7 +1983,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(migration.returncode, 0, migration.stderr)
         self.run_cli("render", "--workspace", str(self.workspace))
         migrated = self.read_json("sprint-state.json")
-        self.assertEqual(migrated["schemaVersion"], "2.0")
+        self.assertEqual(migrated["schemaVersion"], "3.0")
         self.assertEqual(migrated["methodProfile"], "adaptive-design-sprint")
         self.assertEqual(migrated["executionMode"], "live")
         self.assertEqual(migrated["notApplicableSteps"], ["04-foundation"])
@@ -2699,7 +2846,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             completed: int,
             mode: str = "live",
         ) -> dict:
-            return {
+            state = {
                 "executionMode": mode,
                 "customerTesting": {
                     "status": status,
@@ -2709,6 +2856,8 @@ class SprintWorkspaceTests(unittest.TestCase):
                     "sessionsCompleted": completed,
                 },
             }
+            state["terminalState"] = WORKSPACE_MODULE.expected_terminal_state(state)
+            return state
 
         valid = [
             ("not-planned", 0, 0),
@@ -2794,7 +2943,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             planned: int,
             session_count: int,
         ) -> dict:
-            return {
+            state = {
                 "route": route,
                 "routeHistory": [
                     {
@@ -2817,6 +2966,8 @@ class SprintWorkspaceTests(unittest.TestCase):
                     "sessionsCompleted": session_count,
                 },
             }
+            state["terminalState"] = WORKSPACE_MODULE.expected_terminal_state(state)
+            return state
 
         full_steps = [item for item in all_steps if item != "04-foundation"]
         valid = [
@@ -2848,9 +2999,11 @@ class SprintWorkspaceTests(unittest.TestCase):
                 route="full-design-sprint",
                 mode="self-test",
                 completed=[
-                    item for item in full_steps if item != "11-customer-sessions"
+                    item
+                    for item in full_steps
+                    if item not in {"11-customer-sessions", "12-synthesis"}
                 ],
-                skipped=["11-customer-sessions"],
+                skipped=["11-customer-sessions", "12-synthesis"],
                 outcome="Investigate",
                 customer_status="not-planned",
                 planned=0,
@@ -2898,9 +3051,11 @@ class SprintWorkspaceTests(unittest.TestCase):
                 route="full-design-sprint",
                 mode="self-test",
                 completed=[
-                    item for item in full_steps if item != "11-customer-sessions"
+                    item
+                    for item in full_steps
+                    if item not in {"11-customer-sessions", "12-synthesis"}
                 ],
-                skipped=["11-customer-sessions"],
+                skipped=["11-customer-sessions", "12-synthesis"],
                 outcome="Proceed",
                 customer_status="not-planned",
                 planned=0,
@@ -2936,6 +3091,15 @@ class SprintWorkspaceTests(unittest.TestCase):
                 self.assertTrue(
                     WORKSPACE_MODULE.terminal_state_errors(state)
                 )
+
+        misclassified = json.loads(json.dumps(valid[0]))
+        misclassified["terminalState"] = "closed-unvalidated"
+        self.assertTrue(
+            any(
+                "Terminal state must be live-customer-tested" in item
+                for item in WORKSPACE_MODULE.terminal_state_errors(misclassified)
+            )
+        )
 
     def test_empty_nested_content_never_satisfies_artifact_readiness(self) -> None:
         empty_values = [
@@ -3275,6 +3439,211 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(advanced["currentStep"], "05-map")
         self.run_cli("validate", "--workspace", str(self.workspace))
 
+    def test_self_test_closes_as_explicitly_unvalidated_without_customer_evidence(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Process Self Test",
+            "--challenge",
+            "Exercise the full sprint workflow safely",
+            "--execution-mode",
+            "self-test",
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Verify the workflow without involving or simulating customers.",
+            "--output",
+            str(self.workspace),
+        )
+        self.complete_artifact("01-sprint-brief")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "01-intake",
+        )
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "Exercise every non-customer stage of the full route.",
+        )
+        self.complete_required_assignments("02-qualify")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve self-test route",
+            "--rationale",
+            "The process mechanics need rehearsal before live use.",
+        )
+
+        steps = [
+            ("03-evidence", ["02-evidence-ledger"], None),
+            ("05-map", ["04-journey-map"], None),
+            ("06-questions", ["05-sprint-questions"], ("gate-2", "Approve rehearsal questions")),
+            ("07-explore", ["06-solution-directions"], None),
+            ("08-decide", ["07-decision"], ("gate-3", "Select rehearsal direction")),
+            ("09-experiment", ["08-experiment", "09-storyboard"], None),
+        ]
+        for step_id, artifact_ids, gate in steps:
+            for artifact_id in artifact_ids:
+                self.run_cli(
+                    "new-artifact",
+                    "--workspace",
+                    str(self.workspace),
+                    "--id",
+                    artifact_id,
+                )
+                self.complete_artifact(artifact_id)
+            if step_id == "09-experiment":
+                self.complete_prototype_brief()
+            self.complete_required_assignments(step_id)
+            self.run_cli(
+                "complete-step",
+                "--workspace",
+                str(self.workspace),
+                "--step",
+                step_id,
+            )
+            if gate:
+                gate_id, decision = gate
+                self.run_cli(
+                    "gate",
+                    "--workspace",
+                    str(self.workspace),
+                    "--gate",
+                    gate_id,
+                    "--decision",
+                    decision,
+                    "--rationale",
+                    "Approve the bounded process-rehearsal output only.",
+                )
+
+        self.prepare_tested_prototype_version()
+        self.complete_required_assignments("10-prototype")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "10-prototype",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-4",
+            "--decision",
+            "Approve prototype for process rehearsal only",
+            "--rationale",
+            "No customer-readiness or validation claim is being made.",
+        )
+
+        for step_id, reason in (
+            (
+                "11-customer-sessions",
+                "Self-test mode prohibits live sessions; no customers were simulated or observed.",
+            ),
+            (
+                "12-synthesis",
+                "There is no customer evidence to synthesize in this self-test.",
+            ),
+        ):
+            self.run_cli(
+                "skip-step",
+                "--workspace",
+                str(self.workspace),
+                "--step",
+                step_id,
+                "--reason",
+                reason,
+                "--skipped-by",
+                "Test Decider",
+            )
+
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "13-outcome",
+        )
+        self.complete_artifact("13-outcome")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "13-outcome",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-5",
+            "--decision",
+            "Investigate",
+            "--rationale",
+            "The process test completed; live customer validation remains future work.",
+        )
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+        state = self.read_json("sprint-state.json")
+        self.assertEqual(state["status"], "complete")
+        self.assertEqual(
+            state["terminalState"], "self-test-complete-unvalidated"
+        )
+        self.assertEqual(
+            state["skippedSteps"],
+            ["11-customer-sessions", "12-synthesis"],
+        )
+        self.assertEqual(
+            [item["skippedBy"] for item in state["skipRecords"]],
+            ["Test Decider", "Test Decider"],
+        )
+        self.assertTrue(
+            all(item["executionMode"] == "self-test" for item in state["skipRecords"])
+        )
+        self.assertEqual(state["customerTesting"]["sessionsCompleted"], 0)
+        self.assertFalse(
+            (self.workspace / "artifact-data" / "11-customer-evidence.json").exists()
+        )
+        for relative in ("index.html", "artifacts/13-outcome.html"):
+            rendered = (self.workspace / relative).read_text(encoding="utf-8")
+            self.assertIn("UNVALIDATED — self-test complete", rendered)
+            self.assertIn("no customer validation was conducted", rendered.lower())
+        status = self.run_cli("status", "--workspace", str(self.workspace))
+        self.assertIn(
+            "Terminal state: self-test-complete-unvalidated", status.stdout
+        )
+        exported_status = json.loads(
+            self.run_cli(
+                "status", "--workspace", str(self.workspace), "--json"
+            ).stdout
+        )
+        self.assertEqual(
+            exported_status["terminalState"],
+            "self-test-complete-unvalidated",
+        )
+        self.assertEqual(exported_status["executionMode"], "self-test")
+
     def test_completed_artifact_cannot_keep_placeholder_sections(self) -> None:
         self.initialise()
         data = self.read_json("artifact-data/01-sprint-brief.json")
@@ -3607,6 +3976,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             "Test bounded handoffs",
             "--session-context-maximum",
             "1000",
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Run the automated live-mode fixture.",
             "--output",
             str(self.workspace),
         )
@@ -3834,9 +4207,11 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIn("Sprint workspace is valid", result.stdout)
         state = self.read_json("sprint-state.json")
         self.assertEqual(state["status"], "complete")
+        self.assertEqual(state["terminalState"], "live-customer-tested")
         self.assertEqual(state["outcome"], "Proceed")
         dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
         self.assertIn("100%", dashboard)
+        self.assertIn("Live customer testing completed", dashboard)
         outcome = (self.workspace / "artifacts" / "13-outcome.html").read_text(
             encoding="utf-8"
         )
@@ -3918,6 +4293,9 @@ class SprintWorkspaceTests(unittest.TestCase):
         state = self.read_json("sprint-state.json")
         self.assertEqual(state["customerTesting"]["sessionsCompleted"], 0)
         self.assertEqual(state["outcome"], "Stop")
+        self.assertEqual(state["terminalState"], "closed-unvalidated")
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("CLOSED UNVALIDATED", dashboard)
         contradictory = json.loads(json.dumps(state))
         contradictory["outcome"] = "Investigate"
         self.assertTrue(

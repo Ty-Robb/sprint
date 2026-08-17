@@ -9,7 +9,7 @@ dependency-free and reports instance locations as JSONPath, for example
 
 | Family | Files | Current version | Compatibility |
 |---|---|---:|---|
-| Workspace state | `sprint-state.json` | `2.0` | `1.0` is migratable |
+| Workspace state | `sprint-state.json` | `3.0` | `1.0` and `2.0` are migratable |
 | Assignment manifest | `assignment-manifest.json` | `1.0` | Current only; created when absent during workspace migration |
 | Artifact data | `artifact-data/*.json` | `2.0` | `1.0` is migratable |
 | Artifact specifications | `references/artifact-specs.json` | `1.0` | Current only |
@@ -26,8 +26,9 @@ dependency-free and reports instance locations as JSONPath, for example
 | Usage report | `*.usage-report.json` deterministic generated reports | `1.0` | Current only |
 
 The state schema includes its separate method-profile, execution-mode, and
-route selectors; fidelity principles, step records, participation, timeboxes,
-deviations, impacts, and summary; plus nested gate, decision,
+route selectors; explicit process and terminal states; audited skip records;
+fidelity principles, step records, participation, timeboxes, deviations,
+impacts, and summary; plus nested gate, decision,
 artifact-registration, customer-testing, resolved-question, and next-action
 records. Gate decisions include a stable decision ID, decider label, considered-input content digests, a route/concept/gate subject snapshot, lifecycle status, and supersession provenance. The artifact schema includes evidence records and the `paragraphs`,
 `list`, `ordered-list`, `table`, `cards`, and `key-value` section families.
@@ -41,7 +42,7 @@ manifest entry resolves to one isolated strict session record and one strict
 anonymized summary. Runtime validation reconciles version hashes, participant
 and session IDs, statuses, source pointers, packet hashes, synthesis inputs,
 and the aggregate count in workspace state. These three families deliberately
-start at `1.0` independently of workspace-state schema `2.0`; they have no
+start at `1.0` independently of workspace-state schema `3.0`; they have no
 legacy version or migration path. New manifests carry the optional
 `testArtifactWorkflowVersion: "1.0"` capability marker. Under that marker,
 prototype catalogs and every session entry, record, and summary must link an
@@ -63,7 +64,7 @@ claims.
   family. They never interpret a legacy or unknown version as current.
 - A supported legacy version fails with a migration command; an unknown,
   missing, or wrongly typed version lists the versions the engine understands.
-- State and artifact `1.0` are the only supported legacy versions. Artifact
+- Artifact `1.0` and state `1.0`/`2.0` are the supported legacy versions. Artifact
   migration to `2.0` changes only `schemaVersion`. State migration also makes
   the formerly implicit one-human-plus-AI method explicit: it classifies the
   legacy run as `adaptive-design-sprint` and `live`, creates canonical fidelity
@@ -76,9 +77,14 @@ claims.
   timestamps reuse the source state's `updatedAt`, and object keys are
   serialized in canonical sorted order, so repeated migration inputs produce
   identical JSON.
-- A state already labelled `2.0` may contain the older gate-decision shape from
-  before attestation provenance was introduced. `migrate` upgrades those
-  records in place with a conservative legacy label and a digest of the prior
+- State migration from `2.0` adds `terminalState` and `skipRecords`. It derives
+  terminal classification from the recorded mode, route, sessions, and process
+  status. Existing skip actors were not recorded, so migration says
+  `pre-3.0 actor unavailable` instead of inventing an identity; it reuses the
+  recorded skip/fidelity reason and timestamp where available.
+- A state migrating from `1.0` or `2.0` may contain the older gate-decision
+  shape from before attestation provenance was introduced. `migrate` upgrades
+  those records with a conservative legacy label and a digest of the prior
   record; it does not invent considered evidence. New decisions always use the
   attested shape.
 - The assignment manifest, packaged artifact, role, and method-profile registries,
@@ -108,8 +114,9 @@ independent-run boundaries. Cross-record session checks additionally enforce iso
 counting, immutable version bindings, trace pointers, packet budgets, and stale
 synthesis detection. The [transition model](transition-model.md) adds the
 remaining cross-record rules that JSON Schema cannot express cleanly,
-including route history, step ordering, skip eligibility, artifact readiness,
-customer-session status consistency, and terminal invariants.
+including route history, step ordering, skip eligibility and audit consistency,
+artifact readiness, customer-session status consistency, and terminal
+classification invariants.
 
 ## Migrating a workspace
 

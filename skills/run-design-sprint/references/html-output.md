@@ -139,7 +139,8 @@ Include a unique page title, UTF-8 charset, responsive viewport, link to the loc
 
 Make `index.html` the control centre, not a decorative cover. Show:
 
-- sprint title, method profile, execution mode, route, status, and current step;
+- sprint title, method profile, execution mode and its selector/reason, route,
+  process status, truthful terminal state, and current step;
 - process completion with completed, skipped, and not-applicable stages;
 - method fidelity as a separate assessment with adaptations and limitations;
 - progressively disclosed current-step purpose, default and selected methods, participants, and timebox;
@@ -151,11 +152,13 @@ Make `index.html` the control centre, not a decorative cover. Show:
   immutable deployment/version record without implying that a live URL is
   validated or production-ready;
 - prominent blockers;
+- a prominent customer-validation banner that says `UNVALIDATED` on every
+  self-test, planning/rehearsal, blocked-live, and no-sprint export;
 - evidence-status legend.
 
 Never show a later stage as complete merely because a placeholder file exists.
 
-Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same generated method-fidelity summary in the final outcome artifact so exported conclusions cannot lose their method limitations.
+Do not describe the one-human-plus-AI Sprint-book profile as fully book-faithful. Render its team-model adaptation and every per-step substitution. Show the same generated method-fidelity summary, execution mode, terminal state, and validation notice in the final outcome artifact so exported conclusions cannot lose their method or evidence limitations. Separately sanitized exports must preserve those labels rather than copying conclusions without their boundary.
 
 ## Artifact requirements
 
