@@ -19,6 +19,7 @@ Read the following references before running a sprint:
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
+- [references/prototype-mvp-testing.md](references/prototype-mvp-testing.md) before selecting, briefing, building, trialling, deploying, or versioning a test artifact.
 - [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
 - [references/usage-reporting.md](references/usage-reporting.md) before measuring, calculating, or publishing usage, cost, subscription, or capacity evidence.
 
@@ -123,6 +124,10 @@ Keep divergent role packets and results separate below `working/<step>/` until e
 Use the workspace engine instead of editing generated HTML or sprint state manually:
 
 - `new-artifact` creates a structured artifact-data draft from [references/artifact-specs.json](references/artifact-specs.json).
+- `prototype-recommend` recommends the lowest-cost test-artifact rung and a provider-neutral tool route from the declared reality needs.
+- `prototype-approve` records the human's experiment, tool, account, cost, data, and deployment boundary decisions without performing any external action.
+- `prototype-build-packet` creates an immutable packet from only the approved structured brief and explicitly approved assets.
+- `prototype-trial` records a moderated run using the actual canonical interview script; `prototype-freeze` writes the immutable trial-passed deployment/version record.
 - `set-challenge` and `question` keep the dashboard challenge and open-question state current.
 - `render` safely escapes artifact data and rebuilds all HTML.
 - `render --check` fails without writing when generated HTML or CSS is stale.
@@ -132,7 +137,7 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `set-concept` records the selected concept; changing an attested route or concept supersedes the prior gate decision and requires a new decision event.
 - `role-packet` registers bounded assignments; `role-result` and `assignment-status` validate returned memos and advance lifecycle state.
 - `customer` records the suitable audience, target, rationale, and planning status; completed counts are manifest-derived.
-- `session-init` creates one isolated, version-bound participant record and anonymized summary draft.
+- `session-init` creates one isolated participant record and anonymized summary draft bound to an immutable trial-passed tested-version record.
 - `session-packet` generates that participant's bounded fresh-chat handoff from declared inputs only.
 - `session-checkpoint`, `session-complete`, and `session-reopen` persist resumable state and derive counted completion from the canonical manifest.
 - `synthesis-packet` creates a separate bounded fresh-chat input from the shared scorecard and structured summaries, excluding raw transcripts by default.

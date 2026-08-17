@@ -28,7 +28,10 @@ The ownership boundary is deliberate:
 - `index.html`, HTML below `artifacts/`, and `assets/sprint.css` are disposable
   generated views. Never edit or review them as an independent source of truth.
 - `working/` contains non-canonical specialist material. `prototype/` is separately
-  authored test material and is not overwritten by the renderer.
+  authored test material and is not overwritten by the renderer. The typed
+  `prototypeBrief` within `artifact-data/10-prototype-brief.json` is canonical;
+  `prototype/<version>/tested-version.json` is an immutable canonical record,
+  while `artifacts/10-prototype-brief.html` is its accessible generated view.
 
 If a view is missing or stale, repair it with `render`; do not copy changes back
 from HTML into JSON. Rendering never advances a workflow or artifact timestamp.
@@ -145,6 +148,9 @@ Make `index.html` the control centre, not a decorative cover. Show:
 - human decisions and unresolved questions;
 - customer-testing status and session count;
 - links to every created artifact and prototype;
+- links to the approved prototype/MVP brief, current tested artifact, and
+  immutable deployment/version record without implying that a live URL is
+  validated or production-ready;
 - prominent blockers;
 - a prominent customer-validation banner that says `UNVALIDATED` on every
   self-test, planning/rehearsal, blocked-live, and no-sprint export;
