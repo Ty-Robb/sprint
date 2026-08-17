@@ -1,0 +1,40 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "document": {
+  "schemaVersion": "2.0",
+  "title": "Schema Fixture Sprint",
+  "slug": "schema-fixture-sprint",
+  "challenge": "Verify strict persisted JSON",
+  "route": "undecided",
+  "status": "waiting-for-human",
+  "currentStep": "01-intake",
+  "completedSteps": [],
+  "skippedSteps": [],
+  "skipReasons": {},
+  "pendingGate": null,
+  "humanGates": [
+    {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
+    {"id": "gate-2", "name": "Target and top risks", "status": "pending"},
+    {"id": "gate-3", "name": "Selected solution direction", "status": "pending"},
+    {"id": "gate-4", "name": "Prototype readiness", "status": "pending"},
+    {"id": "gate-5", "name": "Final outcome", "status": "pending"}
+  ],
+  "decisions": [],
+  "artifacts": [],
+  "customerTesting": {
+    "status": "not-planned",
+    "target": "",
+    "sessionsPlanned": 0,
+    "sessionsCompleted": 0
+  },
+  "openQuestions": ["Which nested types are valid?"],
+  "nextAction": {
+    "title": "Validate fixtures",
+    "body": "Exercise every JSON Schema boundary.",
+    "humanInput": "None."
+  },
+  "createdAt": "2026-08-17T09:00:00Z",
+  "updatedAt": "2026-08-17T09:00:00Z"
+  }
+}

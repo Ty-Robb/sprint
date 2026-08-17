@@ -1,0 +1,27 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "document": {
+  "schemaVersion": "2.0",
+  "id": "01-sprint-brief",
+  "status": "draft",
+  "updatedAt": "2026-08-17T09:00:00Z",
+  "summary": ["The nested card status is intentionally invalid."],
+  "sections": [
+    {"title": "Challenge", "type": "paragraphs", "paragraphs": ["Find the nested error."]},
+    {"title": "Desired outcome", "type": "list", "items": ["A precise JSONPath"]},
+    {"title": "Constraints", "type": "ordered-list", "items": ["Do not render invalid content"]},
+    {"title": "Available evidence", "type": "table", "columns": ["Source"], "rows": [["Fixture"]]},
+    {
+      "title": "Unknowns",
+      "type": "cards",
+      "cards": [
+        {"title": "Bad status", "body": "This must fail.", "status": "Rumour"}
+      ]
+    }
+  ],
+  "evidence": [],
+  "unknowns": [],
+  "nextActions": ["Reject before rendering."]
+  }
+}

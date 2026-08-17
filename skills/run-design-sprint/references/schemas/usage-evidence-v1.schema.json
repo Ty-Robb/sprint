@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/usage-evidence-v1.schema.json",
+  "title": "Public usage evidence record 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "evidenceClassification",
+    "measurementDate",
+    "measuredPeriod",
+    "measurementContext",
+    "sourceRecord",
+    "calculation",
+    "assumptions",
+    "excluded",
+    "priceSources",
+    "claim"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "public-usage-evidence"},
+    "fixtureKind": {"const": "synthetic"},
+    "containsRealCustomerData": {"const": false},
+    "evidenceClassification": {
+      "enum": ["sanitized-observed", "hypothetical-unverified"]
+    },
+    "measurementDate": {"type": "string", "format": "date"},
+    "measuredPeriod": {"type": "string", "minLength": 1},
+    "measurementContext": {
+      "enum": [
+        "customer-facing-runtime",
+        "customer-session",
+        "internal-development",
+        "synthesis"
+      ]
+    },
+    "skillVersion": {"type": "string", "minLength": 1},
+    "route": {
+      "enum": [
+        "undecided",
+        "research-first",
+        "foundation-plus-design",
+        "full-design-sprint",
+        "focused-design-sprint",
+        "no-sprint"
+      ]
+    },
+    "sourceRecord": {"$ref": "#/$defs/sourceRecord"},
+    "calculation": {"$ref": "#/$defs/calculation"},
+    "assumptions": {"$ref": "#/$defs/stringList"},
+    "excluded": {"$ref": "#/$defs/stringList"},
+    "priceSources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/priceSource"}
+    },
+    "claim": {"$ref": "#/$defs/claim"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {"evidenceClassification": {"const": "sanitized-observed"}},
+        "required": ["evidenceClassification"]
+      },
+      "then": {
+        "properties": {
+          "sourceRecord": {
+            "type": "object",
+            "properties": {
+              "type": {"const": "sanitized"},
+              "redactions": {"type": "array", "minItems": 1}
+            },
+            "required": ["type", "redactions"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"evidenceClassification": {"const": "hypothetical-unverified"}},
+        "required": ["evidenceClassification"]
+      },
+      "then": {
+        "properties": {
+          "sourceRecord": {
+            "type": "object",
+            "properties": {"type": {"const": "synthetic"}},
+            "required": ["type"]
+          },
+          "claim": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "pattern": "(?:[Hh]ypothetical|[Uu]nverified)"
+              }
+            },
+            "required": ["label"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "sourceRecord": {
+      "type": "object",
+      "required": ["type", "reference"],
+      "properties": {
+        "type": {"enum": ["sanitized", "synthetic"]},
+        "reference": {"type": "string", "minLength": 1},
+        "redactions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      },
+      "additionalProperties": false
+    },
+    "calculationValue": {
+      "anyOf": [
+        {"type": "string"},
+        {"type": "number"},
+        {"type": "boolean"},
+        {"type": "null"}
+      ]
+    },
+    "calculation": {
+      "type": "object",
+      "required": ["formula", "inputs", "result", "units", "rounding"],
+      "properties": {
+        "formula": {"type": "string", "minLength": 1},
+        "inputs": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/calculationValue"}
+        },
+        "result": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/calculationValue"}
+        },
+        "units": {"type": "string", "minLength": 1},
+        "rounding": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "priceSource": {
+      "type": "object",
+      "required": ["title", "url", "accessedAt"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "publisher": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
+        "accessedAt": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    },
+    "claim": {
+      "type": "object",
+      "required": ["label", "text"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

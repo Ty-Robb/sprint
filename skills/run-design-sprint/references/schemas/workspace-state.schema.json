@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/workspace-state.schema.json",
+  "title": "Design Sprint workspace state",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "title",
+    "slug",
+    "challenge",
+    "route",
+    "status",
+    "currentStep",
+    "completedSteps",
+    "skippedSteps",
+    "skipReasons",
+    "pendingGate",
+    "humanGates",
+    "decisions",
+    "artifacts",
+    "customerTesting",
+    "openQuestions",
+    "nextAction",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {"type": "string"},
+    "title": {"type": "string", "minLength": 1},
+    "slug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "challenge": {"type": "string", "minLength": 1},
+    "route": {"$ref": "#/$defs/route"},
+    "routeRationale": {"type": "string"},
+    "status": {"$ref": "#/$defs/workspaceStatus"},
+    "currentStep": {"$ref": "#/$defs/stepId"},
+    "completedSteps": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stepId"},
+      "uniqueItems": true
+    },
+    "skippedSteps": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stepId"},
+      "uniqueItems": true
+    },
+    "skipReasons": {
+      "type": "object",
+      "properties": {
+        "01-intake": {"type": "string", "minLength": 1},
+        "02-qualify": {"type": "string", "minLength": 1},
+        "03-evidence": {"type": "string", "minLength": 1},
+        "04-foundation": {"type": "string", "minLength": 1},
+        "05-map": {"type": "string", "minLength": 1},
+        "06-questions": {"type": "string", "minLength": 1},
+        "07-explore": {"type": "string", "minLength": 1},
+        "08-decide": {"type": "string", "minLength": 1},
+        "09-experiment": {"type": "string", "minLength": 1},
+        "10-prototype": {"type": "string", "minLength": 1},
+        "11-customer-sessions": {"type": "string", "minLength": 1},
+        "12-synthesis": {"type": "string", "minLength": 1},
+        "13-outcome": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "pendingGate": {
+      "anyOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/gateId"}
+      ]
+    },
+    "humanGates": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/humanGate"},
+      "allOf": [
+        {"contains": {"type": "object", "properties": {"id": {"const": "gate-1"}}, "required": ["id"]}, "minContains": 1, "maxContains": 1},
+        {"contains": {"type": "object", "properties": {"id": {"const": "gate-2"}}, "required": ["id"]}, "minContains": 1, "maxContains": 1},
+        {"contains": {"type": "object", "properties": {"id": {"const": "gate-3"}}, "required": ["id"]}, "minContains": 1, "maxContains": 1},
+        {"contains": {"type": "object", "properties": {"id": {"const": "gate-4"}}, "required": ["id"]}, "minContains": 1, "maxContains": 1},
+        {"contains": {"type": "object", "properties": {"id": {"const": "gate-5"}}, "required": ["id"]}, "minContains": 1, "maxContains": 1}
+      ]
+    },
+    "decisions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/decision"}
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifactRegistration"}
+    },
+    "customerTesting": {"$ref": "#/$defs/customerTesting"},
+    "openQuestions": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "resolvedQuestions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/resolvedQuestion"}
+    },
+    "nextAction": {"$ref": "#/$defs/nextAction"},
+    "outcome": {
+      "type": "string",
+      "pattern": "^(?:[Pp][Rr][Oo][Cc][Ee][Ee][Dd]|[Ii][Tt][Ee][Rr][Aa][Tt][Ee]|[Pp][Ii][Vv][Oo][Tt]|[Ii][Nn][Vv][Ee][Ss][Tt][Ii][Gg][Aa][Tt][Ee]|[Ss][Tt][Oo][Pp])$"
+    },
+    "createdAt": {"$ref": "#/$defs/timestamp"},
+    "updatedAt": {"$ref": "#/$defs/timestamp"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "route": {
+      "enum": [
+        "undecided",
+        "research-first",
+        "foundation-plus-design",
+        "full-design-sprint",
+        "focused-design-sprint",
+        "no-sprint"
+      ]
+    },
+    "workspaceStatus": {
+      "enum": [
+        "active",
+        "waiting-for-human",
+        "waiting-for-customers",
+        "paused",
+        "complete"
+      ]
+    },
+    "stepId": {
+      "enum": [
+        "01-intake",
+        "02-qualify",
+        "03-evidence",
+        "04-foundation",
+        "05-map",
+        "06-questions",
+        "07-explore",
+        "08-decide",
+        "09-experiment",
+        "10-prototype",
+        "11-customer-sessions",
+        "12-synthesis",
+        "13-outcome"
+      ]
+    },
+    "gateId": {"enum": ["gate-1", "gate-2", "gate-3", "gate-4", "gate-5"]},
+    "artifactId": {
+      "enum": [
+        "01-sprint-brief",
+        "02-evidence-ledger",
+        "03-foundation",
+        "04-journey-map",
+        "05-sprint-questions",
+        "06-solution-directions",
+        "07-decision",
+        "08-experiment",
+        "09-storyboard",
+        "10-test-plan",
+        "11-customer-evidence",
+        "12-synthesis",
+        "13-outcome"
+      ]
+    },
+    "artifactStatus": {
+      "enum": ["draft", "in-review", "ready-for-decision", "complete", "blocked"]
+    },
+    "humanGate": {
+      "type": "object",
+      "required": ["id", "name", "status"],
+      "properties": {
+        "id": {"$ref": "#/$defs/gateId"},
+        "name": {
+          "enum": [
+            "Challenge and sprint route",
+            "Target and top risks",
+            "Selected solution direction",
+            "Prototype readiness",
+            "Final outcome"
+          ]
+        },
+        "status": {"enum": ["pending", "complete", "not-applicable"]},
+        "decision": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 1},
+        "decidedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"status": {"const": "complete"}}, "required": ["status"]}, "then": {"required": ["decision", "rationale", "decidedAt"]}},
+        {"if": {"properties": {"id": {"const": "gate-1"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Challenge and sprint route"}}}},
+        {"if": {"properties": {"id": {"const": "gate-2"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Target and top risks"}}}},
+        {"if": {"properties": {"id": {"const": "gate-3"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Selected solution direction"}}}},
+        {"if": {"properties": {"id": {"const": "gate-4"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Prototype readiness"}}}},
+        {"if": {"properties": {"id": {"const": "gate-5"}}, "required": ["id"]}, "then": {"properties": {"name": {"const": "Final outcome"}}}}
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "required": ["gate", "decision", "rationale", "reservations", "decidedAt"],
+      "properties": {
+        "gate": {"$ref": "#/$defs/gateId"},
+        "decision": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 1},
+        "reservations": {"type": "string"},
+        "decidedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "artifactRegistration": {
+      "type": "object",
+      "required": ["id", "title", "path", "status", "step", "updatedAt"],
+      "properties": {
+        "id": {"$ref": "#/$defs/artifactId"},
+        "title": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "pattern": "^artifacts/[a-z0-9-]+\\.html$"},
+        "status": {"$ref": "#/$defs/artifactStatus"},
+        "step": {"$ref": "#/$defs/stepId"},
+        "updatedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "customerTesting": {
+      "type": "object",
+      "required": ["status", "target", "sessionsPlanned", "sessionsCompleted"],
+      "properties": {
+        "status": {
+          "enum": [
+            "not-planned",
+            "recruiting",
+            "scheduled",
+            "in-progress",
+            "complete",
+            "partial",
+            "blocked"
+          ]
+        },
+        "target": {"type": "string"},
+        "sessionsPlanned": {"type": "integer", "minimum": 0},
+        "sessionsCompleted": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "resolvedQuestion": {
+      "type": "object",
+      "required": ["question", "resolvedAt"],
+      "properties": {
+        "question": {"type": "string", "minLength": 1},
+        "resolvedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "nextAction": {
+      "type": "object",
+      "required": ["title", "body", "humanInput"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "body": {"type": "string", "minLength": 1},
+        "humanInput": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

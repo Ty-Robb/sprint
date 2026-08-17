@@ -1,0 +1,40 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "document": {
+  "schemaVersion": "2.0",
+  "title": "Invalid Schema Fixture",
+  "slug": "invalid-schema-fixture",
+  "challenge": "Reject an unknown step",
+  "route": "undecided",
+  "status": "waiting-for-human",
+  "currentStep": "99-not-a-step",
+  "completedSteps": [],
+  "skippedSteps": [],
+  "skipReasons": {},
+  "pendingGate": null,
+  "humanGates": [
+    {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
+    {"id": "gate-2", "name": "Target and top risks", "status": "pending"},
+    {"id": "gate-3", "name": "Selected solution direction", "status": "pending"},
+    {"id": "gate-4", "name": "Prototype readiness", "status": "pending"},
+    {"id": "gate-5", "name": "Final outcome", "status": "pending"}
+  ],
+  "decisions": [],
+  "artifacts": [],
+  "customerTesting": {
+    "status": "not-planned",
+    "target": "",
+    "sessionsPlanned": 0,
+    "sessionsCompleted": 0
+  },
+  "openQuestions": [],
+  "nextAction": {
+    "title": "Reject fixture",
+    "body": "The invalid step must produce a field path.",
+    "humanInput": "None."
+  },
+  "createdAt": "2026-08-17T09:00:00Z",
+  "updatedAt": "2026-08-17T09:00:00Z"
+  }
+}

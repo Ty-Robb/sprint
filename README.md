@@ -48,6 +48,8 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 
 The skill includes a dependency-free Python workspace engine. It creates the sprint state, safely renders structured artifact data into HTML, generates bounded specialist role packets, enforces stage and human gates, tracks real-customer sessions, and validates the final bundle.
 
+Persisted JSON uses strict, versioned JSON Schema Draft 2020-12 contracts. See [JSON schemas and workspace migrations](skills/run-design-sprint/references/json-schemas.md) for compatibility, field-level validation errors, dry runs, and protected migrations.
+
 The generated sprint directory contains:
 
 ```text
