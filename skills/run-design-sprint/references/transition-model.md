@@ -55,8 +55,10 @@ in `notApplicableSteps`.
 | `self-test` | May skip because live sessions are prohibited | May skip only after step 11 was skipped | Never skippable |
 | `planning-rehearsal` | May skip because live sessions are prohibited | May skip only after step 11 was skipped | Never skippable |
 
-Each skip needs a non-blank reason and a fidelity deviation containing method,
-evidence, and decision-readiness impacts.
+Each skip needs a non-blank approving actor and reason. Its canonical
+`skipRecords` entry snapshots the execution mode, route, and timestamp; a
+fidelity deviation separately records method, evidence, and
+decision-readiness impacts.
 
 ## Gates and artifact readiness
 
@@ -122,10 +124,14 @@ The terminal evidence modes are:
 
 | Terminal mode | Additional invariants | Allowed outcome |
 |---|---|---|
-| Tested live sprint | Steps 11 and 12 complete; customer status `complete` or `partial`; at least one recorded session | Any final outcome |
-| Blocked live sprint | Step 11 validly skipped with customer status `blocked` and zero sessions; step 12 either truthfully completes without customer findings or is validly skipped | `Investigate` or `Stop` |
-| Non-live rehearsal | Zero customer sessions and step 11 skipped | `Investigate` or `Stop` |
-| `no-sprint` | Only the direct or post-research no-sprint history; Gates 2–4 not applicable | `Investigate` or `Stop` |
+| Tested live sprint | `terminalState: live-customer-tested`; Steps 11 and 12 complete; customer status `complete` or `partial`; at least one recorded session | Any final outcome |
+| Blocked live sprint | `terminalState: closed-unvalidated`; Steps 11 and 12 validly skipped with customer status `blocked` and zero sessions | `Investigate` or `Stop` |
+| Self-test | `terminalState: self-test-complete-unvalidated`; zero customer sessions; Steps 11 and 12 explicitly skipped | `Investigate` or `Stop` |
+| Planning/rehearsal | `terminalState: planning-rehearsal-complete-unvalidated`; zero customer sessions; Steps 11 and 12 explicitly skipped | `Investigate` or `Stop` |
+| `no-sprint` | `terminalState: closed-unvalidated`; only the direct or post-research no-sprint history; Gates 2–4 not applicable | `Investigate` or `Stop` |
 
-The `complete` status can be entered only by closing Gate 5. Updating a generic
-next action cannot manufacture a terminal state.
+The `complete` process status can be entered only by closing Gate 5. It never
+stands alone: schema 3.0 requires the matching `terminalState`. Updating a
+generic next action cannot manufacture either terminal record. See
+[execution-modes.md](execution-modes.md) for the rendered labels and restart
+rules.

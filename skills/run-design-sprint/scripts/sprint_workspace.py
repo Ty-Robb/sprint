@@ -31,12 +31,12 @@ SCHEMAS_DIR = REFERENCES_DIR / "schemas"
 
 STATE_FILENAME = "sprint-state.json"
 ASSIGNMENT_MANIFEST_FILENAME = "assignment-manifest.json"
-SCHEMA_VERSION = "2.0"
-LEGACY_SCHEMA_VERSION = "1.0"
+STATE_SCHEMA_VERSION = "3.0"
+LEGACY_STATE_SCHEMA_VERSION = "1.0"
+PREVIOUS_STATE_SCHEMA_VERSION = "2.0"
+ARTIFACT_SCHEMA_VERSION = "2.0"
+LEGACY_ARTIFACT_SCHEMA_VERSION = "1.0"
 REFERENCE_SCHEMA_VERSION = "1.0"
-STATE_SCHEMA_VERSION = SCHEMA_VERSION
-LEGACY_STATE_SCHEMA_VERSION = LEGACY_SCHEMA_VERSION
-ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION
 FIDELITY_SCHEMA_VERSION = "1.0"
 ASSIGNMENT_MANIFEST_SCHEMA_VERSION = "1.0"
 ROLE_PACKET_VERSION = "1.0"
@@ -51,21 +51,25 @@ DEFAULT_CONTEXT_WARNING_PERCENT = 80
 SCHEMA_FAMILIES = {
     "workspace-state": {
         "label": "workspace state",
-        "current": SCHEMA_VERSION,
+        "current": STATE_SCHEMA_VERSION,
         "schemas": {
-            LEGACY_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v1.schema.json",
-            SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v2.schema.json",
+            LEGACY_STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v1.schema.json",
+            PREVIOUS_STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v2.schema.json",
+            STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v3.schema.json",
         },
-        "migratable": {LEGACY_SCHEMA_VERSION},
+        "migratable": {
+            LEGACY_STATE_SCHEMA_VERSION,
+            PREVIOUS_STATE_SCHEMA_VERSION,
+        },
     },
     "artifact-data": {
         "label": "artifact data",
-        "current": SCHEMA_VERSION,
+        "current": ARTIFACT_SCHEMA_VERSION,
         "schemas": {
-            LEGACY_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v1.schema.json",
-            SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v2.schema.json",
+            LEGACY_ARTIFACT_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v1.schema.json",
+            ARTIFACT_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v2.schema.json",
         },
-        "migratable": {LEGACY_SCHEMA_VERSION},
+        "migratable": {LEGACY_ARTIFACT_SCHEMA_VERSION},
     },
     "artifact-specs": {
         "label": "artifact specifications",
@@ -142,6 +146,13 @@ WORKSPACE_STATUSES = {
     "waiting-for-customers",
     "paused",
     "complete",
+}
+TERMINAL_STATES = {
+    "not-terminal",
+    "live-customer-tested",
+    "self-test-complete-unvalidated",
+    "planning-rehearsal-complete-unvalidated",
+    "closed-unvalidated",
 }
 ARTIFACT_STATUSES = {
     "draft",
@@ -856,6 +867,80 @@ def selection_record(
     }
 
 
+def expected_terminal_state(state: dict[str, Any]) -> str:
+    """Derive the only truthful terminal classification for the recorded run."""
+
+    if state.get("status") != "complete":
+        return "not-terminal"
+    if state.get("route") == "no-sprint":
+        return "closed-unvalidated"
+    mode = state.get("executionMode")
+    if mode == "self-test":
+        return "self-test-complete-unvalidated"
+    if mode == "planning-rehearsal":
+        return "planning-rehearsal-complete-unvalidated"
+    customer = state.get("customerTesting", {})
+    if mode == "live" and int(customer.get("sessionsCompleted", 0)) > 0:
+        return "live-customer-tested"
+    return "closed-unvalidated"
+
+
+def validation_truth(state: dict[str, Any]) -> tuple[str, str, str]:
+    """Return a prominent label, explanation, and render class."""
+
+    terminal_state = str(state.get("terminalState", "not-terminal"))
+    mode = str(state.get("executionMode", "live"))
+    customer = state.get("customerTesting", {})
+    completed = int(customer.get("sessionsCompleted", 0))
+    if terminal_state == "live-customer-tested":
+        return (
+            "Live customer testing completed",
+            f"This live sprint includes {completed} recorded suitable real-customer session(s). Findings are directional, not statistical proof.",
+            "section--accent",
+        )
+    if terminal_state == "self-test-complete-unvalidated":
+        return (
+            "UNVALIDATED — self-test complete",
+            "The sprint process was exercised, but no customer validation was conducted. Assumptions, placeholders, and synthetic rehearsal remain non-observed inputs.",
+            "section--warning",
+        )
+    if terminal_state == "planning-rehearsal-complete-unvalidated":
+        return (
+            "UNVALIDATED — planning/rehearsal complete",
+            "This is a completed plan or rehearsal, not evidence that customer sessions or the planned sprint activities occurred.",
+            "section--warning",
+        )
+    if terminal_state == "closed-unvalidated":
+        return (
+            "CLOSED UNVALIDATED",
+            "This workspace closed without customer validation. Its hypotheses and decisions must not be represented as customer-tested evidence.",
+            "section--warning",
+        )
+    if mode == "self-test":
+        return (
+            "UNVALIDATED SELF-TEST",
+            "No customer validation is being conducted in self-test mode. Synthetic rehearsal may test the process but cannot create customer evidence.",
+            "section--warning",
+        )
+    if mode == "planning-rehearsal":
+        return (
+            "UNVALIDATED PLANNING/REHEARSAL",
+            "This workspace describes or rehearses planned activity; it does not establish that the activity or customer validation occurred.",
+            "section--warning",
+        )
+    if completed > 0:
+        return (
+            "Live customer evidence recorded",
+            f"{completed} suitable real-customer session(s) are recorded; the sprint has not yet reached its terminal decision.",
+            "section--accent",
+        )
+    return (
+        "Live mode — customer validation pending",
+        "No suitable real-customer session has been completed yet, so the current work remains unvalidated by customers.",
+        "section--warning",
+    )
+
+
 def profile_mode_route_errors(
     method_profile: Any, execution_mode: Any, route: Any
 ) -> list[str]:
@@ -1143,6 +1228,19 @@ def migrate_legacy_state(state: dict[str, Any]) -> dict[str, Any]:
         for step_id, reason in migrated.get("skipReasons", {}).items()
         if step_id in migrated["skippedSteps"]
     }
+    migrated["skipRecords"] = [
+        {
+            "step": step_id,
+            "skippedBy": "legacy actor unavailable",
+            "reason": migrated["skipReasons"].get(
+                step_id, "Legacy skip reason unavailable."
+            ),
+            "executionMode": migrated["executionMode"],
+            "route": route,
+            "skippedAt": migration_timestamp,
+        }
+        for step_id in migrated["skippedSteps"]
+    ]
     migrated["fidelity"]["routeExclusions"] = [
         {"step": step_id, "reason": reason}
         for step_id, reason in route_exclusions.items()
@@ -1161,6 +1259,7 @@ def migrate_legacy_state(state: dict[str, Any]) -> dict[str, Any]:
         "migrationNote": "Legacy state was classified as adaptive/live; review and revise the selectors if that historical assumption is inaccurate.",
         "migratedAt": migration_timestamp,
     }
+    migrated["terminalState"] = expected_terminal_state(migrated)
     refresh_fidelity_summary(migrated)
     return migrated
 
@@ -1316,15 +1415,34 @@ def next_step(current: str, excluded: set[str]) -> str | None:
     return None
 
 
-def add_skip(state: dict[str, Any], step_id: str, reason: str) -> None:
+def add_skip(
+    state: dict[str, Any],
+    step_id: str,
+    reason: str,
+    skipped_by: str,
+    timestamp: str | None = None,
+) -> None:
     completed = set(state.get("completedSteps", []))
     if step_id in completed:
         return
+    recorded_at = timestamp or utc_now()
     skipped = state.setdefault("skippedSteps", [])
     if step_id not in skipped:
         skipped.append(step_id)
     state.setdefault("skipReasons", {})[step_id] = reason
-    add_skip_deviation(state, step_id, reason)
+    records = state.setdefault("skipRecords", [])
+    records[:] = [item for item in records if item.get("step") != step_id]
+    records.append(
+        {
+            "step": step_id,
+            "skippedBy": skipped_by,
+            "reason": reason,
+            "executionMode": state["executionMode"],
+            "route": state["route"],
+            "skippedAt": recorded_at,
+        }
+    )
+    add_skip_deviation(state, step_id, reason, timestamp=recorded_at)
 
 
 def apply_route(state: dict[str, Any], route: str) -> None:
@@ -1344,6 +1462,11 @@ def apply_route(state: dict[str, Any], route: str) -> None:
         if step_id in state.setdefault("skippedSteps", []):
             state["skippedSteps"].remove(step_id)
         state.setdefault("skipReasons", {}).pop(step_id, None)
+        state["skipRecords"] = [
+            item
+            for item in state.setdefault("skipRecords", [])
+            if item.get("step") != step_id
+        ]
     refresh_fidelity_summary(state)
 
 
@@ -1361,6 +1484,11 @@ def class_for_status(status: str) -> str:
         "waiting-for-customers": "status--assumption",
         "paused": "status--unknown",
         "complete": "status--complete",
+        "live-customer-tested": "status--observed",
+        "self-test-complete-unvalidated": "status--risk",
+        "planning-rehearsal-complete-unvalidated": "status--risk",
+        "closed-unvalidated": "status--risk",
+        "not-terminal": "status--unknown",
         "draft": "status--unknown",
         "in-review": "status--active",
         "ready-for-decision": "status--decision",
@@ -1556,6 +1684,7 @@ def render_method_fidelity_section(state: dict[str, Any]) -> str:
     assessment = display_label(
         state.get("fidelity", {}).get("summary", {}).get("assessment")
     )
+    validation_label, validation_notice, _validation_class = validation_truth(state)
     return (
         '<section class="section" aria-labelledby="method-fidelity-title">'
         '<p class="eyebrow">Method record</p>'
@@ -1565,9 +1694,12 @@ def render_method_fidelity_section(state: dict[str, Any]) -> str:
         f'<span class="metric__value">{escape(display_label(state.get("methodProfile")))}</span></div>'
         '<div class="metric"><span class="metric__label">Execution mode</span>'
         f'<span class="metric__value">{escape(display_label(state.get("executionMode")))}</span></div>'
+        '<div class="metric"><span class="metric__label">Terminal state</span>'
+        f'<span class="metric__value">{escape(display_label(state.get("terminalState")))}</span></div>'
         '<div class="metric"><span class="metric__label">Method fidelity</span>'
         f'<span class="metric__value">{escape(assessment)}</span></div>'
-        '</div><h3>Adaptations</h3><ul>'
+        f'</div><h3>{escape(validation_label)}</h3><p>{escape(validation_notice)}</p>'
+        '<h3>Adaptations</h3><ul>'
         f'{render_fidelity_adaptations(state)}</ul>'
         '<h3>Limitations</h3><ul>'
         f'{render_fidelity_limitations(state)}</ul></section>'
@@ -1677,15 +1809,24 @@ def evidence_claim_errors(data: dict[str, Any], state: dict[str, Any]) -> list[s
             if not isinstance(item, dict):
                 continue
             claim = str(item.get("claim", ""))
+            source = str(item.get("source", ""))
+            combined = f"{claim} {source}"
             if (
-                artifact_id == "11-customer-evidence"
-                and item.get("status") == "Observed"
-                and re.search(r"\b(?:customers?|participants?|sessions?|interviews?)\b", claim, re.I)
+                item.get("status") == "Observed"
+                and re.search(r"\b(?:customers?|participants?|sessions?|interviews?)\b", combined, re.I)
                 and not live_evidence_available
                 and not negates_customer_claim(claim)
             ):
                 errors.append(
                     f"Evidence entry {index} labels a customer claim Observed without a recorded live customer session"
+                )
+            if item.get("status") == "Observed" and re.search(
+                r"\b(?:synthetic rehearsal|placeholder|assumption|hypothesis)\b",
+                source,
+                re.I,
+            ):
+                errors.append(
+                    f"Evidence entry {index} cannot label a synthetic, placeholder, assumed, or hypothetical source as Observed"
                 )
     return errors
 
@@ -1837,6 +1978,8 @@ def render_artifact(
     )
     template = (HTML_KIT_DIR / "artifact-template.html").read_text(encoding="utf-8")
     status = str(data.get("status", "draft"))
+    validation_label, validation_notice, validation_class = validation_truth(state)
+    mode_selection = state.get("executionModeSelection", {})
     rendered = replace_tokens(
         template,
         {
@@ -1849,6 +1992,12 @@ def render_artifact(
             "METHOD_PROFILE": escape(display_label(state.get("methodProfile"))),
             "EXECUTION_MODE": escape(display_label(state.get("executionMode"))),
             "SPRINT_ROUTE": escape(display_label(state.get("route"))),
+            "TERMINAL_STATE": escape(display_label(state.get("terminalState"))),
+            "VALIDATION_LABEL": escape(validation_label),
+            "VALIDATION_NOTICE": escape(validation_notice),
+            "VALIDATION_SECTION_CLASS": validation_class,
+            "MODE_SELECTED_BY": escape(mode_selection.get("selectedBy", "unknown")),
+            "MODE_SELECTION_REASON": escape(mode_selection.get("reason", "unknown")),
             "UPDATED_ISO": escape(updated_at),
             "UPDATED_DISPLAY": escape(display_date(updated_at)),
             "SUMMARY_HTML": render_paragraphs(data.get("summary", [])),
@@ -1881,6 +2030,11 @@ def render_steps(state: dict[str, Any]) -> str:
     completed = set(state.get("completedSteps", []))
     skipped = set(state.get("skippedSteps", []))
     not_applicable = set(state.get("notApplicableSteps", []))
+    skip_records = {
+        item.get("step"): item
+        for item in state.get("skipRecords", [])
+        if isinstance(item, dict)
+    }
     current = state.get("currentStep")
     output = []
     for number, step in enumerate(STEPS, start=1):
@@ -1893,7 +2047,11 @@ def render_steps(state: dict[str, Any]) -> str:
         elif step_id in skipped:
             css = "step"
             marker = "–"
-            detail = "Skipped with a recorded reason"
+            record = skip_records.get(step_id, {})
+            detail = (
+                f"Skipped by {record.get('skippedBy', 'unknown')}: "
+                f"{record.get('reason', state.get('skipReasons', {}).get(step_id, 'No reason recorded'))}"
+            )
             status = '<span class="status status--unknown">Skipped</span>'
         elif step_id in completed:
             css = "step step--complete"
@@ -1913,7 +2071,7 @@ def render_steps(state: dict[str, Any]) -> str:
         output.append(
             f'<li class="{css}">'
             f'<span class="step__marker">{marker}</span>'
-            f'<div><strong>{escape(step["name"])}</strong><p>{detail}</p></div>'
+            f'<div><strong>{escape(step["name"])}</strong><p>{escape(detail)}</p></div>'
             f"{status}</li>"
         )
     return "\n".join(output)
@@ -2038,6 +2196,8 @@ def render_dashboard(
         questions_html = "<li>No open questions recorded.</li>"
     updated_at = str(state.get("updatedAt") or state.get("createdAt") or "")
     fidelity_summary = state.get("fidelity", {}).get("summary", {})
+    validation_label, validation_notice, validation_class = validation_truth(state)
+    mode_selection = state.get("executionModeSelection", {})
     if state.get("executionMode") == "live":
         evidence_boundary = "Only suitable real-customer sessions count as customer evidence."
     else:
@@ -2050,9 +2210,17 @@ def render_dashboard(
             "SPRINT_TITLE": escape(state.get("title", "Untitled sprint")),
             "SPRINT_CHALLENGE": escape(state.get("challenge", "No challenge recorded")),
             "SPRINT_STATUS": escape(str(state.get("status", "active")).replace("-", " ").title()),
+            "SPRINT_STATUS_CLASS": class_for_status(str(state.get("status", "active"))),
             "SPRINT_ROUTE": escape(str(state.get("route", "undecided")).replace("-", " ").title()),
             "METHOD_PROFILE": escape(display_label(state.get("methodProfile"))),
             "EXECUTION_MODE": escape(display_label(state.get("executionMode"))),
+            "TERMINAL_STATE": escape(display_label(state.get("terminalState"))),
+            "TERMINAL_STATE_CLASS": class_for_status(str(state.get("terminalState"))),
+            "VALIDATION_LABEL": escape(validation_label),
+            "VALIDATION_NOTICE": escape(validation_notice),
+            "VALIDATION_SECTION_CLASS": validation_class,
+            "MODE_SELECTED_BY": escape(mode_selection.get("selectedBy", "unknown")),
+            "MODE_SELECTION_REASON": escape(mode_selection.get("reason", "unknown")),
             "METHOD_FIDELITY": escape(
                 display_label(fidelity_summary.get("assessment"))
             ),
@@ -2599,8 +2767,11 @@ def command_init(args: argparse.Namespace) -> None:
     method_profile = args.method_profile
     execution_mode = args.execution_mode
     selected_by = args.selected_by.strip()
-    if not selected_by:
-        raise SprintError("--selected-by cannot be empty")
+    mode_reason = args.mode_reason.strip()
+    if not selected_by or not mode_reason:
+        raise SprintError(
+            "Execution-mode selection requires explicit --selected-by and --mode-reason values"
+        )
     combination_errors = profile_mode_route_errors(
         method_profile, execution_mode, "undecided"
     )
@@ -2654,17 +2825,18 @@ def command_init(args: argparse.Namespace) -> None:
         ),
         "executionModeSelection": selection_record(
             selected_by,
-            args.mode_reason
-            or "Selected when the workspace was initialised.",
+            mode_reason,
         ),
         "fidelity": fidelity,
         "routeHistory": [],
         "status": "waiting-for-human",
+        "terminalState": "not-terminal",
         "currentStep": "01-intake",
         "completedSteps": [],
         "skippedSteps": [],
         "notApplicableSteps": [],
         "skipReasons": {},
+        "skipRecords": [],
         "pendingGate": None,
         "humanGates": [
             {"id": gate_id, "name": name, "status": "pending"}
@@ -2946,10 +3118,16 @@ def command_set_method_profile(args: argparse.Namespace) -> None:
 def command_set_execution_mode(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state = load_state(workspace)
-    if state.get("completedSteps"):
+    if state.get("completedSteps") or state.get("skippedSteps"):
         raise SprintError(
             "Execution mode cannot change after a step is complete; create or restart a workspace so evidence history stays truthful"
         )
+    if manifest_path(workspace).exists():
+        session_manifest = load_session_manifest(workspace)
+        if session_manifest.get("sessions"):
+            raise SprintError(
+                "Execution mode cannot change after a live customer-session record exists; restart in a new workspace so the session history stays truthful"
+            )
     customer = state.get("customerTesting", {})
     if args.mode != "live" and int(customer.get("sessionsCompleted", 0)) > 0:
         raise SprintError(
@@ -2965,6 +3143,7 @@ def command_set_execution_mode(args: argparse.Namespace) -> None:
     if not selected_by or not reason:
         raise SprintError("Execution-mode selection requires a selector and reason")
     state["executionMode"] = args.mode
+    state["terminalState"] = "not-terminal"
     state["executionModeSelection"] = selection_record(
         selected_by, reason
     )
@@ -3423,12 +3602,13 @@ def command_skip_step(args: argparse.Namespace) -> None:
     if state.get("currentStep") != step_id:
         raise SprintError(f"Only the current step may be skipped: {state.get('currentStep')}")
     reason = args.reason.strip()
-    if not reason:
-        raise SprintError("A skipped step requires a reason")
+    skipped_by = args.skipped_by.strip()
+    if not reason or not skipped_by:
+        raise SprintError("A skipped step requires a reason and the person who approved it")
     policy_error = skip_policy_error(state, step_id)
     if policy_error:
         raise SprintError(policy_error)
-    add_skip(state, step_id, reason)
+    add_skip(state, step_id, reason, skipped_by)
     following = next_step(step_id, excluded_steps(state))
     if following is None:
         raise SprintError("Cannot skip the final remaining step")
@@ -3714,9 +3894,14 @@ def command_gate(args: argparse.Namespace) -> None:
     if gate_id == "gate-5":
         state["status"] = "complete"
         state["outcome"] = decision_text
+        state["terminalState"] = expected_terminal_state(state)
+        validation_label, validation_notice, _validation_class = validation_truth(
+            state
+        )
         state["nextAction"] = {
-            "title": f"Sprint complete: {decision_text}",
-            "body": "Use the outcome artifact and owned next actions for the handoff.",
+            "title": f"{validation_label}: {decision_text}",
+            "body": validation_notice
+            + " Use the outcome artifact and owned next actions for the handoff.",
             "humanInput": "None.",
         }
     else:
@@ -5577,6 +5762,50 @@ def skip_policy_error(state: dict[str, Any], step_id: str) -> str | None:
     )
 
 
+def skip_record_errors(state: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    skipped = state.get("skippedSteps", [])
+    reasons = state.get("skipReasons", {})
+    records = state.get("skipRecords", [])
+    if not isinstance(records, list):
+        return ["skipRecords must be a list"]
+    records_by_step: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            errors.append("Every skipRecords entry must be an object")
+            continue
+        step_id = str(record.get("step", ""))
+        records_by_step.setdefault(step_id, []).append(record)
+        if not str(record.get("skippedBy", "")).strip():
+            errors.append(f"Skip record {step_id or '<unknown>'} requires skippedBy")
+        if not str(record.get("reason", "")).strip():
+            errors.append(f"Skip record {step_id or '<unknown>'} requires a reason")
+        if record.get("executionMode") != state.get("executionMode"):
+            errors.append(
+                f"Skip record {step_id} execution mode does not match the workspace"
+            )
+        if record.get("route") != state.get("route"):
+            errors.append(f"Skip record {step_id} route does not match the workspace")
+    for step_id in skipped if isinstance(skipped, list) else []:
+        matching = records_by_step.get(str(step_id), [])
+        if len(matching) != 1:
+            errors.append(
+                f"Skipped step {step_id} requires exactly one auditable skip record"
+            )
+            continue
+        if matching[0].get("reason") != reasons.get(step_id):
+            errors.append(
+                f"Skip record {step_id} reason must match skipReasons"
+            )
+    extras = sorted(set(records_by_step) - set(skipped if isinstance(skipped, list) else []))
+    if extras:
+        errors.append(
+            "skipRecords contains entries for steps that are not skipped: "
+            + ", ".join(extras)
+        )
+    return errors
+
+
 def customer_testing_errors(state: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     customer = state.get("customerTesting", {})
@@ -5898,10 +6127,20 @@ def gate_history_errors(state: dict[str, Any]) -> list[str]:
 
 def terminal_state_errors(state: dict[str, Any]) -> list[str]:
     if state.get("status") != "complete":
+        errors = []
         if state.get("outcome") is not None:
-            return ["Only a terminal complete workspace may record outcome"]
-        return []
+            errors.append("Only a terminal complete workspace may record outcome")
+        if state.get("terminalState") != "not-terminal":
+            errors.append(
+                "A non-terminal workspace must record terminalState as not-terminal"
+            )
+        return errors
     errors: list[str] = []
+    expected = expected_terminal_state(state)
+    if state.get("terminalState") != expected:
+        errors.append(
+            f"Terminal state must be {expected} for the recorded mode, route, and customer evidence"
+        )
     if state.get("route") in {"undecided", "research-first"}:
         errors.append(
             "A terminal workspace requires a final route, not undecided or research-first"
@@ -5952,11 +6191,19 @@ def terminal_state_errors(state: dict[str, Any]) -> list[str]:
                 "A non-live terminal state requires 11-customer-sessions to be "
                 "explicitly skipped"
             )
+        if "12-synthesis" not in skipped:
+            errors.append(
+                "A non-live terminal state requires customer-evidence synthesis to be explicitly skipped"
+            )
         if outcome not in {"investigate", "stop"}:
             errors.append(
                 "A non-live terminal state may close only as Investigate or Stop"
             )
     elif "11-customer-sessions" in skipped:
+        if "12-synthesis" not in skipped:
+            errors.append(
+                "A live untested terminal state requires customer-evidence synthesis to be explicitly skipped"
+            )
         if outcome not in {"investigate", "stop"}:
             errors.append(
                 "A live run without customer sessions may close only as Investigate or Stop"
@@ -6093,9 +6340,11 @@ def validate_state(state: dict[str, Any]) -> list[str]:
         "fidelity",
         "routeHistory",
         "status",
+        "terminalState",
         "currentStep",
         "completedSteps",
         "skippedSteps",
+        "skipRecords",
         "notApplicableSteps",
         "humanGates",
         "artifacts",
@@ -6123,6 +6372,8 @@ def validate_state(state: dict[str, Any]) -> list[str]:
             errors.append(f"{key} must record selectedBy and reason")
     if state.get("status") not in WORKSPACE_STATUSES:
         errors.append(f"Invalid workspace status: {state.get('status')}")
+    if state.get("terminalState") not in TERMINAL_STATES:
+        errors.append(f"Invalid terminal state: {state.get('terminalState')}")
     if state.get("currentStep") not in STEP_INDEX:
         errors.append(f"Invalid current step: {state.get('currentStep')}")
     completed = state.get("completedSteps", [])
@@ -6178,6 +6429,7 @@ def validate_state(state: dict[str, Any]) -> list[str]:
                 )
     errors.extend(route_history_errors(state))
     errors.extend(step_history_errors(state))
+    errors.extend(skip_record_errors(state))
     errors.extend(gate_history_errors(state))
     errors.extend(terminal_state_errors(state))
     errors.extend(fidelity_errors(state))
@@ -6793,26 +7045,73 @@ def workspace_errors(workspace: Path) -> list[str]:
     return errors
 
 
-def migrate_workspace_state_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
-    """Add explicit adaptive/live fidelity records to validated legacy state."""
+def migrate_workspace_state_v1_to_v3(data: dict[str, Any]) -> dict[str, Any]:
+    """Add explicit mode, fidelity, terminal, and skip-audit records."""
 
     return migrate_legacy_state(data)
+
+
+def migrate_workspace_state_v2_to_v3(data: dict[str, Any]) -> dict[str, Any]:
+    """Add truthful terminal classification and auditable skip records."""
+
+    migrated = copy.deepcopy(data)
+    migrated["schemaVersion"] = STATE_SCHEMA_VERSION
+    fallback_timestamp = str(
+        migrated.get("updatedAt") or migrated.get("createdAt") or utc_now()
+    )
+    records = []
+    for step_id in migrated.get("skippedSteps", []):
+        recorded_at = fallback_timestamp
+        deviations = (
+            migrated.get("fidelity", {})
+            .get("steps", {})
+            .get(step_id, {})
+            .get("deviations", [])
+        )
+        for deviation in reversed(deviations):
+            if isinstance(deviation, dict) and deviation.get("type") in {
+                "skip",
+                "omission",
+            }:
+                recorded_at = str(deviation.get("recordedAt") or recorded_at)
+                break
+        records.append(
+            {
+                "step": step_id,
+                "skippedBy": "pre-3.0 actor unavailable",
+                "reason": migrated.get("skipReasons", {}).get(
+                    step_id, "Pre-3.0 skip reason unavailable."
+                ),
+                "executionMode": migrated.get("executionMode", "live"),
+                "route": migrated.get("route", "undecided"),
+                "skippedAt": recorded_at,
+            }
+        )
+    migrated["skipRecords"] = records
+    if any(
+        isinstance(item, dict) and "id" not in item
+        for item in migrated.get("decisions", [])
+    ):
+        migrate_legacy_decisions(migrated, fallback_timestamp)
+    migrated["terminalState"] = expected_terminal_state(migrated)
+    return migrated
 
 
 def migrate_artifact_data_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
     """Migrate validated legacy artifact content without changing its meaning."""
 
     migrated = copy.deepcopy(data)
-    migrated["schemaVersion"] = SCHEMA_VERSION
+    migrated["schemaVersion"] = ARTIFACT_SCHEMA_VERSION
     return migrated
 
 
 MIGRATIONS = {
     "workspace-state": {
-        (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION): migrate_workspace_state_v1_to_v2
+        (LEGACY_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v1_to_v3,
+        (PREVIOUS_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v2_to_v3,
     },
     "artifact-data": {
-        (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION): migrate_artifact_data_v1_to_v2
+        (LEGACY_ARTIFACT_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION): migrate_artifact_data_v1_to_v2
     },
 }
 
@@ -6927,14 +7226,16 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
 
 
 def default_backup_path(workspace: Path) -> Path:
-    return workspace.parent / f"{workspace.name}.backup-before-schema-{SCHEMA_VERSION}"
+    return workspace.parent / f"{workspace.name}.backup-before-schema-{STATE_SCHEMA_VERSION}"
 
 
 def command_migrate(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     plan = migration_plan(workspace)
     if not plan:
-        print(f"Workspace already uses schema version {SCHEMA_VERSION}; no migration needed")
+        print(
+            f"Workspace already uses state schema version {STATE_SCHEMA_VERSION}; no migration needed"
+        )
         return
     print("Migration plan:")
     for path, family, migrated in plan:
@@ -7009,12 +7310,22 @@ def command_status(args: argparse.Namespace) -> None:
     print(f"Sprint: {state['title']}")
     print(f"Method profile: {state['methodProfile']}")
     print(f"Execution mode: {state['executionMode']}")
+    mode_selection = state.get("executionModeSelection", {})
+    print(
+        "Mode selection: "
+        f"{mode_selection.get('selectedBy', 'unknown')} — "
+        f"{mode_selection.get('reason', 'unknown')}"
+    )
     print(f"Route: {state['route']}")
     print(
         "Method fidelity: "
         f"{state.get('fidelity', {}).get('summary', {}).get('assessment', 'unknown')}"
     )
-    print(f"Status: {state['status']}")
+    print(f"Process status: {state['status']}")
+    print(f"Terminal state: {state['terminalState']}")
+    validation_label, validation_notice, _validation_class = validation_truth(state)
+    print(f"Validation status: {validation_label}")
+    print(f"Validation note: {validation_notice}")
     print(f"Current step: {state['currentStep']} — {step_name(str(state['currentStep']))}")
     fidelity_step = (
         state.get("fidelity", {})
@@ -7080,9 +7391,9 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--execution-mode", choices=sorted(EXECUTION_MODES), default="live"
     )
-    init_parser.add_argument("--selected-by", default="workspace default")
+    init_parser.add_argument("--selected-by", required=True)
     init_parser.add_argument("--profile-reason")
-    init_parser.add_argument("--mode-reason")
+    init_parser.add_argument("--mode-reason", required=True)
     init_parser.add_argument(
         "--session-context-maximum",
         type=int,
@@ -7149,7 +7460,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode", required=True, choices=sorted(EXECUTION_MODES)
     )
     mode_parser.add_argument("--reason", required=True)
-    mode_parser.add_argument("--selected-by", default="human Decider")
+    mode_parser.add_argument("--selected-by", required=True)
     mode_parser.set_defaults(handler=command_set_execution_mode)
 
     fidelity_parser = subparsers.add_parser(
@@ -7199,6 +7510,7 @@ def build_parser() -> argparse.ArgumentParser:
     skip_parser.add_argument("--workspace", required=True)
     skip_parser.add_argument("--step", required=True, choices=[step["id"] for step in STEPS])
     skip_parser.add_argument("--reason", required=True)
+    skip_parser.add_argument("--skipped-by", required=True)
     skip_parser.set_defaults(handler=command_skip_step)
 
     gate_parser = subparsers.add_parser("gate", help="Record a human gate decision")

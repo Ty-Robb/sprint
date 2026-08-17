@@ -14,6 +14,7 @@ Read the following references before running a sprint:
 - [references/privacy-and-publication.md](references/privacy-and-publication.md) before choosing a workspace location, handling private evidence, or publishing any sprint material.
 - [references/guided-workflow.md](references/guided-workflow.md) for the state machine, human gates, and resumable interaction pattern.
 - [references/transition-model.md](references/transition-model.md) for the executable route/step matrix, skip policy, readiness rules, and terminal invariants.
+- [references/execution-modes.md](references/execution-modes.md) for mode selection, audited customer-step skips, truthful closure labels, and rehearsal-to-live restart rules.
 - [references/method-profiles.json](references/method-profiles.json) for method profiles, execution modes, canonical purposes, default methods, timeboxes, substitutions, and non-negotiable principles.
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
@@ -170,9 +171,9 @@ Never:
 - expose unnecessary personal information in artifacts;
 - call directional evidence universal validation.
 
-In live mode, if no real customer evidence is available, complete the sprint only to `Ready for customer testing` and make the blocker visible on the dashboard. A self-test or planning/rehearsal may close only as an explicitly unvalidated `Investigate` or `Stop` outcome after customer activity is skipped and labelled truthfully.
+In live mode, if no real customer evidence is available, stop at `Ready for customer testing` when testing can still proceed. If testing is genuinely blocked or the route is `no-sprint`, Gate 5 may close only as `closed-unvalidated` with an `Investigate` or `Stop` outcome. A self-test or planning/rehearsal may close only in its explicit unvalidated terminal state, also as `Investigate` or `Stop`, after both customer sessions and customer-evidence synthesis are skipped and audited truthfully.
 
-For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, skip the live customer-session step explicitly and use only `Synthetic rehearsal` labels; never complete a customer-evidence artifact.
+For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, auditably skip the live customer-session and customer-evidence synthesis steps, use only `Synthetic rehearsal` labels for role-play, and never complete a customer-evidence artifact.
 
 For every live participant, follow the full command sequence in
 `references/customer-testing.md`. Never set a completed count directly: the
@@ -184,6 +185,6 @@ and preserve immutable files for every prototype/questions version.
 
 Finish only after the human makes a recorded outcome decision: `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`. Publish the final HTML outcome report with evidence, confidence, unresolved risks, owners, and dated next actions. Mark customer testing truthfully as complete, partial, or not conducted.
 
-The dashboard and final outcome must show process completion separately from the generated method-fidelity assessment. The fidelity summary must list the one-human-plus-AI team-model adaptation, every material deviation, and the limitations those choices place on evidence and decision readiness.
+The dashboard, every rendered artifact, status output, and any sanitized export must show process completion separately from `terminalState`, customer validation, and the generated method-fidelity assessment. The fidelity summary must list the one-human-plus-AI team-model adaptation, every material deviation, and the limitations those choices place on evidence and decision readiness.
 
 Run `validate --workspace <sprint-directory>` before handoff. Do not call the sprint complete while validation errors remain.

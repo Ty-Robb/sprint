@@ -27,7 +27,7 @@
   "allOf": [
     {
       "if": {
-        "properties": {"schemaVersion": {"const": "2.0"}},
+        "properties": {"schemaVersion": {"enum": ["2.0", "3.0"]}},
         "required": ["schemaVersion"]
       },
       "then": {
@@ -40,6 +40,15 @@
           "routeHistory",
           "notApplicableSteps"
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"schemaVersion": {"const": "3.0"}},
+        "required": ["schemaVersion"]
+      },
+      "then": {
+        "required": ["terminalState", "skipRecords"]
       }
     }
   ],
@@ -72,6 +81,7 @@
     "selectedConcept": {"type": "string", "minLength": 1},
     "selectedConceptRationale": {"type": "string"},
     "status": {"$ref": "#/$defs/workspaceStatus"},
+    "terminalState": {"$ref": "#/$defs/terminalState"},
     "currentStep": {"$ref": "#/$defs/stepId"},
     "completedSteps": {
       "type": "array",
@@ -106,6 +116,10 @@
         "13-outcome": {"type": "string", "minLength": 1}
       },
       "additionalProperties": false
+    },
+    "skipRecords": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/skipRecord"}
     },
     "pendingGate": {
       "anyOf": [
@@ -175,6 +189,15 @@
         "complete"
       ]
     },
+    "terminalState": {
+      "enum": [
+        "not-terminal",
+        "live-customer-tested",
+        "self-test-complete-unvalidated",
+        "planning-rehearsal-complete-unvalidated",
+        "closed-unvalidated"
+      ]
+    },
     "stepId": {
       "enum": [
         "01-intake",
@@ -231,6 +254,26 @@
         "to": {"$ref": "#/$defs/route"},
         "reason": {"type": "string", "minLength": 1},
         "selectedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "skipRecord": {
+      "type": "object",
+      "required": [
+        "step",
+        "skippedBy",
+        "reason",
+        "executionMode",
+        "route",
+        "skippedAt"
+      ],
+      "properties": {
+        "step": {"$ref": "#/$defs/stepId"},
+        "skippedBy": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "executionMode": {"enum": ["live", "self-test", "planning-rehearsal"]},
+        "route": {"$ref": "#/$defs/route"},
+        "skippedAt": {"$ref": "#/$defs/timestamp"}
       },
       "additionalProperties": false
     },

@@ -52,7 +52,7 @@ ownership; it is not a complete schema-valid record because `init` supplies all
 
 ```json
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "3.0",
   "title": "Example Sprint",
   "slug": "example-sprint",
   "challenge": "Improve the example journey",
@@ -60,8 +60,8 @@ ownership; it is not a complete schema-valid record because `init` supplies all
   "executionMode": "live",
   "route": "undecided",
   "routeHistory": [],
-  "methodProfileSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
-  "executionModeSelection": {"selectedBy": "", "reason": "", "selectedAt": ""},
+  "methodProfileSelection": {"selectedBy": "Human Decider", "reason": "The adaptive profile fits the challenge.", "selectedAt": "2026-08-17T12:00:00Z"},
+  "executionModeSelection": {"selectedBy": "Human Decider", "reason": "Suitable real customers are available.", "selectedAt": "2026-08-17T12:00:00Z"},
   "fidelity": {
     "schemaVersion": "1.0",
     "teamModel": "one-human-plus-AI",
@@ -71,11 +71,13 @@ ownership; it is not a complete schema-valid record because `init` supplies all
     "summary": {}
   },
   "status": "active",
+  "terminalState": "not-terminal",
   "currentStep": "01-intake",
   "completedSteps": [],
   "skippedSteps": [],
   "notApplicableSteps": [],
   "skipReasons": {},
+  "skipRecords": [],
   "pendingGate": null,
   "humanGates": [
     {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
@@ -103,7 +105,7 @@ ownership; it is not a complete schema-valid record because `init` supplies all
 }
 ```
 
-Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity.
+Use only these process statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep the separate `terminalState` truthful: `not-terminal`, `live-customer-tested`, `self-test-complete-unvalidated`, `planning-rehearsal-complete-unvalidated`, or `closed-unvalidated`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity. Each skip has a matching `skipRecords` audit entry.
 
 Follow the normative [transition model](transition-model.md) for every route
 change, step disposition, skip, gate, artifact-readiness state, customer-session
@@ -355,3 +357,9 @@ Completing a sprint does not approve its artifacts for public release. Before pu
 On resume, read state, the assignment manifest, artifacts, and, when testing has begun, the customer-session manifest; verify that linked files and digests are current; then continue from `nextAction`. For an interrupted customer session, read its canonical checkpoint and regenerate `session-packet`; do not replay the chat. Do not reopen approved gates unless new evidence materially challenges them or the human asks. Use the route/concept commands for material changes so the superseded and replacement decisions remain traceable.
 
 The sprint may end early when the route is `no-sprint`, evidence disproves the premise, recruitment is impossible, a material safety issue emerges, or the human chooses `Stop`. Produce an honest outcome artifact explaining why.
+
+Do not relabel a progressed self-test or planning/rehearsal as live. Follow the
+early-conversion or new-workspace restart procedure in
+[execution-modes.md](execution-modes.md). A new live workspace may carry
+reviewed hypotheses and plans forward only with their original non-observed
+provenance; it must re-run gates and real-customer work.
