@@ -52,15 +52,22 @@ The generated sprint directory contains:
 
 ```text
 .gitignore          Sensitive-source fallback rules
-index.html          Living sprint dashboard
-sprint-state.json   Resumable machine state
-artifact-data/      Structured canonical content
-artifacts/          Generated HTML documents
+index.html          Disposable generated dashboard
+sprint-state.json   Canonical resumable workflow state
+artifact-data/      Canonical structured artifact content
+artifacts/          Disposable generated HTML documents
+assets/sprint.css   Disposable generated stylesheet
 working/            Isolated specialist packets and memos
-prototype/          The customer-test prototype
+prototype/          Human-authored customer-test prototype
 ```
 
-The whole generated directory is private by default, including its HTML and structured data. Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
+The whole generated directory is private by default, including its HTML and structured data.
+Edit canonical JSON, never generated views. `render` deterministically rebuilds the
+HTML and CSS without advancing workflow timestamps; `render --check` and `validate`
+fail when those views do not match the current JSON and templates. Engine-written
+shareable files use mode `0644` where the platform supports POSIX permissions.
+
+Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
 
 Before publishing changes to this repository, run:
 

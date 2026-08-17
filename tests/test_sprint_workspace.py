@@ -1,15 +1,32 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "skills" / "run-design-sprint" / "scripts" / "sprint_workspace.py"
+
+
+def load_workspace_module():
+    spec = importlib.util.spec_from_file_location("sprint_workspace_test_module", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+WORKSPACE_MODULE = load_workspace_module()
 
 
 class SprintWorkspaceTests(unittest.TestCase):
@@ -77,6 +94,162 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIn("**/account-evidence/", workspace_ignore)
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
+
+    def test_repeated_render_is_byte_and_timestamp_stable(self) -> None:
+        self.initialise()
+        paths = sorted(path for path in self.workspace.rglob("*") if path.is_file())
+        before = {
+            path.relative_to(self.workspace): (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in paths
+        }
+        state_before = self.read_json("sprint-state.json")
+        artifact_before = self.read_json("artifact-data/01-sprint-brief.json")
+
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("render", "--workspace", str(self.workspace))
+
+        after_paths = sorted(path for path in self.workspace.rglob("*") if path.is_file())
+        after = {
+            path.relative_to(self.workspace): (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in after_paths
+        }
+        self.assertEqual(after, before)
+        self.assertEqual(
+            self.read_json("sprint-state.json")["updatedAt"], state_before["updatedAt"]
+        )
+        self.assertEqual(
+            self.read_json("artifact-data/01-sprint-brief.json")["updatedAt"],
+            artifact_before["updatedAt"],
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX permission bits are required")
+    def test_generated_and_canonical_files_have_portable_permissions(self) -> None:
+        previous_umask = os.umask(0o077)
+        try:
+            self.initialise()
+        finally:
+            os.umask(previous_umask)
+        expected = [
+            self.workspace / "sprint-state.json",
+            self.workspace / "artifact-data" / "01-sprint-brief.json",
+            self.workspace / "index.html",
+            self.workspace / "artifacts" / "01-sprint-brief.html",
+            self.workspace / "assets" / "sprint.css",
+        ]
+
+        for path in expected:
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644, path)
+
+        result = self.run_cli(
+            "render", "--workspace", str(self.workspace), "--check"
+        )
+        self.assertIn("Rendered output is current", result.stdout)
+
+    def test_render_check_and_validate_detect_and_repair_stale_views(self) -> None:
+        self.initialise()
+        artifact = self.workspace / "artifacts" / "01-sprint-brief.html"
+        artifact.write_text(
+            artifact.read_text(encoding="utf-8") + "<!-- manual drift -->\n",
+            encoding="utf-8",
+        )
+        orphan = self.workspace / "artifacts" / "orphan.html"
+        orphan.write_text("stale\n", encoding="utf-8")
+
+        check_result = self.run_cli(
+            "render", "--workspace", str(self.workspace), "--check", check=False
+        )
+        self.assertEqual(check_result.returncode, 1)
+        self.assertIn("Stale rendered file: artifacts/01-sprint-brief.html", check_result.stderr)
+        self.assertIn("artifacts/orphan.html", check_result.stderr)
+
+        validate_result = self.run_cli(
+            "validate", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(validate_result.returncode, 1)
+        self.assertIn("Stale rendered file", validate_result.stderr)
+
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.assertFalse(orphan.exists())
+        self.run_cli("render", "--workspace", str(self.workspace), "--check")
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+        canonical = self.read_json("artifact-data/01-sprint-brief.json")
+        canonical["summary"] = ["Canonical content changed after the last render."]
+        self.write_json("artifact-data/01-sprint-brief.json", canonical)
+        canonical_result = self.run_cli(
+            "render", "--workspace", str(self.workspace), "--check", check=False
+        )
+        self.assertEqual(canonical_result.returncode, 1)
+        self.assertIn(
+            "Stale rendered file: artifacts/01-sprint-brief.html",
+            canonical_result.stderr,
+        )
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("render", "--workspace", str(self.workspace), "--check")
+
+    def test_artifact_catalog_and_json_serialization_are_deterministic(self) -> None:
+        self.initialise()
+        for artifact_id in ("13-outcome", "02-evidence-ledger"):
+            self.run_cli(
+                "new-artifact",
+                "--workspace",
+                str(self.workspace),
+                "--id",
+                artifact_id,
+            )
+        data_dir = self.workspace / "artifact-data"
+        (data_dir / "13-outcome.json").rename(data_dir / "a-outcome.json")
+        (data_dir / "02-evidence-ledger.json").rename(data_dir / "z-evidence.json")
+
+        self.run_cli("render", "--workspace", str(self.workspace))
+
+        state = self.read_json("sprint-state.json")
+        self.assertEqual(
+            [item["id"] for item in state["artifacts"]],
+            ["01-sprint-brief", "02-evidence-ledger", "13-outcome"],
+        )
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertLess(
+            dashboard.index("02-evidence-ledger.html"),
+            dashboard.index("13-outcome.html"),
+        )
+        self.assertEqual(
+            WORKSPACE_MODULE.json_text({"z": 1, "a": "é"}),
+            '{\n  "a": "é",\n  "z": 1\n}\n',
+        )
+        self.run_cli("render", "--workspace", str(self.workspace), "--check")
+
+    def test_interrupted_atomic_batch_restores_prior_files(self) -> None:
+        first = Path(self.temporary_directory.name) / "first.txt"
+        second = Path(self.temporary_directory.name) / "second.txt"
+        WORKSPACE_MODULE.write_text(first, "old first\n")
+        WORKSPACE_MODULE.write_text(second, "old second\n")
+        real_replace = os.replace
+        replacement_count = 0
+
+        def interrupt_second_replacement(source, destination):
+            nonlocal replacement_count
+            replacement_count += 1
+            if replacement_count == 2:
+                raise OSError("simulated interruption")
+            return real_replace(source, destination)
+
+        with mock.patch.object(
+            WORKSPACE_MODULE.os,
+            "replace",
+            side_effect=interrupt_second_replacement,
+        ):
+            with self.assertRaisesRegex(
+                WORKSPACE_MODULE.SprintError, "Atomic replacement failed"
+            ):
+                WORKSPACE_MODULE.write_texts_atomically(
+                    {first: "new first\n", second: "new second\n"}
+                )
+
+        self.assertEqual(first.read_text(encoding="utf-8"), "old first\n")
+        self.assertEqual(second.read_text(encoding="utf-8"), "old second\n")
+        self.assertEqual(list(first.parent.glob(".first.txt.*")), [])
+        self.assertEqual(list(second.parent.glob(".second.txt.*")), [])
 
     def test_role_packet_is_bounded_to_declared_inputs(self) -> None:
         self.initialise()

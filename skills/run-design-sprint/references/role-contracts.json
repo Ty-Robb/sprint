@@ -9,7 +9,7 @@
         "Select the next workflow step",
         "Prepare minimum-context specialist assignments",
         "Compare specialist working memos",
-        "Update canonical HTML artifacts and sprint state",
+        "Update canonical artifact JSON and sprint state, then render HTML views",
         "Ask the human for required decisions"
       ],
       "mustNot": [

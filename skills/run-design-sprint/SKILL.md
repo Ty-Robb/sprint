@@ -24,7 +24,7 @@ Read [references/customer-testing.md](references/customer-testing.md) before rec
 1. Keep each specialist inside its role contract.
 2. Give each specialist only the context and artifacts required for its task.
 3. Require independent work before synthesis during divergent stages.
-4. Let only the Orchestrator update canonical sprint artifacts.
+4. Let only the Orchestrator update canonical sprint state and artifact JSON.
 5. Reserve consequential decisions for the human Decider.
 6. Treat AI-generated customer reactions as rehearsal, never evidence.
 7. Use suitable real customers before claiming the sprint is customer-tested.
@@ -85,7 +85,7 @@ Require specialists to return:
 5. risks or disagreements;
 6. open questions.
 
-Specialists submit working memos. The Orchestrator reconciles conflicts, asks the human at decision gates, and updates the canonical HTML artifacts.
+Specialists submit working memos. The Orchestrator reconciles conflicts, asks the human at decision gates, updates canonical JSON, and renders disposable HTML views.
 
 Keep divergent role packets and results separate below `working/<step>/` until every assigned specialist has returned.
 
@@ -96,13 +96,14 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `new-artifact` creates a structured artifact-data draft from [references/artifact-specs.json](references/artifact-specs.json).
 - `set-challenge` and `question` keep the dashboard challenge and open-question state current.
 - `render` safely escapes artifact data and rebuilds all HTML.
+- `render --check` fails without writing when generated HTML or CSS is stale.
 - `artifact-status` changes an artifact from draft through completion.
 - `complete-step` enforces required artifacts and pauses at human gates.
 - `gate` records the human's decision and rationale.
 - `customer` records real-session status and counts.
 - `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
 
-Update artifact JSON below `artifact-data/`, then run `render`. Never edit files below `artifacts/` directly; they are generated outputs.
+Update canonical artifact JSON below `artifact-data/`, including its `updatedAt`, then run `render`. Never edit `index.html`, `assets/sprint.css`, or files below `artifacts/` directly; they are disposable generated views. Rendering does not update workflow timestamps.
 
 Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
 

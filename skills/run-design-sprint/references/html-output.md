@@ -1,17 +1,37 @@
 # HTML Output Standard
 
-Create every user-facing sprint artifact as a portable, accessible HTML document. Use JSON only for internal sprint state. Do not require a web server, build step, framework, CDN, web font, analytics script, or external asset.
+Create every user-facing sprint artifact as a portable, accessible HTML document backed by canonical JSON. Do not require a web server, build step, framework, CDN, web font, analytics script, or external asset.
 
 ## Contents
 
-1. Start from the kit
-2. Artifact data schema
-3. Required document structure
-4. Dashboard requirements
-5. Artifact requirements
-6. Evidence presentation
-7. Accessibility and safety
-8. Completion checks
+1. Canonical data and generated views
+2. Start from the kit
+3. Deterministic output rules
+4. Artifact data schema
+5. Required document structure
+6. Dashboard requirements
+7. Artifact requirements
+8. Evidence presentation
+9. Accessibility and safety
+10. Completion checks
+
+## Canonical data and generated views
+
+The ownership boundary is deliberate:
+
+- `sprint-state.json` is the canonical workflow record. Workflow commands own its
+  transition fields and `updatedAt`; the renderer owns only its derived `artifacts`
+  catalog.
+- JSON below `artifact-data/` is the canonical content for each sprint artifact.
+  The Orchestrator owns it and must update the artifact's `updatedAt` when its
+  content or status changes.
+- `index.html`, HTML below `artifacts/`, and `assets/sprint.css` are disposable
+  generated views. Never edit or review them as an independent source of truth.
+- `working/` contains non-canonical specialist material. `prototype/` is separately
+  authored test material and is not overwritten by the renderer.
+
+If a view is missing or stale, repair it with `render`; do not copy changes back
+from HTML into JSON. Rendering never advances a workflow or artifact timestamp.
 
 ## Start from the kit
 
@@ -21,11 +41,34 @@ Use `scripts/sprint_workspace.py` to initialise and render the workspace. The en
 - use `artifact-template.html` for each sprint artifact;
 - copy `sprint.css` to `assets/sprint.css` and preserve its class names.
 
-Write structured content to JSON below `artifact-data/` and run `render`. The renderer escapes text, replaces template tokens, registers artifacts, copies the stylesheet, and updates `index.html`.
+Write structured content to JSON below `artifact-data/` and run `render`. The renderer validates and escapes the content, replaces template tokens, synchronises the derived artifact catalog, copies the stylesheet, and updates `index.html`.
 
 Do not edit generated HTML below `artifacts/` directly. Do not insert raw HTML into artifact data.
 
 The renderer sets the dashboard `<progress>` element's numeric value from sprint state.
+
+Use `render --check` in CI or before review. It performs no writes and fails if a
+generated file is missing, unexpected, has non-portable permissions, or differs
+byte-for-byte from the current canonical JSON and templates. `validate` includes
+the same freshness check.
+
+## Deterministic output rules
+
+- Engine-written JSON is UTF-8, uses two-space indentation, sorts object keys,
+  preserves Unicode, rejects non-finite numbers, and ends with one LF newline.
+- JSON object key order has no semantic meaning. Authored arrays preserve their
+  canonical order, including sections, evidence, decisions, questions, and actions.
+- Artifact JSON files are discovered by filename, then the artifact catalog and
+  dashboard links are sorted by artifact ID. Duplicate IDs or output paths fail.
+- HTML and CSS are UTF-8 copies of a deterministic render from canonical data and
+  the checked-in templates. Rendering does not consult the clock.
+- Engine-written JSON, HTML, CSS, and role packets use mode `0644` on POSIX
+  platforms. Other platforms use their native permission model.
+- Each target is written to a synced temporary file in the target directory and
+  atomically replaced, so an interruption cannot expose a truncated file. An
+  in-process batch failure restores already replaced targets when the platform
+  permits, temporary files are cleaned up, and `render --check` detects any
+  incomplete externally interrupted batch.
 
 ## Artifact data schema
 
@@ -149,12 +192,13 @@ Use inline SVG only when it materially clarifies a map or flow. Give it an acces
 
 Before handing off an artifact:
 
-1. Confirm that all template tokens are replaced.
-2. Confirm that local links resolve.
-3. Confirm that headings are ordered and tables have headers.
-4. Confirm that the page works without JavaScript and external network access.
-5. Confirm that status claims match `sprint-state.json`.
-6. Confirm that observed evidence is not mixed with assumptions.
-7. Confirm that customer testing is labelled complete, partial, or not conducted.
-8. Confirm that the dashboard points to the latest artifact version.
-9. Before any public release, complete the [publication checklist](privacy-and-publication.md#publication-checklist); workspace validation alone is not publication approval.
+1. Run `render --check` and `validate`.
+2. Confirm that all template tokens are replaced.
+3. Confirm that local links resolve.
+4. Confirm that headings are ordered and tables have headers.
+5. Confirm that the page works without JavaScript and external network access.
+6. Confirm that status claims match `sprint-state.json`.
+7. Confirm that observed evidence is not mixed with assumptions.
+8. Confirm that customer testing is labelled complete, partial, or not conducted.
+9. Confirm that the dashboard points to the latest artifact version.
+10. Before any public release, complete the [publication checklist](privacy-and-publication.md#publication-checklist); workspace validation alone is not publication approval.

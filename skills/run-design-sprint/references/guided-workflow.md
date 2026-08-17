@@ -35,9 +35,9 @@ Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
 python3 <skill-dir>/scripts/sprint_workspace.py --help
 ```
 
-The key commands are `init`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `status`, and `validate`.
+The key commands are `init`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `render --check`, `status`, and `validate`.
 
-Edit structured files below `artifact-data/`, then run `render`. Do not edit `index.html`, `sprint-state.json`, or generated files below `artifacts/` manually.
+Edit canonical structured files below `artifact-data/`, update their `updatedAt`, then run `render`. Use workflow commands for canonical `sprint-state.json` changes. Do not edit disposable `index.html`, `assets/sprint.css`, or generated files below `artifacts/` manually. Rendering never advances state-transition timestamps; run `render --check` to detect drift without writing.
 
 Before initialising a workspace, read [privacy-and-publication.md](privacy-and-publication.md). Put the workspace below an access-controlled private root outside any public repository checkout. The workspace is private by default; anonymisation makes it safer to work with but does not make the whole bundle suitable for publication.
 
@@ -78,19 +78,19 @@ Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-c
 
 ## Output structure
 
-Create user-facing artifacts as HTML:
+Canonical JSON and disposable user-facing views have distinct locations:
 
 ```text
 design-sprint-<slug>/
-├── .gitignore
-├── index.html
-├── sprint-state.json
+├── .gitignore                       # sensitive-source fallback rules
+├── index.html                       # generated view
+├── sprint-state.json                # canonical workflow state
 ├── assets/
-│   └── sprint.css
+│   └── sprint.css                   # generated view
 ├── artifact-data/
-│   └── 01-sprint-brief.json
+│   └── 01-sprint-brief.json         # canonical artifact content
 ├── artifacts/
-│   ├── 01-sprint-brief.html
+│   ├── 01-sprint-brief.html         # generated views
 │   ├── 02-evidence-ledger.html
 │   ├── 03-foundation.html
 │   ├── 04-journey-map.html

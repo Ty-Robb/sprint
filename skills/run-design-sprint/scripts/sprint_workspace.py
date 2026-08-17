@@ -8,9 +8,10 @@ import html
 import json
 import os
 import re
-import shutil
+import stat
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -24,6 +25,7 @@ HTML_KIT_DIR = SKILL_DIR / "assets" / "html-kit"
 
 STATE_FILENAME = "sprint-state.json"
 SCHEMA_VERSION = "1.0"
+PORTABLE_FILE_MODE = 0o644
 
 ROUTES = {
     "undecided",
@@ -118,6 +120,17 @@ class SprintError(Exception):
     """A user-correctable sprint workspace error."""
 
 
+@dataclass
+class RenderPlan:
+    """A complete, deterministic render prepared before any files are replaced."""
+
+    registrations: list[dict[str, Any]]
+    generated_files: dict[Path, str]
+    state_update: dict[str, Any] | None
+    stale_files: list[Path]
+    canonical_files: list[Path]
+
+
 class LocalLinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -169,33 +182,154 @@ def read_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def write_json(path: Path, data: dict[str, Any]) -> None:
+def json_text(data: dict[str, Any]) -> str:
+    try:
+        return (
+            json.dumps(
+                data,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n"
+        )
+    except (TypeError, ValueError) as error:
+        raise SprintError(f"Cannot serialize canonical JSON: {error}") from error
+
+
+def portable_permissions_supported() -> bool:
+    return os.name == "posix"
+
+
+def file_mode(path: Path) -> int | None:
+    if not portable_permissions_supported():
+        return None
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+def stage_bytes(path: Path, payload: bytes, mode: int = PORTABLE_FILE_MODE) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        delete=False,
-    ) as handle:
-        handle.write(payload)
-        temp_path = Path(handle.name)
-    os.replace(temp_path, path)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if portable_permissions_supported():
+            os.chmod(temp_path, mode)
+        return temp_path
+    except OSError as error:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        raise SprintError(f"Could not stage atomic write for {path}: {error}") from error
+
+
+def write_texts_atomically(outputs: dict[Path, str]) -> None:
+    """Publish a set of files without exposing partial writes.
+
+    Every payload is staged and synced before replacement begins. Existing targets
+    are backed up so an in-process replacement failure can restore files already
+    published during the same batch. Individual replacements are atomic, so an
+    interruption never exposes a partially written target.
+    """
+
+    staged: list[tuple[Path, Path, Path | None]] = []
+    try:
+        ordered_outputs = sorted(
+            outputs.items(),
+            key=lambda item: (item[0].name == STATE_FILENAME, item[0].as_posix()),
+        )
+        for path, text in ordered_outputs:
+            payload = text.encode("utf-8")
+            temp_path: Path | None = None
+            backup: Path | None = None
+            if path.exists():
+                same_content = path.read_bytes() == payload
+                same_mode = (
+                    not portable_permissions_supported()
+                    or file_mode(path) == PORTABLE_FILE_MODE
+                )
+                if same_content and same_mode:
+                    continue
+                previous_mode = file_mode(path)
+                if previous_mode is None:
+                    previous_mode = PORTABLE_FILE_MODE
+                try:
+                    backup = stage_bytes(path, path.read_bytes(), previous_mode)
+                    temp_path = stage_bytes(path, payload)
+                except SprintError:
+                    if backup is not None:
+                        backup.unlink(missing_ok=True)
+                    raise
+            else:
+                temp_path = stage_bytes(path, payload)
+            staged.append((path, temp_path, backup))
+    except (OSError, SprintError) as error:
+        for _, temp_path, backup in staged:
+            temp_path.unlink(missing_ok=True)
+            if backup is not None:
+                backup.unlink(missing_ok=True)
+        if isinstance(error, SprintError):
+            raise
+        raise SprintError(f"Could not prepare rendered files: {error}") from error
+
+    committed: list[tuple[Path, Path | None]] = []
+    preserved_backups: set[Path] = set()
+    try:
+        for path, temp_path, backup in staged:
+            os.replace(temp_path, path)
+            committed.append((path, backup))
+    except OSError as error:
+        rollback_errors: list[str] = []
+        for path, backup in reversed(committed):
+            try:
+                if backup is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    os.replace(backup, path)
+            except OSError as rollback_error:
+                if backup is not None:
+                    preserved_backups.add(backup)
+                rollback_errors.append(
+                    f"{path}: {rollback_error} (backup kept at {backup})"
+                )
+        detail = ""
+        if rollback_errors:
+            detail = f"; rollback also failed for {', '.join(rollback_errors)}"
+        raise SprintError(f"Atomic replacement failed: {error}{detail}") from error
+    finally:
+        for _, temp_path, backup in staged:
+            temp_path.unlink(missing_ok=True)
+            if backup is not None and backup not in preserved_backups:
+                backup.unlink(missing_ok=True)
+
+
+def write_json(path: Path, data: dict[str, Any]) -> None:
+    write_text(path, json_text(data))
 
 
 def write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        delete=False,
-    ) as handle:
-        handle.write(text)
-        temp_path = Path(handle.name)
-    os.replace(temp_path, path)
+    write_texts_atomically({path: text})
+
+
+def ensure_portable_permissions(paths: list[Path]) -> None:
+    if not portable_permissions_supported():
+        return
+    for path in paths:
+        if path.exists() and file_mode(path) != PORTABLE_FILE_MODE:
+            try:
+                os.chmod(path, PORTABLE_FILE_MODE)
+            except OSError as error:
+                raise SprintError(
+                    f"Could not set portable permissions on {path}: {error}"
+                ) from error
 
 
 def load_artifact_specs() -> dict[str, dict[str, Any]]:
@@ -226,8 +360,10 @@ def load_state(workspace: Path) -> dict[str, Any]:
     return read_json(state_path(workspace))
 
 
-def save_state(workspace: Path, state: dict[str, Any]) -> None:
-    state["updatedAt"] = utc_now()
+def save_state(
+    workspace: Path, state: dict[str, Any], timestamp: str | None = None
+) -> None:
+    state["updatedAt"] = timestamp or utc_now()
     write_json(state_path(workspace), state)
 
 
@@ -455,6 +591,8 @@ def artifact_data_errors(
         return errors
     if data.get("status") not in ARTIFACT_STATUSES:
         errors.append(f"Invalid artifact status: {data.get('status')}")
+    if not isinstance(data.get("updatedAt"), str) or not data.get("updatedAt"):
+        errors.append("updatedAt must be a non-empty timestamp string")
     sections = data.get("sections")
     if not isinstance(sections, list):
         errors.append("sections must be a list")
@@ -521,14 +659,13 @@ def render_artifact(
     data: dict[str, Any],
     state: dict[str, Any],
     specs: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str]:
     errors = artifact_data_errors(data, specs)
     if errors:
         raise SprintError(f"Artifact {data.get('id')} is invalid: {'; '.join(errors)}")
     artifact_id = str(data["id"])
     spec = specs[artifact_id]
-    updated_at = str(data.get("updatedAt") or utc_now())
-    data["updatedAt"] = updated_at
+    updated_at = str(data["updatedAt"])
     sections = data.get("sections", [])
     primary_content = "\n".join(
         render_section(section, index)
@@ -556,15 +693,17 @@ def render_artifact(
         },
     )
     output_path = workspace / "artifacts" / spec["filename"]
-    write_text(output_path, rendered)
-    return {
-        "id": artifact_id,
-        "title": spec["title"],
-        "path": str(output_path.relative_to(workspace)),
-        "status": status,
-        "step": spec["step"],
-        "updatedAt": updated_at,
-    }
+    return (
+        {
+            "id": artifact_id,
+            "title": spec["title"],
+            "path": str(output_path.relative_to(workspace)),
+            "status": status,
+            "step": spec["step"],
+            "updatedAt": updated_at,
+        },
+        rendered,
+    )
 
 
 def render_steps(state: dict[str, Any]) -> str:
@@ -639,7 +778,9 @@ def render_decisions(decisions: Any) -> str:
     return "\n".join(output)
 
 
-def render_dashboard(workspace: Path, state: dict[str, Any]) -> None:
+def render_dashboard(
+    state: dict[str, Any], artifacts: list[dict[str, Any]]
+) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
     skipped = set(state.get("skippedSteps", []))
     denominator = max(1, len(STEPS) - len(skipped))
@@ -657,7 +798,7 @@ def render_dashboard(workspace: Path, state: dict[str, Any]) -> None:
         questions_html = "\n".join(f"<li>{escape(item)}</li>" for item in open_questions)
     else:
         questions_html = "<li>No open questions recorded.</li>"
-    updated_at = str(state.get("updatedAt", utc_now()))
+    updated_at = str(state.get("updatedAt") or state.get("createdAt") or "")
     rendered = replace_tokens(
         template,
         {
@@ -676,34 +817,78 @@ def render_dashboard(workspace: Path, state: dict[str, Any]) -> None:
             "TEST_STATUS": escape(str(customer.get("status", "not-planned")).replace("-", " ").title()),
             "SESSIONS_PLANNED": escape(customer.get("sessionsPlanned", 0)),
             "SESSIONS_COMPLETED": escape(customer.get("sessionsCompleted", 0)),
-            "ARTIFACT_COUNT": len(state.get("artifacts", [])),
-            "ARTIFACT_LINKS": render_artifact_links(state.get("artifacts", [])),
+            "ARTIFACT_COUNT": len(artifacts),
+            "ARTIFACT_LINKS": render_artifact_links(artifacts),
             "DECISION_SUMMARY": render_decisions(state.get("decisions", [])),
             "OPEN_QUESTIONS": questions_html,
         },
     )
     rendered = rendered.replace('value="0" max="100"', f'value="{progress}" max="100"', 1)
-    write_text(workspace / "index.html", rendered)
+    return rendered
 
 
-def render_workspace(workspace: Path) -> dict[str, Any]:
+def build_render_plan(workspace: Path) -> RenderPlan:
     state = load_state(workspace)
     specs = load_artifact_specs()
-    (workspace / "assets").mkdir(parents=True, exist_ok=True)
-    (workspace / "artifacts").mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(HTML_KIT_DIR / "sprint.css", workspace / "assets" / "sprint.css")
-    registrations = []
+    registrations: list[dict[str, Any]] = []
+    generated_files: dict[Path, str] = {
+        workspace / "assets" / "sprint.css": (
+            HTML_KIT_DIR / "sprint.css"
+        ).read_text(encoding="utf-8")
+    }
     data_dir = workspace / "artifact-data"
-    for data_path in sorted(data_dir.glob("*.json")) if data_dir.exists() else []:
+    data_paths = sorted(data_dir.glob("*.json")) if data_dir.exists() else []
+    seen_ids: set[str] = set()
+    for data_path in data_paths:
         data = read_json(data_path)
-        registrations.append(render_artifact(workspace, data, state, specs))
-        write_json(data_path, data)
+        registration, rendered = render_artifact(workspace, data, state, specs)
+        artifact_id = str(registration["id"])
+        if artifact_id in seen_ids:
+            raise SprintError(f"Duplicate artifact id: {artifact_id}")
+        seen_ids.add(artifact_id)
+        output_path = workspace / str(registration["path"])
+        if output_path in generated_files:
+            raise SprintError(f"Duplicate rendered output path: {output_path}")
+        generated_files[output_path] = rendered
+        registrations.append(registration)
     registrations.sort(key=lambda item: item["id"])
-    state["artifacts"] = registrations
-    state["updatedAt"] = utc_now()
-    render_dashboard(workspace, state)
-    save_state(workspace, state)
-    return state
+    generated_files[workspace / "index.html"] = render_dashboard(state, registrations)
+
+    normalized_state = dict(state)
+    normalized_state["artifacts"] = registrations
+    state_update = normalized_state if state.get("artifacts") != registrations else None
+    expected_artifact_files = {
+        path for path in generated_files if path.parent == workspace / "artifacts"
+    }
+    rendered_artifact_files = (
+        set((workspace / "artifacts").glob("*.html"))
+        if (workspace / "artifacts").exists()
+        else set()
+    )
+    return RenderPlan(
+        registrations=registrations,
+        generated_files=generated_files,
+        state_update=state_update,
+        stale_files=sorted(rendered_artifact_files - expected_artifact_files),
+        canonical_files=[state_path(workspace), *data_paths],
+    )
+
+
+def render_workspace(workspace: Path) -> RenderPlan:
+    plan = build_render_plan(workspace)
+    outputs = dict(plan.generated_files)
+    if plan.state_update is not None:
+        outputs[state_path(workspace)] = json_text(plan.state_update)
+    write_texts_atomically(outputs)
+    for stale_path in plan.stale_files:
+        try:
+            stale_path.unlink()
+        except OSError as error:
+            raise SprintError(
+                f"Could not remove stale rendered file {stale_path}: {error}"
+            ) from error
+    ensure_portable_permissions(plan.canonical_files)
+    return plan
 
 
 def empty_section(title: str) -> dict[str, Any]:
@@ -715,8 +900,10 @@ def empty_section(title: str) -> dict[str, Any]:
     }
 
 
-def new_artifact_data(artifact_id: str, spec: dict[str, Any]) -> dict[str, Any]:
-    now = utc_now()
+def new_artifact_data(
+    artifact_id: str, spec: dict[str, Any], timestamp: str | None = None
+) -> dict[str, Any]:
+    now = timestamp or utc_now()
     return {
         "schemaVersion": SCHEMA_VERSION,
         "id": artifact_id,
@@ -730,9 +917,12 @@ def new_artifact_data(artifact_id: str, spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def initial_brief_data(challenge: str) -> dict[str, Any]:
+def initial_brief_data(
+    challenge: str, timestamp: str | None = None
+) -> dict[str, Any]:
     spec = load_artifact_specs()["01-sprint-brief"]
-    data = new_artifact_data("01-sprint-brief", spec)
+    now = timestamp or utc_now()
+    data = new_artifact_data("01-sprint-brief", spec, now)
     data["summary"] = [challenge]
     data["sections"] = [
         {
@@ -760,7 +950,7 @@ def initial_brief_data(challenge: str) -> dict[str, Any]:
             "status": "Observed",
             "claim": "The human Decider supplied the initial challenge statement.",
             "source": "Sprint intake",
-            "date": utc_now()[:10],
+            "date": now[:10],
         }
     ]
     data["unknowns"] = [
@@ -825,7 +1015,10 @@ def command_init(args: argparse.Namespace) -> None:
         "updatedAt": now,
     }
     write_json(state_path(output), state)
-    write_json(output / "artifact-data" / "01-sprint-brief.json", initial_brief_data(challenge))
+    write_json(
+        output / "artifact-data" / "01-sprint-brief.json",
+        initial_brief_data(challenge, now),
+    )
     render_workspace(output)
     print(f"Created sprint workspace: {output}")
     print(f"Dashboard: {output / 'index.html'}")
@@ -839,7 +1032,9 @@ def command_new_artifact(args: argparse.Namespace) -> None:
     data_path = workspace / "artifact-data" / f"{args.id}.json"
     if data_path.exists():
         raise SprintError(f"Artifact data already exists: {data_path}")
-    write_json(data_path, new_artifact_data(args.id, specs[args.id]))
+    now = utc_now()
+    write_json(data_path, new_artifact_data(args.id, specs[args.id], now))
+    save_state(workspace, load_state(workspace), timestamp=now)
     render_workspace(workspace)
     print(f"Created artifact draft: {data_path}")
 
@@ -850,9 +1045,11 @@ def command_set_artifact_status(args: argparse.Namespace) -> None:
         raise SprintError(f"Invalid artifact status: {args.status}")
     data_path = workspace / "artifact-data" / f"{args.id}.json"
     data = read_json(data_path)
+    now = utc_now()
     data["status"] = args.status
-    data["updatedAt"] = utc_now()
+    data["updatedAt"] = now
     write_json(data_path, data)
+    save_state(workspace, load_state(workspace), timestamp=now)
     render_workspace(workspace)
     print(f"Updated {args.id} to {args.status}")
 
@@ -896,6 +1093,7 @@ def command_set_challenge(args: argparse.Namespace) -> None:
     challenge = args.challenge.strip()
     if not challenge:
         raise SprintError("Challenge cannot be empty")
+    now = utc_now()
     state = load_state(workspace)
     state["challenge"] = challenge
     brief_path = workspace / "artifact-data" / "01-sprint-brief.json"
@@ -910,9 +1108,9 @@ def command_set_challenge(args: argparse.Namespace) -> None:
         brief["summary"][0] = challenge
     else:
         brief["summary"] = [challenge]
-    brief["updatedAt"] = utc_now()
+    brief["updatedAt"] = now
     write_json(brief_path, brief)
-    save_state(workspace, state)
+    save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print("Updated the sprint challenge")
 
@@ -1213,7 +1411,7 @@ Do not read other sprint files unless the Sprint Orchestrator issues a new assig
 ## Must not
 
 {must_not}
-- Edit `index.html`, `sprint-state.json`, or canonical files in `artifacts/`
+- Edit `index.html`, `sprint-state.json`, canonical files in `artifact-data/`, or generated files in `artifacts/`
 - Continue beyond the bounded task after returning the deliverable
 
 ## Required return
@@ -1258,6 +1456,7 @@ def validate_state(state: dict[str, Any]) -> list[str]:
         "artifacts",
         "customerTesting",
         "nextAction",
+        "updatedAt",
     }
     missing = sorted(required - state.keys())
     if missing:
@@ -1323,6 +1522,60 @@ def local_link_errors(html_path: Path, workspace: Path) -> list[str]:
     return errors
 
 
+def workspace_relative(path: Path, workspace: Path) -> str:
+    try:
+        return path.relative_to(workspace).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def rendered_output_errors(workspace: Path) -> list[str]:
+    """Compare disposable views with bytes derived from canonical JSON/templates."""
+
+    plan = build_render_plan(workspace)
+    errors: list[str] = []
+    if plan.state_update is not None:
+        errors.append(
+            f"{STATE_FILENAME}: renderer-managed artifact catalog is stale"
+        )
+    for path, expected_text in sorted(
+        plan.generated_files.items(), key=lambda item: item[0].as_posix()
+    ):
+        relative = workspace_relative(path, workspace)
+        try:
+            actual = path.read_bytes()
+        except FileNotFoundError:
+            errors.append(f"Missing rendered file: {relative}")
+            continue
+        except OSError as error:
+            errors.append(f"Could not read rendered file {relative}: {error}")
+            continue
+        if actual != expected_text.encode("utf-8"):
+            errors.append(f"Stale rendered file: {relative}")
+        if (
+            portable_permissions_supported()
+            and file_mode(path) != PORTABLE_FILE_MODE
+        ):
+            errors.append(
+                f"Non-portable permissions on {relative}: "
+                f"{file_mode(path):04o}; expected {PORTABLE_FILE_MODE:04o}"
+            )
+    for path in plan.stale_files:
+        errors.append(
+            f"Unexpected rendered file with no canonical artifact: "
+            f"{workspace_relative(path, workspace)}"
+        )
+    if portable_permissions_supported():
+        for path in plan.canonical_files:
+            if path.exists() and file_mode(path) != PORTABLE_FILE_MODE:
+                errors.append(
+                    f"Non-portable permissions on "
+                    f"{workspace_relative(path, workspace)}: "
+                    f"{file_mode(path):04o}; expected {PORTABLE_FILE_MODE:04o}"
+                )
+    return errors
+
+
 def workspace_errors(workspace: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -1365,13 +1618,31 @@ def workspace_errors(workspace: Path) -> list[str]:
         if re.search(r"\{\{[A-Z0-9_]+\}\}", text):
             errors.append(f"Unresolved template token in {html_path}")
         errors.extend(local_link_errors(html_path, workspace))
+    try:
+        errors.extend(rendered_output_errors(workspace))
+    except SprintError as error:
+        message = str(error)
+        if not any(message in existing for existing in errors):
+            errors.append(message)
     return errors
 
 
 def command_render(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state = render_workspace(workspace)
-    print(f"Rendered {len(state.get('artifacts', []))} artifacts and dashboard")
+    if args.check:
+        errors = rendered_output_errors(workspace)
+        if errors:
+            print("Rendered output is stale:", file=sys.stderr)
+            for error in errors:
+                print(f"- {error}", file=sys.stderr)
+            raise SystemExit(1)
+        plan = build_render_plan(workspace)
+        print(
+            f"Rendered output is current ({len(plan.registrations)} artifacts and dashboard)"
+        )
+        return
+    plan = render_workspace(workspace)
+    print(f"Rendered {len(plan.registrations)} artifacts and dashboard")
 
 
 def command_validate(args: argparse.Namespace) -> None:
@@ -1389,7 +1660,7 @@ def command_status(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state = load_state(workspace)
     if args.json:
-        print(json.dumps(state, indent=2, ensure_ascii=False))
+        print(json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True))
         return
     print(f"Sprint: {state['title']}")
     print(f"Route: {state['route']}")
@@ -1499,6 +1770,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     render_parser = subparsers.add_parser("render", help="Render artifacts and dashboard")
     render_parser.add_argument("--workspace", required=True)
+    render_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail without writing when rendered views are stale or non-portable",
+    )
     render_parser.set_defaults(handler=command_render)
 
     validate_parser = subparsers.add_parser("validate", help="Validate a sprint workspace")

@@ -42,6 +42,11 @@ jobs:
             --title "CI Sprint" \
             --challenge "Validate generated HTML" \
             --output "$workspace"
+          python skills/run-design-sprint/scripts/sprint_workspace.py render \
+            --workspace "$workspace" \
+            --check
+          python skills/run-design-sprint/scripts/sprint_workspace.py validate \
+            --workspace "$workspace"
           npx --yes html-validate@11.6.2 \
             "$workspace/index.html" \
             "$workspace/artifacts/01-sprint-brief.html"
