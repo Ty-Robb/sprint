@@ -14,6 +14,10 @@ from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "skills" / "run-design-sprint" / "scripts" / "sprint_workspace.py"
+SCHEMAS = REPO_ROOT / "skills" / "run-design-sprint" / "references" / "schemas"
+FIXTURES = REPO_ROOT / "tests" / "fixtures"
+if str(SCRIPT.parent) not in sys.path:
+    sys.path.insert(0, str(SCRIPT.parent))
 
 
 def load_workspace_module():
@@ -63,6 +67,12 @@ class SprintWorkspaceTests(unittest.TestCase):
             json.dumps(data, indent=2) + "\n", encoding="utf-8"
         )
 
+    def fixture_document(self, relative_path: str) -> dict:
+        fixture = json.loads((FIXTURES / relative_path).read_text(encoding="utf-8"))
+        self.assertEqual(fixture["fixtureKind"], "synthetic")
+        self.assertIs(fixture["containsRealCustomerData"], False)
+        return fixture["document"]
+
     def complete_artifact(self, artifact_id: str) -> None:
         path = f"artifact-data/{artifact_id}.json"
         data = self.read_json(path)
@@ -94,6 +104,322 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIn("**/account-evidence/", workspace_ignore)
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
+
+    def test_published_schemas_accept_representative_valid_fixtures(self) -> None:
+        (self.workspace / "artifact-data").mkdir(parents=True)
+        self.write_json(
+            "sprint-state.json",
+            self.fixture_document("schemas/valid/workspace-state-v2.synthetic.json"),
+        )
+        self.write_json(
+            "artifact-data/01-sprint-brief.json",
+            self.fixture_document("schemas/valid/artifact-data-v2.synthetic.json"),
+        )
+
+        self.run_cli("render", "--workspace", str(self.workspace))
+        result = self.run_cli("validate", "--workspace", str(self.workspace))
+
+        self.assertIn("Sprint workspace is valid", result.stdout)
+        for schema_path in SCHEMAS.glob("*.schema.json"):
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                schema["$schema"], "https://json-schema.org/draft/2020-12/schema"
+            )
+
+    def test_reference_schemas_reject_invalid_nested_registry_fields(self) -> None:
+        validator = WORKSPACE_MODULE.SchemaValidator()
+        references = REPO_ROOT / "skills" / "run-design-sprint" / "references"
+        specs = json.loads((references / "artifact-specs.json").read_text(encoding="utf-8"))
+        specs["artifacts"]["01-sprint-brief"]["requiredSections"][0] = 7
+        spec_issues = validator.validate(
+            specs, SCHEMAS / "artifact-specs-v1.schema.json"
+        )
+        roles = json.loads((references / "role-contracts.json").read_text(encoding="utf-8"))
+        roles["roles"]["evidence-researcher"]["may"].append(
+            roles["roles"]["evidence-researcher"]["may"][0]
+        )
+        role_issues = validator.validate(
+            roles, SCHEMAS / "role-contracts-v1.schema.json"
+        )
+        methods = json.loads(
+            (references / "method-profiles.json").read_text(encoding="utf-8")
+        )
+        methods["nonNegotiablePrinciples"][0]["statement"] = (
+            "AI may make consequential choices."
+        )
+        method_issues = validator.validate(
+            methods, SCHEMAS / "method-profiles-v1.schema.json"
+        )
+
+        self.assertTrue(
+            any(
+                issue.json_path
+                == "$.artifacts['01-sprint-brief'].requiredSections[0]"
+                for issue in spec_issues
+            )
+        )
+        self.assertTrue(
+            any(
+                issue.json_path == "$.roles['evidence-researcher'].may"
+                for issue in role_issues
+            )
+        )
+        self.assertTrue(
+            any(
+                issue.json_path == "$.nonNegotiablePrinciples[0].statement"
+                for issue in method_issues
+            )
+        )
+
+    def test_invalid_state_reports_the_exact_field_path_at_load(self) -> None:
+        self.workspace.mkdir()
+        self.write_json(
+            "sprint-state.json",
+            self.fixture_document("schemas/invalid/workspace-state-v2.synthetic.json"),
+        )
+
+        result = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("$.currentStep", result.stderr)
+        self.assertIn("99-not-a-step", result.stderr)
+
+    def test_nested_artifact_error_is_rejected_before_mutation_or_render(self) -> None:
+        (self.workspace / "artifact-data").mkdir(parents=True)
+        self.write_json(
+            "sprint-state.json",
+            self.fixture_document("schemas/valid/workspace-state-v2.synthetic.json"),
+        )
+        artifact_path = self.workspace / "artifact-data" / "01-sprint-brief.json"
+        self.write_json(
+            "artifact-data/01-sprint-brief.json",
+            self.fixture_document(
+                "schemas/nested-error/artifact-data-v2.synthetic.json"
+            ),
+        )
+        original_artifact = artifact_path.read_bytes()
+        original_state = (self.workspace / "sprint-state.json").read_bytes()
+
+        mutation = self.run_cli(
+            "artifact-status",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "01-sprint-brief",
+            "--status",
+            "in-review",
+            check=False,
+        )
+        render = self.run_cli(
+            "render", "--workspace", str(self.workspace), check=False
+        )
+        state_mutation = self.run_cli(
+            "question",
+            "--workspace",
+            str(self.workspace),
+            "--add",
+            "This must not be persisted.",
+            check=False,
+        )
+
+        for result in (mutation, render, state_mutation):
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("$.sections[4].cards[0].status", result.stderr)
+            self.assertIn("Rumour", result.stderr)
+        self.assertEqual(artifact_path.read_bytes(), original_artifact)
+        self.assertEqual(
+            (self.workspace / "sprint-state.json").read_bytes(), original_state
+        )
+        self.assertFalse((self.workspace / "index.html").exists())
+
+    def test_unsupported_schema_version_fails_with_remediation(self) -> None:
+        self.workspace.mkdir()
+        state = self.fixture_document(
+            "schemas/valid/workspace-state-v2.synthetic.json"
+        )
+        state["schemaVersion"] = "99.0"
+        self.write_json("sprint-state.json", state)
+
+        result = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("$.schemaVersion", result.stderr)
+        self.assertIn("unsupported version '99.0'", result.stderr)
+        self.assertIn("2.0 (current)", result.stderr)
+        self.assertIn("1.0 (migratable)", result.stderr)
+
+    def test_schema_rejects_bad_formats_and_undeclared_fields(self) -> None:
+        self.workspace.mkdir()
+        state = self.fixture_document(
+            "schemas/valid/workspace-state-v2.synthetic.json"
+        )
+        state["updatedAt"] = "2026-08-17"
+        state["undeclared"] = True
+        self.write_json("sprint-state.json", state)
+
+        result = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("$.updatedAt: must be a valid date-time", result.stderr)
+        self.assertIn("$.undeclared: unexpected field", result.stderr)
+
+    def test_loader_rejects_nonstandard_json_numbers(self) -> None:
+        self.workspace.mkdir()
+        state = self.fixture_document(
+            "schemas/valid/workspace-state-v2.synthetic.json"
+        )
+        state["customerTesting"]["sessionsPlanned"] = float("nan")
+        self.write_json("sprint-state.json", state)
+
+        result = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("non-standard JSON numeric token 'NaN'", result.stderr)
+
+    def test_gate_rejects_invalid_nested_state_before_decision_mutation(self) -> None:
+        self.workspace.mkdir()
+        state = self.fixture_document(
+            "schemas/valid/workspace-state-v2.synthetic.json"
+        )
+        state["route"] = "full-design-sprint"
+        state["currentStep"] = "02-qualify"
+        state["pendingGate"] = "gate-1"
+        state["humanGates"][0]["name"] = "Wrong gate name"
+        self.write_json("sprint-state.json", state)
+        original_state = (self.workspace / "sprint-state.json").read_bytes()
+
+        result = self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve",
+            "--rationale",
+            "This must not be recorded.",
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("$.humanGates[0].name", result.stderr)
+        self.assertEqual(
+            (self.workspace / "sprint-state.json").read_bytes(), original_state
+        )
+
+    def test_legacy_migration_is_deterministic_and_protected(self) -> None:
+        (self.workspace / "artifact-data").mkdir(parents=True)
+        self.write_json(
+            "sprint-state.json",
+            self.fixture_document("legacy-workspace/state.synthetic.json"),
+        )
+        self.write_json(
+            "artifact-data/01-sprint-brief.json",
+            self.fixture_document(
+                "legacy-workspace/artifact-data/01-sprint-brief.synthetic.json"
+            ),
+        )
+        state_path = self.workspace / "sprint-state.json"
+        artifact_path = self.workspace / "artifact-data" / "01-sprint-brief.json"
+        original_state = state_path.read_bytes()
+        original_artifact = artifact_path.read_bytes()
+        backup = Path(self.temporary_directory.name) / "legacy-backup"
+        occupied_backup = Path(self.temporary_directory.name) / "occupied-backup"
+
+        legacy_load = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(legacy_load.returncode, 2)
+        self.assertIn("version '1.0' is legacy", legacy_load.stderr)
+        self.assertIn("migrate --workspace", legacy_load.stderr)
+
+        dry_run = self.run_cli(
+            "migrate", "--workspace", str(self.workspace), "--dry-run"
+        )
+        self.assertIn("Dry run complete", dry_run.stdout)
+        self.assertEqual(state_path.read_bytes(), original_state)
+        self.assertEqual(artifact_path.read_bytes(), original_artifact)
+        self.assertFalse(backup.exists())
+
+        occupied_backup.mkdir()
+        refused = self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(occupied_backup),
+            check=False,
+        )
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("refusing to overwrite", refused.stderr)
+        self.assertEqual(state_path.read_bytes(), original_state)
+        self.assertEqual(artifact_path.read_bytes(), original_artifact)
+
+        migrated = self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(backup),
+        )
+        self.assertIn("Untouched backup", migrated.stdout)
+        expected_state = self.fixture_document(
+            "legacy-workspace-expected/state.synthetic.json"
+        )
+        expected_artifact = self.fixture_document(
+            "legacy-workspace-expected/artifact-data/01-sprint-brief.synthetic.json"
+        )
+        self.assertEqual(self.read_json("sprint-state.json"), expected_state)
+        self.assertEqual(
+            self.read_json("artifact-data/01-sprint-brief.json"), expected_artifact
+        )
+        self.assertEqual(
+            state_path.read_text(encoding="utf-8"),
+            json.dumps(
+                expected_state,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n",
+        )
+        self.assertEqual(
+            artifact_path.read_text(encoding="utf-8"),
+            json.dumps(
+                expected_artifact,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n",
+        )
+        self.assertEqual((backup / "sprint-state.json").read_bytes(), original_state)
+        self.assertEqual(
+            (backup / "artifact-data" / "01-sprint-brief.json").read_bytes(),
+            original_artifact,
+        )
+        unused_backup = Path(self.temporary_directory.name) / "unused-backup"
+        no_op = self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(unused_backup),
+        )
+        self.assertIn("already uses schema version 2.0", no_op.stdout)
+        self.assertFalse(unused_backup.exists())
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("validate", "--workspace", str(self.workspace))
 
     def test_repeated_render_is_byte_and_timestamp_stable(self) -> None:
         self.initialise()
@@ -567,7 +893,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("cannot be weakened", result.stderr)
 
-    def test_schema_one_state_migrates_compatibly_on_render(self) -> None:
+    def test_schema_one_state_migrates_compatibly_with_protected_command(self) -> None:
         self.initialise()
         state = self.read_json("sprint-state.json")
         state["schemaVersion"] = "1.0"
@@ -587,6 +913,19 @@ class SprintWorkspaceTests(unittest.TestCase):
             state.pop(key)
         self.write_json("sprint-state.json", state)
 
+        blocked_render = self.run_cli(
+            "render", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(blocked_render.returncode, 2)
+        self.assertIn("migrate --workspace", blocked_render.stderr)
+        backup = Path(self.temporary_directory.name) / "compatibility-backup"
+        self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(backup),
+        )
         self.run_cli("render", "--workspace", str(self.workspace))
         migrated = self.read_json("sprint-state.json")
         self.assertEqual(migrated["schemaVersion"], "2.0")

@@ -29,6 +29,17 @@ jobs:
           python -m json.tool skills/run-design-sprint/references/artifact-specs.json > /dev/null
           python -m json.tool skills/run-design-sprint/references/method-profiles.json > /dev/null
           python -m json.tool skills/run-design-sprint/references/role-contracts.json > /dev/null
+          python -m py_compile skills/run-design-sprint/scripts/schema_validation.py
+          find skills tests/fixtures -name '*.json' -print0 | xargs -0 -n1 python -m json.tool > /dev/null
+
+      - name: Compile JSON Schemas
+        run: |
+          npx --yes ajv-cli@5.0.0 compile \
+            --spec=draft2020 \
+            --validate-formats=false \
+            -s 'skills/run-design-sprint/references/schemas/*-v*.schema.json' \
+            -r skills/run-design-sprint/references/schemas/workspace-state.schema.json \
+            -r skills/run-design-sprint/references/schemas/artifact-data.schema.json
 
       - name: Check public/private evidence boundary
         run: python scripts/check_publication.py

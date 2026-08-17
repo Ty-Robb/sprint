@@ -94,8 +94,43 @@ class PublicationCheckTests(unittest.TestCase):
             ),
         )
         messages = self.messages(path)
-        self.assertTrue(any("usage-evidence record is missing" in message for message in messages))
-        self.assertTrue(any("sanitized source" in message for message in messages))
+        self.assertTrue(any("$.schemaVersion" in message for message in messages))
+        self.assertTrue(any("$.sourceRecord" in message for message in messages))
+
+    def test_usage_schema_reports_nested_field_path(self) -> None:
+        data = json.loads(
+            (
+                REPO_ROOT
+                / "tests"
+                / "fixtures"
+                / "hypothetical.synthetic.usage-evidence.json"
+            ).read_text(encoding="utf-8")
+        )
+        data["calculation"]["result"]["total_tokens"] = []
+        path = self.write("nested.usage-evidence.json", json.dumps(data))
+
+        messages = self.messages(path)
+
+        self.assertTrue(
+            any("$.calculation.result.total_tokens" in message for message in messages)
+        )
+
+    def test_usage_schema_rejects_unsupported_version_clearly(self) -> None:
+        data = json.loads(
+            (
+                REPO_ROOT
+                / "tests"
+                / "fixtures"
+                / "hypothetical.synthetic.usage-evidence.json"
+            ).read_text(encoding="utf-8")
+        )
+        data["schemaVersion"] = "9.0"
+        path = self.write("unsupported.usage-evidence.json", json.dumps(data))
+
+        messages = self.messages(path)
+
+        self.assertTrue(any("unsupported version '9.0'" in message for message in messages))
+        self.assertTrue(any("supported current version: '1.0'" in message for message in messages))
 
     def test_repository_publication_check_passes(self) -> None:
         result = subprocess.run(

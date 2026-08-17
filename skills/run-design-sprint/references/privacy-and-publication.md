@@ -109,7 +109,7 @@ Use distinct measurement contexts:
 
 Never combine those contexts into one runtime or capacity claim. Customer-session and synthesis measurements may be split further, but they must still remain distinguishable from internal development. Subscription counters are not API billing line items unless reproducible evidence establishes that mapping.
 
-The repository's [synthetic usage fixture](../../../tests/fixtures/hypothetical.synthetic.usage-evidence.json) demonstrates the `hypothetical-unverified` record shape. It contains invented numbers and cannot substantiate a production claim. An observed record may use `sanitized-observed` only after account IDs, organisation IDs, private plan details, dashboard captures, private URLs, customer context, and credentials have been removed.
+The repository's [synthetic usage fixture](../../../tests/fixtures/hypothetical.synthetic.usage-evidence.json) demonstrates the `hypothetical-unverified` record shape, which is declared by the strict [usage-evidence JSON Schema](schemas/usage-evidence-v1.schema.json). It contains invented numbers and cannot substantiate a production claim. An observed record may use `sanitized-observed` only after account IDs, organisation IDs, private plan details, dashboard captures, private URLs, customer context, and credentials have been removed.
 
 ## Publication checklist
 

@@ -35,7 +35,9 @@ Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
 python3 <skill-dir>/scripts/sprint_workspace.py --help
 ```
 
-The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `render --check`, `status`, and `validate`.
+The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `next-action`, `role-packet`, `render`, `render --check`, `status`, `validate`, and `migrate`.
+
+Read [json-schemas.md](json-schemas.md) when a workspace reports a legacy or unsupported schema version. Do not render or mutate legacy JSON before a protected migration.
 
 Edit canonical structured files below `artifact-data/`, update their `updatedAt`, then run `render`. Use workflow commands for canonical `sprint-state.json` changes. Do not edit disposable `index.html`, `assets/sprint.css`, or generated files below `artifacts/` manually. Rendering never advances state-transition timestamps; run `render --check` to detect drift without writing.
 
@@ -43,13 +45,17 @@ Before initialising a workspace, read [privacy-and-publication.md](privacy-and-p
 
 ## Sprint state
 
-Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this minimum shape:
+Maintain a machine-readable `sprint-state.json` next to `index.html`. The
+current strict schema is linked above. This abridged illustration shows field
+ownership; it is not a complete schema-valid record because `init` supplies all
+13 fidelity entries, exact non-negotiable principles, and derived summaries:
 
 ```json
 {
   "schemaVersion": "2.0",
-  "title": "",
-  "slug": "",
+  "title": "Example Sprint",
+  "slug": "example-sprint",
+  "challenge": "Improve the example journey",
   "methodProfile": "adaptive-design-sprint",
   "executionMode": "live",
   "route": "undecided",
@@ -68,8 +74,15 @@ Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this m
   "completedSteps": [],
   "skippedSteps": [],
   "notApplicableSteps": [],
+  "skipReasons": {},
   "pendingGate": null,
-  "humanGates": [],
+  "humanGates": [
+    {"id": "gate-1", "name": "Challenge and sprint route", "status": "pending"},
+    {"id": "gate-2", "name": "Target and top risks", "status": "pending"},
+    {"id": "gate-3", "name": "Selected solution direction", "status": "pending"},
+    {"id": "gate-4", "name": "Prototype readiness", "status": "pending"},
+    {"id": "gate-5", "name": "Final outcome", "status": "pending"}
+  ],
   "decisions": [],
   "artifacts": [],
   "customerTesting": {
@@ -80,10 +93,12 @@ Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this m
   },
   "openQuestions": [],
   "nextAction": {
-    "title": "",
-    "body": "",
-    "humanInput": ""
-  }
+    "title": "Complete the sprint intake",
+    "body": "Clarify the customer, desired outcome, constraints, and evidence.",
+    "humanInput": "Answer the intake questions."
+  },
+  "createdAt": "2026-08-17T12:00:00Z",
+  "updatedAt": "2026-08-17T12:00:00Z"
 }
 ```
 
@@ -109,7 +124,7 @@ python3 <skill-dir>/scripts/sprint_workspace.py record-fidelity \
   --decision-impact "Missing human disciplines may leave options underrepresented."
 ```
 
-Schema 1.0 state is read compatibly and migrated to 2.0 as adaptive/live, matching the old engine's implicit behavior. The migrated state carries a compatibility note so the Orchestrator can verify the historical assumption instead of silently inventing a profile.
+Schema 1.0 state is accepted only by the protected `migrate` command. Preview the migration, create the required untouched backup, then migrate it to 2.0 as adaptive/live, matching the old engine's implicit behavior. The migrated state carries a compatibility note so the Orchestrator can verify the historical assumption instead of silently inventing a profile.
 
 ## Output structure
 

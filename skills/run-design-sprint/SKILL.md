@@ -17,6 +17,7 @@ Read the following references before running a sprint:
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
+- [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
 
 Read [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.
 
@@ -68,7 +69,11 @@ On a new sprint:
 6. Read `sprint-state.json` and begin the current step from the facilitation playbook.
 7. Ask only for the information needed to progress.
 
-On an existing sprint, run `status --workspace <sprint-directory>`, read the named artifact data, state the current phase and next action, then continue without repeating completed work.
+On an existing sprint, run `status --workspace <sprint-directory>`. If it reports
+a supported legacy schema, preview and apply `migrate` as documented in
+`references/json-schemas.md`; never edit `schemaVersion` alone. Then read the
+named artifact data, state the current phase and next action, and continue
+without repeating completed work.
 
 ## Guide instead of dumping
 
@@ -120,6 +125,7 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `set-method-profile` and `set-execution-mode` record selector changes before work begins.
 - `record-fidelity` records the selected method, human and AI participants, actual timebox, and any deviation with its reason and impacts.
 - `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
+- `migrate` previews or safely upgrades supported legacy state and artifact JSON while preserving an untouched backup.
 
 The state schema stores `methodProfile`, `executionMode`, `route`, and `fidelity` separately. Every fidelity step retains its canonical purpose, default and selected methods, participants, suggested and actual timebox, deviations, and impact statements. Route exclusions are not counted as deliberate skips. Schema 1.0 workspaces are migrated as adaptive/live with an explicit compatibility note; review that assumption when resuming old work.
 

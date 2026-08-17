@@ -76,7 +76,7 @@ Create an artifact with `new-artifact`, then replace its draft values. Keep this
 
 ```json
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "id": "05-sprint-questions",
   "status": "draft",
   "updatedAt": "2026-01-01T12:00:00Z",

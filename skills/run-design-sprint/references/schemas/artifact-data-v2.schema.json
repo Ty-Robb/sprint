@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/artifact-data-v2.schema.json",
+  "title": "Design Sprint artifact data 2.0",
+  "allOf": [
+    {"$ref": "artifact-data.schema.json"},
+    {
+      "type": "object",
+      "properties": {"schemaVersion": {"const": "2.0"}},
+      "required": ["schemaVersion"]
+    }
+  ]
+}

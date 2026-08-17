@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/artifact-specs-v1.schema.json",
+  "title": "Design Sprint artifact specifications 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "artifacts"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "artifacts": {
+      "type": "object",
+      "required": [
+        "01-sprint-brief",
+        "02-evidence-ledger",
+        "03-foundation",
+        "04-journey-map",
+        "05-sprint-questions",
+        "06-solution-directions",
+        "07-decision",
+        "08-experiment",
+        "09-storyboard",
+        "10-test-plan",
+        "11-customer-evidence",
+        "12-synthesis",
+        "13-outcome"
+      ],
+      "properties": {
+        "01-sprint-brief": {"$ref": "#/$defs/artifactSpec"},
+        "02-evidence-ledger": {"$ref": "#/$defs/artifactSpec"},
+        "03-foundation": {"$ref": "#/$defs/artifactSpec"},
+        "04-journey-map": {"$ref": "#/$defs/artifactSpec"},
+        "05-sprint-questions": {"$ref": "#/$defs/artifactSpec"},
+        "06-solution-directions": {"$ref": "#/$defs/artifactSpec"},
+        "07-decision": {"$ref": "#/$defs/artifactSpec"},
+        "08-experiment": {"$ref": "#/$defs/artifactSpec"},
+        "09-storyboard": {"$ref": "#/$defs/artifactSpec"},
+        "10-test-plan": {"$ref": "#/$defs/artifactSpec"},
+        "11-customer-evidence": {"$ref": "#/$defs/artifactSpec"},
+        "12-synthesis": {"$ref": "#/$defs/artifactSpec"},
+        "13-outcome": {"$ref": "#/$defs/artifactSpec"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "artifactSpec": {
+      "type": "object",
+      "required": ["step", "filename", "title", "phase", "purpose", "requiredSections"],
+      "properties": {
+        "step": {
+          "enum": [
+            "01-intake", "02-qualify", "03-evidence", "04-foundation",
+            "05-map", "06-questions", "07-explore", "08-decide",
+            "09-experiment", "10-prototype", "11-customer-sessions",
+            "12-synthesis", "13-outcome"
+          ]
+        },
+        "filename": {"type": "string", "pattern": "^[a-z0-9-]+\\.html$"},
+        "title": {"type": "string", "minLength": 1},
+        "phase": {
+          "enum": ["Intake", "Understand", "Foundation", "Define", "Explore", "Decide", "Experiment", "Validate", "Synthesis", "Decision"]
+        },
+        "purpose": {"type": "string", "minLength": 1},
+        "requiredSections": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
