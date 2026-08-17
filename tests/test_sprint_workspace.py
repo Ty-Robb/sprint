@@ -88,6 +88,10 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIn("Help &lt;parents&gt;", dashboard)
         self.assertNotIn("<script>alert", dashboard)
         self.assertNotIn("<script>alert", brief)
+        self.assertIn("Private by default", dashboard)
+        workspace_ignore = (self.workspace / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("**/transcripts/", workspace_ignore)
+        self.assertIn("**/account-evidence/", workspace_ignore)
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
 

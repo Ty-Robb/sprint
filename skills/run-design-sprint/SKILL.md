@@ -11,6 +11,7 @@ Act as the Sprint Orchestrator. Guide one human from the initial challenge to a 
 
 Read the following references before running a sprint:
 
+- [references/privacy-and-publication.md](references/privacy-and-publication.md) before choosing a workspace location, handling private evidence, or publishing any sprint material.
 - [references/guided-workflow.md](references/guided-workflow.md) for the state machine, human gates, and resumable interaction pattern.
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
@@ -36,18 +37,20 @@ Prompt boundaries are behavioural controls, not a security sandbox. When the run
 
 On a new sprint:
 
-1. Run the workspace engine:
+1. Choose an access-controlled private workspace root outside any public repository checkout. Treat the complete generated workspace as private, even when participant names have been removed.
+2. Run the workspace engine with an explicit output below that private root:
 
    ```bash
    python3 <skill-dir>/scripts/sprint_workspace.py init \
      --title "<sprint title>" \
      --challenge "<initial challenge>" \
-     --output "<parent>/design-sprint-<short-slug>"
+     --output "<private-workspace-root>/design-sprint-<short-slug>"
    ```
 
-2. Open the generated `index.html` path for the human.
-3. Read `sprint-state.json` and begin the current step from the facilitation playbook.
-4. Ask only for the information needed to progress.
+3. Keep identity/contact maps, raw transcripts, recordings, account evidence, and private usage-dashboard captures in separately access-controlled source storage rather than the shareable workspace artifacts.
+4. Open the generated `index.html` path for the human.
+5. Read `sprint-state.json` and begin the current step from the facilitation playbook.
+6. Ask only for the information needed to progress.
 
 On an existing sprint, run `status --workspace <sprint-directory>`, read the named artifact data, state the current phase and next action, then continue without repeating completed work.
 
@@ -103,6 +106,8 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 Update canonical artifact JSON below `artifact-data/`, including its `updatedAt`, then run `render`. Never edit `index.html`, `assets/sprint.css`, or files below `artifacts/` directly; they are disposable generated views. Rendering does not update workflow timestamps.
 
 Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
+
+Do not copy a private workspace into this public skill repository. If the human wants to publish an example or a usage/cost claim, create a separate sanitized export, follow the [publication checklist](references/privacy-and-publication.md#publication-checklist), and keep the private source repository private.
 
 ## Protect customer integrity
 

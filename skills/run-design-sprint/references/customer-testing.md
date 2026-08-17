@@ -64,6 +64,8 @@ Before recording:
 
 Use participant IDs such as `P01`. Store contact details separately from the shareable sprint bundle. Never put secrets, full names, email addresses, or unnecessary personal attributes into HTML artifacts.
 
+The shareable sprint bundle is still private by default because combinations of dates, quotations, company context, and behaviour can re-identify a participant. Store identity/contact maps, raw transcripts, audio/video, consent records, and recruitment exports in separately access-controlled source storage. Do not publish session material until it passes the [publication checklist](privacy-and-publication.md#publication-checklist).
+
 ## Interview structure
 
 Use a consistent five-part session:

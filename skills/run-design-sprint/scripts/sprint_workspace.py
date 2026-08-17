@@ -99,6 +99,22 @@ GATE_NAMES = {
     "gate-5": "Final outcome",
 }
 
+WORKSPACE_GITIGNORE = """# This generated workspace is private by default.
+# Keep sensitive source material outside the workspace; these rules are a fallback.
+**/account-evidence/
+**/participant-data/
+**/private-evidence/
+**/raw-evidence/
+**/recordings/
+**/transcripts/
+**/usage-evidence/private/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+"""
+
 
 class SprintError(Exception):
     """A user-correctable sprint workspace error."""
@@ -959,6 +975,7 @@ def command_init(args: argparse.Namespace) -> None:
     output.mkdir(parents=True, exist_ok=True)
     for directory in ("artifact-data", "artifacts", "assets", "prototype", "working"):
         (output / directory).mkdir(exist_ok=True)
+    write_text(output / ".gitignore", WORKSPACE_GITIGNORE)
     now = utc_now()
     state = {
         "schemaVersion": SCHEMA_VERSION,
