@@ -136,6 +136,31 @@ class PublicationCheckTests(unittest.TestCase):
         self.assertTrue(any("unsupported version '9.0'" in message for message in messages))
         self.assertTrue(any("supported current version: '1.0'" in message for message in messages))
 
+    def test_new_usage_family_fixtures_pass_strict_publication_validation(self) -> None:
+        fixture_directory = REPO_ROOT / "tests" / "fixtures" / "usage"
+        paths = sorted(fixture_directory.glob("*.json"))
+
+        self.assertGreater(len(paths), 1)
+        self.assertEqual(self.messages(*paths), [])
+
+    def test_usage_record_reconciliation_is_checked_before_publication(self) -> None:
+        fixture = (
+            REPO_ROOT
+            / "tests"
+            / "fixtures"
+            / "usage"
+            / "internal-development.synthetic.usage-record.json"
+        )
+        data = json.loads(fixture.read_text(encoding="utf-8"))
+        data["observations"][0]["usage"]["totalTokens"] += data["observations"][0][
+            "usage"
+        ]["reasoningTokens"]
+        path = self.write("invalid.synthetic.usage-record.json", json.dumps(data))
+
+        messages = self.messages(path)
+
+        self.assertTrue(any("reasoningTokens is already included" in item for item in messages))
+
     def test_repository_publication_check_passes(self) -> None:
         result = subprocess.run(
             [sys.executable, str(CHECK_SCRIPT)],

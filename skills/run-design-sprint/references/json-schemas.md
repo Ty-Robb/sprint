@@ -19,6 +19,9 @@ dependency-free and reports instance locations as JSONPath, for example
 | Customer session | `customer-testing/sessions/*/session.json` | `1.0` | Current only |
 | Session summary | `customer-testing/sessions/*/summary.json` | `1.0` | Current only |
 | Public usage evidence | `*.usage-evidence.json` publication records | `1.0` | Current only |
+| Redacted usage record | `*.usage-record.json` publication records | `1.0` | Current only |
+| Pricing snapshot | `*.pricing-snapshot.json` dated calculation inputs | `1.0` | Current only |
+| Usage report | `*.usage-report.json` deterministic generated reports | `1.0` | Current only |
 
 The state schema includes its separate method-profile, execution-mode, and
 route selectors; fidelity principles, step records, participation, timeboxes,
@@ -63,8 +66,9 @@ legacy version or migration path.
   records in place with a conservative legacy label and a digest of the prior
   record; it does not invent considered evidence. New decisions always use the
   attested shape.
-- The assignment manifest, packaged artifact, role, and method-profile registries and public
-  usage-evidence records currently have no legacy line. Their loaders reject
+- The assignment manifest, packaged artifact, role, and method-profile registries,
+  public usage-evidence records, redacted usage records, pricing snapshots, and
+  generated usage reports currently have no legacy line. Their loaders reject
   any version other than `1.0`.
 - Adding fields to a strict document requires a new compatible schema version;
   undeclared properties are rejected instead of being silently ignored.
@@ -75,8 +79,11 @@ Schema validation runs when state, assignment manifests, artifact specifications
 role contracts, artifact data, customer-session manifests, session records, or summaries are loaded;
 immediately before mutations are persisted; before gate logic; before any
 artifact or dashboard rendering; and as part of whole-workspace validation.
-The publication checker validates usage records before evaluating them for
-release. Cross-record assignment validation additionally enforces immutable
+The publication checker validates usage evidence, redacted usage records,
+pricing snapshots, and generated reports before evaluating them for release.
+The usage report generator adds cross-record token reconciliation, scope,
+billing, coverage, rate, exclusion, and scenario-label rules that JSON Schema
+cannot express cleanly. Cross-record assignment validation additionally enforces immutable
 digests, freshness, required memo sections, uniqueness, lifecycle linkage, and
 independent-run boundaries. Cross-record session checks additionally enforce isolation, unique
 counting, immutable version bindings, trace pointers, packet budgets, and stale

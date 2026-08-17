@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "redacted-usage-record",
+  "recordId": "SYN-SESSION-S01",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "evidenceClassification": "hypothetical-unverified",
+  "measurement": {
+    "measuredAt": "2026-08-17T13:00:00Z",
+    "periodStart": "2026-08-17T12:30:00Z",
+    "periodEnd": "2026-08-17T13:00:00Z",
+    "timezone": "UTC"
+  },
+  "context": {
+    "skillVersion": "synthetic-fixture-1",
+    "route": "focused-design-sprint",
+    "scope": "customer-session",
+    "phase": "customer-session",
+    "runKind": "customer-facing",
+    "sessionLabel": "SYN-S01",
+    "billing": {
+      "mode": "subscription",
+      "subscriptionCounterMapping": "not-one-to-one",
+      "subscriptionCounters": [
+        {
+          "label": "Synthetic allowance units",
+          "value": "2",
+          "unit": "messages"
+        }
+      ],
+      "notes": [
+        "The synthetic subscription counter cannot be mapped to API token or tool line items."
+      ]
+    }
+  },
+  "provenance": {
+    "sourceType": "synthetic",
+    "sourceReference": "Purpose-written customer-session fixture; no participant or observed source exists.",
+    "redactions": []
+  },
+  "coverage": {
+    "requestLevel": "complete",
+    "missingRequestLevelReason": "",
+    "longContextPricing": "known-zero",
+    "cacheWrites": "recorded",
+    "tools": "recorded",
+    "credits": "known-zero",
+    "modelMix": "single-model"
+  },
+  "observations": [
+    {
+      "observationId": "SESSION-S01-REQ-01",
+      "granularity": "request",
+      "phase": "customer-session",
+      "model": "gpt-5.6-luna",
+      "requestCount": 1,
+      "contextTier": "short",
+      "usage": {
+        "inputTokens": 10000,
+        "cachedInputTokens": 2000,
+        "cacheWriteInputTokens": 1000,
+        "outputTokens": 3000,
+        "reasoningTokens": 1000,
+        "totalTokens": 13000
+      },
+      "tools": [
+        {
+          "name": "file-search",
+          "quantity": "2",
+          "unit": "calls",
+          "pricingKey": "file-search-call",
+          "chargeTreatment": "included-in-base-rate-equivalent",
+          "excludedReason": ""
+        }
+      ],
+      "source": "synthetic response metadata"
+    }
+  ],
+  "credits": [],
+  "excludedCharges": [
+    {
+      "category": "subscription",
+      "observationId": null,
+      "description": "Subscription allowance usage is excluded from API-equivalent calculation and cannot substantiate an API bill."
+    }
+  ],
+  "notes": [
+    "This synthetic session demonstrates separation without representing a real participant."
+  ]
+}

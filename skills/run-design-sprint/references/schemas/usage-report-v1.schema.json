@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/usage-report-v1.schema.json",
+  "title": "Reproducible usage report 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "calculationVersion",
+    "inputs",
+    "rounding",
+    "scopeRelationship",
+    "observations",
+    "baseRateEquivalents",
+    "excludedCharges",
+    "hypotheticalScenarios",
+    "warnings",
+    "pricingSources"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "usage-report"},
+    "fixtureKind": {"const": "synthetic"},
+    "containsRealCustomerData": {"const": false},
+    "calculationVersion": {"const": "1.0"},
+    "inputs": {
+      "type": "object",
+      "required": ["pricingSnapshotId", "pricingValidAsOf", "recordIds"],
+      "properties": {
+        "pricingSnapshotId": {"type": "string", "minLength": 1},
+        "pricingValidAsOf": {"type": "string", "format": "date"},
+        "recordIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "rounding": {
+      "type": "object",
+      "required": ["intermediate", "exactAmounts", "displayAmounts"],
+      "properties": {
+        "intermediate": {"const": "No intermediate rounding; decimal arithmetic"},
+        "exactAmounts": {"const": "Six decimal places, ROUND_HALF_UP"},
+        "displayAmounts": {"const": "Two decimal places, ROUND_HALF_UP"}
+      },
+      "additionalProperties": false
+    },
+    "scopeRelationship": {"type": "string", "minLength": 1},
+    "observations": {
+      "type": "object",
+      "required": ["internalDevelopment", "customerOnly", "individualSessions", "synthesis"],
+      "properties": {
+        "internalDevelopment": {"$ref": "#/$defs/usageSummary"},
+        "customerOnly": {"$ref": "#/$defs/usageSummary"},
+        "individualSessions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/sessionUsageSummary"}
+        },
+        "synthesis": {"$ref": "#/$defs/usageSummary"}
+      },
+      "additionalProperties": false
+    },
+    "baseRateEquivalents": {
+      "type": "object",
+      "required": ["internalDevelopment", "customerOnly", "individualSessions", "synthesis"],
+      "properties": {
+        "internalDevelopment": {"$ref": "#/$defs/moneySummary"},
+        "customerOnly": {"$ref": "#/$defs/moneySummary"},
+        "individualSessions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/sessionMoneySummary"}
+        },
+        "synthesis": {"$ref": "#/$defs/moneySummary"}
+      },
+      "additionalProperties": false
+    },
+    "excludedCharges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reportExclusion"}
+    },
+    "hypotheticalScenarios": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/scenario"}
+    },
+    "warnings": {"$ref": "#/$defs/stringList"},
+    "pricingSources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["title", "url", "accessedAt"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
+          "accessedAt": {"type": "string", "format": "date"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "decimal": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?$"},
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "tokenTotals": {
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "cachedInputTokens",
+        "cacheWriteInputTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "totalTokens",
+        "reasoningIncludedInOutputTokens"
+      ],
+      "properties": {
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "cachedInputTokens": {"type": "integer", "minimum": 0},
+        "cacheWriteInputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "reasoningTokens": {"type": "integer", "minimum": 0},
+        "totalTokens": {"type": "integer", "minimum": 0},
+        "reasoningIncludedInOutputTokens": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "usageSummary": {
+      "type": "object",
+      "required": [
+        "label",
+        "recordIds",
+        "observationIds",
+        "evidenceClassifications",
+        "requestCountObserved",
+        "requestCountComplete",
+        "tokenTotals",
+        "tokenTotalsComplete",
+        "models"
+      ],
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "recordIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "observationIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "evidenceClassifications": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "requestCountObserved": {"type": "integer", "minimum": 0},
+        "requestCountComplete": {"type": "boolean"},
+        "tokenTotals": {"$ref": "#/$defs/tokenTotals"},
+        "tokenTotalsComplete": {"type": "boolean"},
+        "models": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "sessionUsageSummary": {
+      "type": "object",
+      "required": ["sessionLabel", "summary"],
+      "properties": {
+        "sessionLabel": {"type": "string", "minLength": 1},
+        "summary": {"$ref": "#/$defs/usageSummary"}
+      },
+      "additionalProperties": false
+    },
+    "moneySummary": {
+      "type": "object",
+      "required": [
+        "label",
+        "currency",
+        "amountUsdExact",
+        "amountUsdRounded",
+        "actualCharge",
+        "complete",
+        "includedComponents",
+        "excludedComponents"
+      ],
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "currency": {"const": "USD"},
+        "amountUsdExact": {"$ref": "#/$defs/decimal"},
+        "amountUsdRounded": {"$ref": "#/$defs/decimal"},
+        "actualCharge": {"const": false},
+        "complete": {"type": "boolean"},
+        "includedComponents": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "excludedComponents": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "sessionMoneySummary": {
+      "type": "object",
+      "required": ["sessionLabel", "summary"],
+      "properties": {
+        "sessionLabel": {"type": "string", "minLength": 1},
+        "summary": {"$ref": "#/$defs/moneySummary"}
+      },
+      "additionalProperties": false
+    },
+    "reportExclusion": {
+      "type": "object",
+      "required": ["recordId", "component", "category", "description"],
+      "properties": {
+        "recordId": {"type": "string", "minLength": 1},
+        "component": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "scenario": {
+      "type": "object",
+      "required": [
+        "label",
+        "classification",
+        "basis",
+        "basisComplete",
+        "multiplier",
+        "amountUsdExact",
+        "amountUsdRounded",
+        "currency"
+      ],
+      "properties": {
+        "label": {"type": "string", "pattern": "[Pp]lanning scenario"},
+        "classification": {"const": "hypothetical"},
+        "basis": {"const": "customer-only base-rate equivalent"},
+        "basisComplete": {"type": "boolean"},
+        "multiplier": {"$ref": "#/$defs/decimal"},
+        "amountUsdExact": {"$ref": "#/$defs/decimal"},
+        "amountUsdRounded": {"$ref": "#/$defs/decimal"},
+        "currency": {"const": "USD"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

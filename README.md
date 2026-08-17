@@ -81,6 +81,14 @@ packet without raw transcripts by default. See the
 [real-customer testing protocol](skills/run-design-sprint/references/customer-testing.md)
 for operating commands, context budgets, usage fields, and audit traceability.
 
+Published usage and cost evidence uses separate strict, redacted records for
+internal development, customer runtime, individual sessions, and synthesis. A
+dependency-free Decimal calculator reproduces observation totals, dated API
+base-rate equivalents, excluded charges, warnings, and explicitly hypothetical
+planning scenarios without treating subscription counters as API billing. See
+[usage, cost, and capacity evidence](skills/run-design-sprint/references/usage-reporting.md)
+for the formats, synthetic fixtures, verified source dates, and rerunnable command.
+
 Before publishing changes to this repository, run:
 
 ```bash

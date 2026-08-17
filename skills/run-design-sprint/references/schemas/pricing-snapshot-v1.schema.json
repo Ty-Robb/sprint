@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/pricing-snapshot-v1.schema.json",
+  "title": "Dated base-rate pricing snapshot 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "snapshotId",
+    "validAsOf",
+    "currency",
+    "serviceTier",
+    "ratesAreHistoricalSnapshot",
+    "sources",
+    "models",
+    "tools",
+    "notes"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "base-rate-pricing-snapshot"},
+    "snapshotId": {"$ref": "#/$defs/safeIdentifier"},
+    "fixtureKind": {"const": "synthetic"},
+    "containsRealCustomerData": {"const": false},
+    "validAsOf": {"type": "string", "format": "date"},
+    "currency": {"const": "USD"},
+    "serviceTier": {"type": "string", "minLength": 1},
+    "ratesAreHistoricalSnapshot": {"const": true},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/source"}
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/modelPricing"}
+    },
+    "tools": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/toolPricing"}
+    },
+    "notes": {"$ref": "#/$defs/stringList"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "safeIdentifier": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "source": {
+      "type": "object",
+      "required": ["title", "publisher", "url", "accessedAt"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "publisher": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
+        "accessedAt": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    },
+    "tokenRates": {
+      "type": "object",
+      "required": [
+        "inputPerMillion",
+        "cachedInputPerMillion",
+        "cacheWritePerMillion",
+        "outputPerMillion"
+      ],
+      "properties": {
+        "inputPerMillion": {"$ref": "#/$defs/decimal"},
+        "cachedInputPerMillion": {"$ref": "#/$defs/decimal"},
+        "cacheWritePerMillion": {"$ref": "#/$defs/decimal"},
+        "outputPerMillion": {"$ref": "#/$defs/decimal"}
+      },
+      "additionalProperties": false
+    },
+    "modelPricing": {
+      "type": "object",
+      "required": [
+        "model",
+        "shortContext",
+        "longContext",
+        "longContextThresholdInputTokens",
+        "longContextApplication"
+      ],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "shortContext": {"$ref": "#/$defs/tokenRates"},
+        "longContext": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/tokenRates"}
+          ]
+        },
+        "longContextThresholdInputTokens": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 1}
+          ]
+        },
+        "longContextApplication": {
+          "enum": ["full-request", "full-session", "not-applicable"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolPricing": {
+      "type": "object",
+      "required": ["pricingKey", "label", "rateUsd", "perQuantity", "unit"],
+      "properties": {
+        "pricingKey": {"$ref": "#/$defs/safeIdentifier"},
+        "label": {"type": "string", "minLength": 1},
+        "rateUsd": {"$ref": "#/$defs/decimal"},
+        "perQuantity": {"$ref": "#/$defs/decimal"},
+        "unit": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  }
+}

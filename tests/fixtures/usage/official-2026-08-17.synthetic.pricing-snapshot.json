@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "base-rate-pricing-snapshot",
+  "snapshotId": "openai-standard-2026-08-17",
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "validAsOf": "2026-08-17",
+  "currency": "USD",
+  "serviceTier": "standard",
+  "ratesAreHistoricalSnapshot": true,
+  "sources": [
+    {
+      "title": "OpenAI API pricing",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "accessedAt": "2026-08-17"
+    },
+    {
+      "title": "OpenAI API response usage fields",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/reference/resources/responses",
+      "accessedAt": "2026-08-17"
+    }
+  ],
+  "models": [
+    {
+      "model": "gpt-5.6-luna",
+      "shortContext": {
+        "inputPerMillion": "0.20",
+        "cachedInputPerMillion": "0.02",
+        "cacheWritePerMillion": "0.25",
+        "outputPerMillion": "1.20"
+      },
+      "longContext": {
+        "inputPerMillion": "0.40",
+        "cachedInputPerMillion": "0.04",
+        "cacheWritePerMillion": "0.50",
+        "outputPerMillion": "1.80"
+      },
+      "longContextThresholdInputTokens": 272000,
+      "longContextApplication": "full-request"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "shortContext": {
+        "inputPerMillion": "2.00",
+        "cachedInputPerMillion": "0.20",
+        "cacheWritePerMillion": "2.50",
+        "outputPerMillion": "12.00"
+      },
+      "longContext": {
+        "inputPerMillion": "4.00",
+        "cachedInputPerMillion": "0.40",
+        "cacheWritePerMillion": "5.00",
+        "outputPerMillion": "18.00"
+      },
+      "longContextThresholdInputTokens": 272000,
+      "longContextApplication": "full-request"
+    }
+  ],
+  "tools": [
+    {
+      "pricingKey": "web-search",
+      "label": "Web search call",
+      "rateUsd": "10.00",
+      "perQuantity": "1000",
+      "unit": "calls"
+    },
+    {
+      "pricingKey": "file-search-call",
+      "label": "File search tool call",
+      "rateUsd": "2.50",
+      "perQuantity": "1000",
+      "unit": "calls"
+    }
+  ],
+  "notes": [
+    "Rates are a dated historical snapshot, not a promise of current or future pricing.",
+    "Long-context rates apply to the full request when input exceeds 272,000 tokens for the listed models.",
+    "Cache-write tokens use their own rate; cached reads and cache writes are not treated as ordinary uncached input.",
+    "Tool-token charges, storage, containers, regional processing, service tiers, credits, and taxes require separate evidence when applicable.",
+    "No subscription-plan price, allowance, capacity, or minimum-plan claim is encoded in this snapshot."
+  ]
+}

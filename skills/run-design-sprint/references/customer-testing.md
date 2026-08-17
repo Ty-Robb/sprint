@@ -327,6 +327,13 @@ work; an unavailable reason is required otherwise. Packet characters and
 runtime token usage are distinct measurements. Internal development/test usage
 must never be presented as customer-runtime capacity evidence.
 
+When a session contributes to a public usage or capacity statement, export its
+counts to a separate redacted `customer-session` usage record and calculate the
+cross-run report as documented in [usage-reporting.md](usage-reporting.md). Do
+not publish the private session record itself. Keep synthesis in its own scope,
+and preserve missing request/model/cache/tool/credit data as warnings and
+exclusions rather than filling it with zeroes.
+
 ## When testing cannot proceed
 
 Set the workspace to `waiting-for-customers` when suitable sessions cannot occur. The skill may still produce:
