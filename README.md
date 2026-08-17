@@ -40,11 +40,13 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 - Separate method-profile, execution-mode, and route selectors with named selection provenance and a versioned fidelity contract
 - Bounded AI roles with a versioned assignment manifest, immutable packet/input digests, result-memo lifecycle, and enforced independent runs
 - A living HTML dashboard showing process status, method fidelity, descriptive evidence strength, and action-specific decision readiness independently
+- One machine-readable site manifest and a shared relative navigation shell across the dashboard, artifacts, session-evidence views, and tested-prototype wrapper
 - HTML sprint artifacts, from the brief and evidence ledger through the outcome report
 - Independent solution directions, a decision record, and a testable prototype
 - A test-artifact ladder and typed prototype/MVP brief with provider-neutral tool selection, explicit approvals, bounded build packets, moderated trials, and immutable deployment/version records
 - A real-customer test plan with separate planned, invited, attempted, completed, qualified, excluded, and usable counts plus traceable material findings
 - A final proceed, iterate, pivot, investigate, or stop decision
+- Separately approved private-archive and privacy-checked shareable-site preparation, with optional deterministic ZIP output and no automatic publication
 
 ## How it runs
 
@@ -57,10 +59,13 @@ The generated sprint directory contains:
 ```text
 .gitignore          Sensitive-source fallback rules
 index.html          Disposable generated dashboard
+site-manifest.json  Generated page, relationship, visibility, version, and digest catalog
 sprint-state.json   Canonical resumable workflow state
 assignment-manifest.json  Canonical packet, assignee/run, digest, lifecycle, and result provenance
 artifact-data/      Canonical structured artifact content
 artifacts/          Disposable generated HTML documents
+session-evidence/   Generated privacy-minimized per-session HTML views
+prototype-launch.html  Generated context wrapper for the current frozen prototype
 assets/sprint.css   Disposable generated stylesheet
 working/            Private isolated specialist packet and result files
 prototype/          Versioned test artifacts and immutable tested-version records
@@ -74,6 +79,19 @@ fail when those views do not match the current JSON and templates. Engine-writte
 shareable files use mode `0644` where the platform supports POSIX permissions.
 
 Generated HTML is portable, accessible, printable, and does not require a server, JavaScript framework, CDN, tracking, or external assets.
+
+Every generated page uses relative Home, previous, next, related-evidence,
+decision, prototype, outcome, and manifest links derived from
+`site-manifest.json`. The same files work when opened directly, served on
+localhost, or hosted below a nested static-site path.
+
+Do not publish the workspace itself. To prepare a private archive or an
+explicitly approved shareable site, create a strict export-approval JSON record
+and run `sprint_workspace.py export`. The command validates the source,
+prototype version, redaction review, local assets, manifest digests, and every
+local link, then writes a new directory outside the workspace. `--zip` adds a
+deterministic sibling archive. It never uploads or publishes. See
+[site exports and self-hosting](skills/run-design-sprint/references/site-exports.md).
 
 Customer testing uses one versioned record and one generated minimal handoff
 per participant, intended for a fresh chat. Sessions persist checkpoints and

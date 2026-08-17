@@ -19,6 +19,7 @@ Read the following references before running a sprint:
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
+- [references/site-exports.md](references/site-exports.md) before preparing a private archive, shareable site, ZIP, or static-hosting handoff.
 - [references/prototype-mvp-testing.md](references/prototype-mvp-testing.md) before selecting, briefing, building, trialling, deploying, or versioning a test artifact.
 - [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
 - [references/usage-reporting.md](references/usage-reporting.md) before measuring, calculating, or publishing usage, cost, subscription, or capacity evidence.
@@ -144,6 +145,7 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `set-method-profile` and `set-execution-mode` record selector changes before work begins.
 - `record-fidelity` records the selected method, human and AI participants, actual timebox, and any deviation with its reason and impacts.
 - `validate` checks state, gates, artifact completeness, customer evidence, HTML tokens, and local links.
+- `export` prepares either an explicitly approved private archive or a redaction-checked shareable static site outside the source workspace; `--zip` adds an optional deterministic archive, and the command never uploads or publishes.
 - `migrate` previews or safely upgrades supported legacy state and artifact JSON while preserving an untouched backup.
 
 The state schema stores `methodProfile`, `executionMode`, `route`, and `fidelity` separately. Every fidelity step retains its canonical purpose, default and selected methods, participants, suggested and actual timebox, deviations, and impact statements. Route exclusions are not counted as deliberate skips. Schema 1.0 workspaces are migrated as adaptive/live with an explicit compatibility note; review that assumption when resuming old work.
@@ -154,7 +156,7 @@ Treat `assignment-manifest.json` and role packets as engine-owned canonical prov
 
 Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
 
-Do not copy a private workspace into this public skill repository. If the human wants to publish an example or a usage/cost claim, create a separate sanitized export, follow the [publication checklist](references/privacy-and-publication.md#publication-checklist), and keep the private source repository private.
+Do not copy a private workspace into this public skill repository. If the human wants to publish an example or a usage/cost claim, prepare a separate explicitly approved export using [the site-export workflow](references/site-exports.md), follow the [publication checklist](references/privacy-and-publication.md#publication-checklist), and keep the private source repository private. Export preparation is not publication approval and must not trigger an upload.
 
 For a usage or cost claim, create one strict redacted usage record per internal,
 customer-runtime, customer-session, or synthesis scope and run

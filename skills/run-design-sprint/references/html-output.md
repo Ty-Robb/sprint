@@ -6,14 +6,15 @@ Create every user-facing sprint artifact as a portable, accessible HTML document
 
 1. Canonical data and generated views
 2. Start from the kit
-3. Deterministic output rules
-4. Artifact data schema
-5. Required document structure
-6. Dashboard requirements
-7. Artifact requirements
-8. Evidence presentation
-9. Accessibility and safety
-10. Completion checks
+3. Site manifest and shared navigation
+4. Deterministic output rules
+5. Artifact data schema
+6. Required document structure
+7. Dashboard requirements
+8. Artifact requirements
+9. Evidence presentation
+10. Accessibility and safety
+11. Completion checks
 
 ## Canonical data and generated views
 
@@ -25,8 +26,10 @@ The ownership boundary is deliberate:
 - JSON below `artifact-data/` is the canonical content for each sprint artifact.
   The Orchestrator owns it and must update the artifact's `updatedAt` when its
   content or status changes.
-- `index.html`, HTML below `artifacts/`, and `assets/sprint.css` are disposable
-  generated views. Never edit or review them as an independent source of truth.
+- `index.html`, HTML below `artifacts/` and `session-evidence/`,
+  `prototype-launch.html`, `site-manifest.json`, and `assets/sprint.css` are
+  disposable generated views. Never edit or review them as an independent
+  source of truth.
 - `working/` contains non-canonical specialist material. `prototype/` is separately
   authored test material and is not overwritten by the renderer. The typed
   `prototypeBrief` within `artifact-data/10-prototype-brief.json` is canonical;
@@ -42,6 +45,8 @@ Use `scripts/sprint_workspace.py` to initialise and render the workspace. The en
 
 - use `index-template.html` to create the living `index.html` dashboard;
 - use `artifact-template.html` for each sprint artifact;
+- use `site-page-template.html` for privacy-minimized session evidence and the
+  tested-prototype launch wrapper;
 - copy `sprint.css` to `assets/sprint.css` and preserve its class names.
 
 Write structured content to JSON below `artifact-data/` and run `render`. The renderer validates and escapes the content, replaces template tokens, synchronises the derived artifact catalog, copies the stylesheet, and updates `index.html`.
@@ -49,6 +54,28 @@ Write structured content to JSON below `artifact-data/` and run `render`. The re
 Do not edit generated HTML below `artifacts/` directly. Do not insert raw HTML into artifact data.
 
 The renderer sets the dashboard `<progress>` element's numeric value from sprint state.
+
+## Site manifest and shared navigation
+
+`site-manifest.json` is the sole generated catalog for site pages and their
+relationships. Each entry records a stable page ID, type, title, relative path,
+phase, status, route disposition, visibility, source version, content digest,
+render digest, and Home/previous/next/related-evidence/decision/prototype/outcome
+relationships. It also records the site version digest, export boundary, local
+assets, and current prototype version context when applicable.
+
+Every manifest page must render exactly one accessible `Sprint site` navigation
+landmark and an `aria-current="page"` indication. The shell shows sprint title,
+method profile, execution mode, route, current artifact/phase/status, and links
+derived from the manifest. Previous and next skip `skipped` and
+`not-applicable` pages; those pages remain directly addressable and visible from
+the dashboard when present.
+
+All local references are path-relative. Do not add root-relative URLs, absolute
+filesystem paths, remote scripts, remote styles, web fonts, analytics, or
+framework assets. A deep-linked artifact must return to Home when opened as a
+`file:` URL, on localhost, at a domain root, or below a nested static-hosting
+prefix.
 
 Use `render --check` in CI or before review. It performs no writes and fails if a
 generated file is missing, unexpected, has non-portable permissions, or differs
@@ -210,7 +237,9 @@ Before handing off an artifact:
 
 1. Run `render --check` and `validate`.
 2. Confirm that all template tokens are replaced.
-3. Confirm that local links resolve.
+3. Confirm that the manifest crawler resolves every page, asset, fragment, and
+   deep link; rejects escaping or root-absolute paths; and reaches every
+   manifest page from `index.html`.
 4. Confirm that headings are ordered and tables have headers.
 5. Confirm that the page works without JavaScript and external network access.
 6. Confirm that status claims match `sprint-state.json`.
@@ -220,3 +249,6 @@ Before handing off an artifact:
 10. Confirm that profile, mode, route, process completion, and method fidelity are separate and consistent with state.
 11. Confirm that every displayed adaptation has a reason and method-fidelity, evidence, and decision-readiness impact in state.
 12. Before any public release, complete the [publication checklist](privacy-and-publication.md#publication-checklist); workspace validation alone is not publication approval.
+13. For any archive or shareable handoff, use the explicit process in
+    [site exports and self-hosting](site-exports.md); never copy or publish the
+    source workspace directly.

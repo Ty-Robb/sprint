@@ -148,3 +148,25 @@ Complete this checklist against the exact staged diff and every file to be publi
 - [ ] A human reviewed `git diff --cached --check`, the complete staged diff, and newly added binary files.
 
 The automated check catches only high-signal mistakes. It cannot determine consent, recognize every person or company, inspect external private storage, or prove that a sophisticated redaction is safe. Human review remains required.
+
+## Approved export preparation
+
+Use [site exports and self-hosting](site-exports.md) to prepare, but not publish,
+one of two deliberately separate outputs:
+
+- `private-archive` may include canonical data, working material, customer
+  records, and prototype files only when each category is explicitly enabled in
+  the approval record. Prohibited contact/identity/source-evidence paths,
+  credentials, secrets, and absolute local paths still fail preparation.
+- `shareable-site` accepts an explicit allowlist of complete artifacts and
+  session IDs. It excludes canonical workspace data, working material, customer
+  records, raw evidence, private prototype context, build packets, and immutable
+  record files. Session pages omit participant IDs, exact dates, raw-source
+  locations, quote locators, contact details, and consent references.
+
+Both outputs require a strict, human-attributed redaction-review record. The
+engine stages a new directory outside the source workspace, uses only local
+assets, validates the frozen prototype version, crawls all local links, and can
+create an optional deterministic ZIP. It does not connect to or publish on any
+hosting service. Review the exact output again before a human chooses a
+destination.

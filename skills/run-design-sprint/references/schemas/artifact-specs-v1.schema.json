@@ -47,7 +47,7 @@
   "$defs": {
     "artifactSpec": {
       "type": "object",
-      "required": ["step", "filename", "title", "phase", "purpose", "requiredSections"],
+      "required": ["step", "filename", "title", "phase", "purpose", "requiredSections", "relatedEvidence"],
       "properties": {
         "step": {
           "enum": [
@@ -68,6 +68,19 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {"type": "string", "minLength": 1}
+        },
+        "relatedEvidence": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "01-sprint-brief", "02-evidence-ledger", "03-foundation",
+              "04-journey-map", "05-sprint-questions", "06-solution-directions",
+              "07-decision", "08-experiment", "09-storyboard",
+              "10-prototype-brief", "10-test-plan", "11-customer-evidence",
+              "12-synthesis", "13-outcome"
+            ]
+          }
         }
       },
       "additionalProperties": false

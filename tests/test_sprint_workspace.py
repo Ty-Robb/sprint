@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import importlib.util
+import functools
 import json
 import os
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+import zipfile
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urljoin
+from urllib.request import urlopen
 from unittest import mock
 
 
@@ -76,6 +82,47 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(fixture["fixtureKind"], "synthetic")
         self.assertIs(fixture["containsRealCustomerData"], False)
         return fixture["document"]
+
+    def write_export_approval(
+        self,
+        name: str,
+        *,
+        kind: str,
+        artifact_ids: list[str] | None = None,
+        session_ids: list[str] | None = None,
+        include_prototype: bool = False,
+        include_canonical_data: bool = False,
+        include_working_material: bool = False,
+        include_customer_testing: bool = False,
+        completed_review: bool = True,
+    ) -> Path:
+        path = Path(self.temporary_directory.name) / f"{name}.json"
+        approval = {
+            "schemaVersion": "1.0",
+            "recordType": "sprint-export-approval",
+            "kind": kind,
+            "approvedBy": "Synthetic export reviewer",
+            "approvedAt": "2026-08-17T12:00:00Z",
+            "artifactIds": artifact_ids or [],
+            "sessionIds": session_ids or [],
+            "includePrototype": include_prototype,
+            "includeCanonicalData": include_canonical_data,
+            "includeWorkingMaterial": include_working_material,
+            "includeCustomerTesting": include_customer_testing,
+            "redactionReview": {
+                "completed": completed_review,
+                "secretsChecked": completed_review,
+                "contactDetailsChecked": completed_review,
+                "rawEvidenceChecked": completed_review,
+                "personalInformationChecked": completed_review,
+                "customerConfidentialChecked": completed_review,
+                "assetLicencesChecked": completed_review,
+                "consentAndRightsChecked": completed_review,
+                "notes": "Synthetic fixture reviewed for the approved export boundary.",
+            },
+        }
+        path.write_text(json.dumps(approval, indent=2) + "\n", encoding="utf-8")
+        return path
 
     def current_state_fixture(self, relative_path: str) -> dict:
         return WORKSPACE_MODULE.migrate_workspace_state_v3_to_v4(
@@ -1710,9 +1757,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             ["01-sprint-brief", "02-evidence-ledger", "13-outcome"],
         )
         dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        artifact_list = dashboard[dashboard.index('<ul class="artifact-list">') :]
         self.assertLess(
-            dashboard.index("02-evidence-ledger.html"),
-            dashboard.index("13-outcome.html"),
+            artifact_list.index("02-evidence-ledger.html"),
+            artifact_list.index("13-outcome.html"),
         )
         self.assertEqual(
             WORKSPACE_MODULE.json_text({"z": 1, "a": "é"}),
@@ -4999,6 +5047,414 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         self.assertTrue(any("participantId does not match" in item for item in errors))
         self.assertTrue(any("prototypeVersion does not match" in item for item in errors))
+
+    def test_site_manifest_drives_navigation_for_every_route_and_skips_optional_pages(self) -> None:
+        self.initialise()
+        for artifact_id in (
+            "02-evidence-ledger",
+            "03-foundation",
+            "04-journey-map",
+            "07-decision",
+            "08-experiment",
+            "13-outcome",
+        ):
+            self.run_cli(
+                "new-artifact",
+                "--workspace",
+                str(self.workspace),
+                "--id",
+                artifact_id,
+            )
+        state, specs, artifact_documents = WORKSPACE_MODULE.load_workspace_documents(
+            self.workspace
+        )
+        for route in sorted(WORKSPACE_MODULE.ROUTES):
+            candidate = json.loads(json.dumps(state))
+            candidate["route"] = route
+            candidate["skippedSteps"] = ["03-evidence"]
+            candidate["notApplicableSteps"] = ["04-foundation"]
+            manifest = WORKSPACE_MODULE.build_site_manifest(
+                self.workspace,
+                candidate,
+                specs,
+                artifact_documents,
+            )
+            pages = {page["id"]: page for page in manifest["pages"]}
+            with self.subTest(route=route):
+                self.assertEqual(manifest["site"]["route"], route)
+                self.assertEqual(pages["02-evidence-ledger"]["disposition"], "skipped")
+                self.assertEqual(pages["03-foundation"]["disposition"], "not-applicable")
+                self.assertEqual(
+                    pages["01-sprint-brief"]["relationships"]["next"],
+                    "04-journey-map",
+                )
+                self.assertEqual(
+                    pages["04-journey-map"]["relationships"]["previous"],
+                    "01-sprint-brief",
+                )
+                self.assertEqual(
+                    pages["04-journey-map"]["relationships"]["decision"],
+                    "07-decision",
+                )
+                self.assertEqual(
+                    pages["04-journey-map"]["relationships"]["outcome"],
+                    "13-outcome",
+                )
+                navigation = WORKSPACE_MODULE.render_site_navigation(
+                    manifest, "04-journey-map"
+                )
+                self.assertIn("Next: Direction Decision", navigation)
+                self.assertIn("Decision: Direction Decision", navigation)
+                decision_navigation = WORKSPACE_MODULE.render_site_navigation(
+                    manifest, "07-decision"
+                )
+                self.assertIn("Next: Experiment Card", decision_navigation)
+                self.assertIn("Related evidence: Experiment Card", decision_navigation)
+
+    def test_shareable_export_is_relative_crawlable_nested_and_privacy_minimized(self) -> None:
+        self.initialise()
+        self.complete_prototype_brief()
+        self.prepare_tested_prototype_version()
+        self.set_customer_plan(1)
+        self.initialise_customer_session("S01", "P01")
+        draft_approval = self.write_export_approval(
+            "draft-session-approval",
+            kind="shareable-site",
+            artifact_ids=[
+                "08-experiment",
+                "09-storyboard",
+                "10-prototype-brief",
+                "10-test-plan",
+            ],
+            session_ids=["S01"],
+            include_prototype=True,
+        )
+        draft_output = Path(self.temporary_directory.name) / "draft-session-share"
+        draft_blocked = self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(draft_approval),
+            "--output",
+            str(draft_output),
+            check=False,
+        )
+        self.assertEqual(draft_blocked.returncode, 2)
+        self.assertIn("complete anonymized summaries", draft_blocked.stderr)
+        self.assertFalse(draft_output.exists())
+        self.complete_customer_session(
+            "S01", "The participant paused before selecting the primary route."
+        )
+        approval = self.write_export_approval(
+            "shareable-site-approval",
+            kind="shareable-site",
+            artifact_ids=[
+                "08-experiment",
+                "09-storyboard",
+                "10-prototype-brief",
+                "10-test-plan",
+            ],
+            session_ids=["S01"],
+            include_prototype=True,
+        )
+        output = Path(self.temporary_directory.name) / "nested" / "shareable-site"
+        result = self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(approval),
+            "--output",
+            str(output),
+            "--zip",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No upload or publication was performed", result.stdout)
+
+        manifest_text = (output / "site-manifest.json").read_text(encoding="utf-8")
+        manifest = json.loads(manifest_text)
+        self.assertNotIn("tested-version.json", manifest_text)
+        self.assertNotIn("working/", manifest_text)
+        self.assertNotIn("private://", manifest_text)
+        self.assertNotIn("P01", manifest_text)
+        self.assertEqual(manifest["export"]["kind"], "shareable-site")
+        self.assertIs(manifest["export"]["published"], False)
+        self.assertEqual(
+            manifest["export"]["selection"],
+            {
+                "artifactIds": [
+                    "08-experiment",
+                    "09-storyboard",
+                    "10-prototype-brief",
+                    "10-test-plan",
+                ],
+                "sessionIds": ["S01"],
+                "includePrototype": True,
+                "includeCanonicalData": False,
+                "includeWorkingMaterial": False,
+                "includeCustomerTesting": False,
+                "zipRequested": True,
+            },
+        )
+        self.assertTrue(all(page["visibility"] == "shareable" for page in manifest["pages"]))
+        self.assertEqual(
+            {page["id"] for page in manifest["pages"]},
+            {
+                "home",
+                "08-experiment",
+                "09-storyboard",
+                "10-prototype-brief",
+                "10-test-plan",
+                "prototype",
+                "session:S01",
+            },
+        )
+        self.assertEqual(WORKSPACE_MODULE.site_crawl_errors(output, manifest), [])
+        self.assertFalse((output / "artifact-data").exists())
+        self.assertFalse((output / "customer-testing").exists())
+        self.assertFalse((output / "working").exists())
+        self.assertTrue((output / "assets" / "sprint.css").exists())
+        self.assertTrue((output / "prototype" / "proto-v1" / "index.html").exists())
+        self.assertFalse((output / "prototype" / "proto-v1" / "context.md").exists())
+        self.assertFalse((output / "prototype" / "proto-v1" / "tested-version.json").exists())
+
+        session_html = (output / "session-evidence" / "S01.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("The participant paused before selecting the primary route.", session_html)
+        for private_value in (
+            "P01",
+            "2026-08-17",
+            "private://",
+            "moderator-notes",
+            "consent-register",
+        ):
+            with self.subTest(private_value=private_value):
+                self.assertNotIn(private_value, session_html)
+
+        prototype_html = (output / "prototype-launch.html").read_text(encoding="utf-8")
+        self.assertIn("proto-v1", prototype_html)
+        self.assertIn('href="prototype/proto-v1/index.html"', prototype_html)
+        self.assertIn("aria-current=\"page\"", prototype_html)
+
+        deep_link = output / "artifacts" / "10-prototype-brief.html"
+        with urlopen(deep_link.as_uri()) as response:
+            direct_html = response.read().decode("utf-8")
+        self.assertIn('href="../index.html"', direct_html)
+        self.assertIn('href="../site-manifest.json"', direct_html)
+
+        handler = functools.partial(
+            SimpleHTTPRequestHandler,
+            directory=str(Path(self.temporary_directory.name)),
+        )
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = server.server_address[1]
+            deep_url = (
+                f"http://127.0.0.1:{port}/nested/shareable-site/"
+                "session-evidence/S01.html"
+            )
+            with urlopen(deep_url) as response:
+                nested_html = response.read().decode("utf-8")
+            home_href = WORKSPACE_MODULE.site_relative_href(
+                "session-evidence/S01.html", "index.html"
+            )
+            with urlopen(urljoin(deep_url, home_href)) as response:
+                self.assertIn("Sprint dashboard", response.read().decode("utf-8"))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+        zip_path = output.parent / "shareable-site.zip"
+        with zipfile.ZipFile(zip_path) as archive:
+            names = set(archive.namelist())
+        self.assertIn("index.html", names)
+        self.assertIn("site-manifest.json", names)
+        self.assertIn("prototype/proto-v1/index.html", names)
+        self.assertFalse(any(name.startswith("artifact-data/") for name in names))
+
+        broken_html = output / "session-evidence" / "S01.html"
+        broken_html.write_text(
+            broken_html.read_text(encoding="utf-8").replace(
+                'href="../index.html"', 'href="../missing-home.html"', 1
+            ),
+            encoding="utf-8",
+        )
+        crawl_errors = WORKSPACE_MODULE.site_crawl_errors(output, manifest)
+        self.assertTrue(any("broken local link" in item for item in crawl_errors))
+        self.assertTrue(any("Stale render digest" in item for item in crawl_errors))
+
+        broken_html.write_text(
+            broken_html.read_text(encoding="utf-8").replace(
+                'href="../site-manifest.json"', 'href="/site-manifest.json"', 1
+            ),
+            encoding="utf-8",
+        )
+        module = output / "prototype" / "proto-v1" / "app.mjs"
+        module.write_text('import "./missing-dependency.js";\n', encoding="utf-8")
+        root_and_module_errors = WORKSPACE_MODULE.site_crawl_errors(output, manifest)
+        self.assertTrue(
+            any("root-absolute local link" in item for item in root_and_module_errors)
+        )
+        self.assertTrue(
+            any(
+                "broken local JavaScript dependency" in item
+                for item in root_and_module_errors
+            )
+        )
+
+    def test_export_requires_explicit_review_and_rejects_unredacted_content(self) -> None:
+        self.initialise()
+        self.complete_artifact("01-sprint-brief")
+        incomplete_approval = self.write_export_approval(
+            "incomplete-share-review",
+            kind="shareable-site",
+            artifact_ids=["01-sprint-brief"],
+            completed_review=False,
+        )
+        output = Path(self.temporary_directory.name) / "incomplete-share"
+        blocked = self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(incomplete_approval),
+            "--output",
+            str(output),
+            check=False,
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("incomplete required review checks", blocked.stderr)
+        self.assertFalse(output.exists())
+
+        data = self.read_json("artifact-data/01-sprint-brief.json")
+        private_email = "founder@" + "private-company.co.uk"
+        data["summary"] = [f"Contact {private_email} for account access."]
+        self.write_json("artifact-data/01-sprint-brief.json", data)
+        self.run_cli("render", "--workspace", str(self.workspace))
+        reviewed_approval = self.write_export_approval(
+            "reviewed-but-unredacted",
+            kind="shareable-site",
+            artifact_ids=["01-sprint-brief"],
+        )
+        unredacted_output = Path(self.temporary_directory.name) / "unredacted-share"
+        blocked = self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(reviewed_approval),
+            "--output",
+            str(unredacted_output),
+            check=False,
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("non-example email address", blocked.stderr)
+        self.assertFalse(unredacted_output.exists())
+
+    def test_private_archive_is_separate_and_prototype_version_is_revalidated(self) -> None:
+        self.initialise()
+        self.complete_prototype_brief()
+        self.prepare_tested_prototype_version()
+        private_approval = self.write_export_approval(
+            "private-archive-approval",
+            kind="private-archive",
+            include_prototype=True,
+            include_canonical_data=True,
+            include_working_material=True,
+            include_customer_testing=True,
+        )
+        private_output = Path(self.temporary_directory.name) / "private-archive"
+        self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(private_approval),
+            "--output",
+            str(private_output),
+        )
+        self.assertTrue((private_output / "sprint-state.json").exists())
+        self.assertTrue((private_output / "artifact-data" / "10-prototype-brief.json").exists())
+        self.assertTrue((private_output / "working").exists())
+        self.assertTrue((private_output / "customer-testing" / "session-manifest.json").exists())
+        self.assertTrue((private_output / "prototype" / "proto-v1" / "tested-version.json").exists())
+        private_manifest = json.loads(
+            (private_output / "site-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(private_manifest["export"]["kind"], "private-archive")
+        self.assertTrue(all(page["visibility"] == "private" for page in private_manifest["pages"]))
+
+        no_prototype_approval = self.write_export_approval(
+            "share-without-prototype-approval",
+            kind="shareable-site",
+            artifact_ids=[
+                "08-experiment",
+                "09-storyboard",
+                "10-prototype-brief",
+                "10-test-plan",
+            ],
+            include_prototype=False,
+        )
+        no_prototype_output = Path(self.temporary_directory.name) / "share-without-prototype"
+        self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(no_prototype_approval),
+            "--output",
+            str(no_prototype_output),
+        )
+        self.assertFalse((no_prototype_output / "prototype-launch.html").exists())
+        self.assertFalse((no_prototype_output / "prototype").exists())
+        no_prototype_manifest = json.loads(
+            (no_prototype_output / "site-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            WORKSPACE_MODULE.site_crawl_errors(
+                no_prototype_output, no_prototype_manifest
+            ),
+            [],
+        )
+
+        prototype = self.workspace / "prototype" / "proto-v1" / "index.html"
+        prototype.write_text(
+            prototype.read_text(encoding="utf-8").replace(
+                "<h1>Prototype</h1>", "<h1>Tampered prototype</h1>"
+            ),
+            encoding="utf-8",
+        )
+        share_approval = self.write_export_approval(
+            "stale-prototype-approval",
+            kind="shareable-site",
+            artifact_ids=[
+                "08-experiment",
+                "09-storyboard",
+                "10-prototype-brief",
+                "10-test-plan",
+            ],
+            include_prototype=True,
+        )
+        stale_output = Path(self.temporary_directory.name) / "stale-prototype-share"
+        blocked = self.run_cli(
+            "export",
+            "--workspace",
+            str(self.workspace),
+            "--approval",
+            str(share_approval),
+            "--output",
+            str(stale_output),
+            check=False,
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("prototypeArtifact changed after it was recorded", blocked.stderr)
+        self.assertFalse(stale_output.exists())
 
     def test_non_live_modes_keep_fidelity_evidence_and_readiness_unvalidated(self) -> None:
         for mode in ("self-test", "planning-rehearsal"):

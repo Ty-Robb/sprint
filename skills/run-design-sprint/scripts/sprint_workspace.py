@@ -9,17 +9,19 @@ import hashlib
 import html
 import json
 import os
+import posixpath
 import re
 import shutil
 import stat
 import sys
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse, urlsplit
 
 from schema_validation import SchemaValidator, ValidationIssue, strict_json_loads
 
@@ -47,6 +49,9 @@ CUSTOMER_SESSION_SCHEMA_VERSION = "2.0"
 LEGACY_SESSION_SCHEMA_VERSION = "1.0"
 SESSION_SUMMARY_SCHEMA_VERSION = "1.0"
 TEST_ARTIFACT_WORKFLOW_VERSION = "1.0"
+SITE_MANIFEST_SCHEMA_VERSION = "1.0"
+EXPORT_APPROVAL_SCHEMA_VERSION = "1.0"
+SITE_MANIFEST_FILENAME = "site-manifest.json"
 PORTABLE_FILE_MODE = 0o644
 CUSTOMER_TESTING_DIR = "customer-testing"
 SESSION_MANIFEST_FILENAME = "session-manifest.json"
@@ -149,6 +154,26 @@ SCHEMA_FAMILIES = {
         "schemas": {
             TEST_ARTIFACT_WORKFLOW_VERSION: (
                 SCHEMAS_DIR / "tested-version-v1.schema.json"
+            )
+        },
+        "migratable": set(),
+    },
+    "site-manifest": {
+        "label": "sprint results site manifest",
+        "current": SITE_MANIFEST_SCHEMA_VERSION,
+        "schemas": {
+            SITE_MANIFEST_SCHEMA_VERSION: (
+                SCHEMAS_DIR / "site-manifest-v1.schema.json"
+            )
+        },
+        "migratable": set(),
+    },
+    "export-approval": {
+        "label": "sprint export approval",
+        "current": EXPORT_APPROVAL_SCHEMA_VERSION,
+        "schemas": {
+            EXPORT_APPROVAL_SCHEMA_VERSION: (
+                SCHEMAS_DIR / "export-approval-v1.schema.json"
             )
         },
         "migratable": set(),
@@ -447,19 +472,56 @@ class RenderPlan:
     state_update: dict[str, Any] | None
     stale_files: list[Path]
     canonical_files: list[Path]
+    site_manifest: dict[str, Any]
 
 
 class LocalLinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.links: list[str] = []
+        self.references: list[tuple[str, str, str]] = []
+        self.ids: set[str] = set()
+        self.site_navigation_landmarks = 0
+        self.current_page_indicators = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr_map = dict(attrs)
-        if tag in {"a", "link", "script", "img"}:
-            value = attr_map.get("href") or attr_map.get("src")
+        element_id = attr_map.get("id")
+        if element_id:
+            self.ids.add(element_id)
+        if tag == "nav" and attr_map.get("aria-label") == "Sprint site":
+            self.site_navigation_landmarks += 1
+        if attr_map.get("aria-current") == "page":
+            self.current_page_indicators += 1
+        reference_attributes = {
+            "a": ("href",),
+            "audio": ("src",),
+            "base": ("href",),
+            "embed": ("src",),
+            "form": ("action",),
+            "iframe": ("src",),
+            "img": ("src",),
+            "input": ("src",),
+            "link": ("href",),
+            "object": ("data",),
+            "script": ("src",),
+            "source": ("src",),
+            "track": ("src",),
+            "use": ("href", "xlink:href"),
+            "video": ("src", "poster"),
+        }
+        for attribute in reference_attributes.get(tag, ()):
+            value = attr_map.get(attribute)
             if value:
                 self.links.append(value)
+                self.references.append((tag, attribute, value))
+        srcset = attr_map.get("srcset")
+        if tag in {"img", "source"} and srcset:
+            for candidate in srcset.split(","):
+                value = candidate.strip().split()[0] if candidate.strip() else ""
+                if value:
+                    self.links.append(value)
+                    self.references.append((tag, "srcset", value))
 
 
 def utc_now() -> str:
@@ -1793,7 +1855,13 @@ def render_section(section: dict[str, Any], index: int) -> str:
     )
 
 
-def render_prototype_brief(brief: dict[str, Any]) -> str:
+def render_prototype_brief(
+    brief: dict[str, Any],
+    *,
+    export_view: bool = False,
+    shareable: bool = False,
+    prototype_included: bool = True,
+) -> str:
     selection = brief["selection"]
     customer = brief["customer"]
     experience = brief["experience"]
@@ -2108,7 +2176,11 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
                     [
                         display_label(boundary),
                         display_label(item["status"]),
-                        item["deciderLabel"] or "Pending",
+                        (
+                            "Human reviewer recorded"
+                            if shareable and item["deciderLabel"]
+                            else item["deciderLabel"] or "Pending"
+                        ),
                         item["rationale"] or "Pending",
                         item["decidedAt"] or "Pending",
                     ]
@@ -2143,26 +2215,48 @@ def render_prototype_brief(brief: dict[str, Any]) -> str:
     )
     operation_rows: list[str] = []
     for packet in brief["buildPackets"]:
-        operation_rows.append(
-            '<li><strong>Build packet:</strong> '
-            f'<a href="../{escape(packet["path"])}">{escape(packet["path"])}</a> '
-            f'· {escape(packet["sha256"][:12])}</li>'
-        )
+        if export_view:
+            operation_rows.append(
+                '<li><strong>Build packet:</strong> approved private build boundary recorded '
+                f'· digest {escape(packet["sha256"][:12])}</li>'
+            )
+        else:
+            operation_rows.append(
+                '<li><strong>Build packet:</strong> '
+                f'<a href="../{escape(packet["path"])}">{escape(packet["path"])}</a> '
+                f'· {escape(packet["sha256"][:12])}</li>'
+            )
     for trial in brief["trialRuns"]:
         operation_rows.append(
             f'<li><strong>Trial {escape(trial["id"])}:</strong> '
             f'<span class="status {class_for_status(trial["status"])}">{escape(display_label(trial["status"]))}</span> '
-            f'· moderated by {escape(trial["moderator"])}</li>'
+            + (
+                '· moderator label omitted from this shareable view</li>'
+                if shareable
+                else f'· moderated by {escape(trial["moderator"])}</li>'
+            )
         )
     for version in brief["versions"]:
         url = safe_url(str(version.get("deploymentUrl") or ""))
         url_link = f' · <a href="{url}">deployment</a>' if url else ""
-        operation_rows.append(
-            f'<li><strong>Tested version {escape(version["version"])}:</strong> '
-            f'<a href="../{escape(version["prototypePath"])}">artifact</a> · '
-            f'<a href="../{escape(version["recordPath"])}">immutable record</a>'
-            f'{url_link}</li>'
-        )
+        if export_view:
+            context_link = (
+                ' · <a href="../prototype-launch.html">approved launch context</a>'
+                if prototype_included
+                and version["version"] == brief.get("currentVersion")
+                else ""
+            )
+            operation_rows.append(
+                f'<li><strong>Tested version {escape(version["version"])}:</strong> '
+                f'immutable private record verified{context_link}{url_link}</li>'
+            )
+        else:
+            operation_rows.append(
+                f'<li><strong>Tested version {escape(version["version"])}:</strong> '
+                f'<a href="../{escape(version["prototypePath"])}">artifact</a> · '
+                f'<a href="../{escape(version["recordPath"])}">immutable record</a>'
+                f'{url_link}</li>'
+            )
     sections.append(
         '<section class="section" aria-labelledby="prototype-operations">'
         '<p class="eyebrow">Build and test history</p>'
@@ -3194,12 +3288,545 @@ def section_has_content(section: dict[str, Any]) -> bool:
     )
 
 
+def site_page_disposition(state: dict[str, Any], step_id: str | None) -> str:
+    if step_id is None:
+        return "supporting"
+    if step_id in state.get("notApplicableSteps", []):
+        return "not-applicable"
+    if step_id in state.get("skippedSteps", []):
+        return "skipped"
+    if step_id in state.get("completedSteps", []):
+        return "completed"
+    if step_id == state.get("currentStep"):
+        return "current"
+    return "upcoming"
+
+
+def site_relative_href(current_path: str, target_path: str) -> str:
+    current_parent = PurePosixPath(current_path).parent.as_posix()
+    start = "." if current_parent == "." else current_parent
+    return posixpath.relpath(target_path, start=start)
+
+
+def build_site_manifest(
+    workspace: Path,
+    state: dict[str, Any],
+    specs: dict[str, dict[str, Any]],
+    artifact_documents: list[tuple[Path, dict[str, Any]]],
+    *,
+    visibility: str = "private",
+    artifact_ids: set[str] | None = None,
+    session_ids: set[str] | None = None,
+    include_prototype: bool = True,
+    export_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the sole page and relationship model used by every rendered view."""
+
+    if visibility not in {"private", "shareable"}:
+        raise SprintError(f"Unsupported site visibility: {visibility}")
+    artifact_order = {
+        artifact_id: (index + 1) * 100
+        for index, artifact_id in enumerate(specs)
+    }
+    pages: list[dict[str, Any]] = []
+    page_order: dict[str, int] = {"home": 0}
+    zero_digest = "0" * 64
+    pages.append(
+        {
+            "id": "home",
+            "type": "dashboard",
+            "title": "Sprint dashboard",
+            "path": "index.html",
+            "phase": "Overview",
+            "status": str(state.get("status", "active")),
+            "disposition": "current" if state.get("currentStep") == "01-intake" else "supporting",
+            "visibility": visibility,
+            "sourceVersion": f"workspace-state:{state.get('schemaVersion')}",
+            "contentDigest": zero_digest,
+            "renderDigest": zero_digest,
+            "relationships": {},
+        }
+    )
+
+    included_artifacts: list[tuple[Path, dict[str, Any]]] = []
+    for data_path, data in artifact_documents:
+        artifact_id = str(data["id"])
+        if artifact_ids is not None and artifact_id not in artifact_ids:
+            continue
+        included_artifacts.append((data_path, data))
+    included_artifacts.sort(key=lambda item: artifact_order[str(item[1]["id"])])
+    for data_path, data in included_artifacts:
+        artifact_id = str(data["id"])
+        spec = specs[artifact_id]
+        page_order[artifact_id] = artifact_order[artifact_id]
+        pages.append(
+            {
+                "id": artifact_id,
+                "type": "artifact",
+                "title": str(spec["title"]),
+                "path": f"artifacts/{spec['filename']}",
+                "phase": str(spec["phase"]),
+                "status": str(data.get("status", "draft")),
+                "disposition": site_page_disposition(state, str(spec["step"])),
+                "visibility": visibility,
+                "sourceVersion": f"artifact-data:{data.get('schemaVersion')}",
+                "contentDigest": sha256_bytes(data_path.read_bytes()),
+                "renderDigest": zero_digest,
+                "relationships": {},
+            }
+        )
+
+    prototype_brief = next(
+        (
+            data.get("prototypeBrief")
+            for _path, data in artifact_documents
+            if data.get("id") == PROTOTYPE_BRIEF_ID
+        ),
+        None,
+    )
+    if include_prototype and isinstance(prototype_brief, dict):
+        current_version = prototype_brief.get("currentVersion")
+        version_summary = next(
+            (
+                item
+                for item in prototype_brief.get("versions", [])
+                if isinstance(item, dict) and item.get("version") == current_version
+            ),
+            None,
+        )
+        if version_summary is not None:
+            record_path = workspace_relative_file(
+                workspace,
+                str(version_summary["recordPath"]),
+                "Current tested-version record",
+            )
+            record = load_tested_version(record_path)
+            page_order["prototype"] = artifact_order.get("10-test-plan", 1050) + 50
+            pages.append(
+                {
+                    "id": "prototype",
+                    "type": "prototype-launch",
+                    "title": f"Tested prototype {current_version}",
+                    "path": "prototype-launch.html",
+                    "phase": "Prototype",
+                    "status": "frozen",
+                    "disposition": "supporting",
+                    "visibility": visibility,
+                    "sourceVersion": f"tested-version:{record.get('schemaVersion')}",
+                    "contentDigest": sha256_bytes(record_path.read_bytes()),
+                    "renderDigest": zero_digest,
+                    "relationships": {},
+                    "prototype": {
+                        "version": str(current_version),
+                        "artifactPath": str(record["prototypeArtifact"]["path"]),
+                        "accessModel": str(record["deployment"]["accessModel"]),
+                        "deploymentUrl": record["deployment"].get("url"),
+                    },
+                }
+            )
+
+    customer_manifest_path = manifest_path(workspace)
+    if customer_manifest_path.exists():
+        customer_manifest = load_session_manifest(workspace)
+        for index, entry in enumerate(customer_manifest.get("sessions", []), start=1):
+            session_id = str(entry["sessionId"])
+            if session_ids is not None and session_id not in session_ids:
+                continue
+            summary_path = workspace_relative_file(
+                workspace, str(entry["summaryPath"]), f"Session {session_id} summary"
+            )
+            summary = load_session_summary(summary_path)
+            page_id = f"session:{session_id}"
+            page_order[page_id] = artifact_order.get("11-customer-evidence", 1200) + index
+            pages.append(
+                {
+                    "id": page_id,
+                    "type": "session-evidence",
+                    "title": f"Session {session_id} evidence",
+                    "path": f"session-evidence/{session_id}.html",
+                    "phase": "Customer evidence",
+                    "status": str(summary.get("status", "draft")),
+                    "disposition": "supporting",
+                    "visibility": visibility,
+                    "sourceVersion": f"session-summary:{summary.get('schemaVersion')}",
+                    "contentDigest": sha256_bytes(summary_path.read_bytes()),
+                    "renderDigest": zero_digest,
+                    "relationships": {},
+                }
+            )
+
+    pages.sort(key=lambda page: (page_order[page["id"]], page["id"]))
+    by_id = {page["id"]: page for page in pages}
+    eligible = [
+        page
+        for page in pages
+        if page["id"] == "home"
+        or page["disposition"] not in {"skipped", "not-applicable"}
+    ]
+    eligible_ids = {page["id"] for page in eligible}
+
+    def relationship_if_available(page_id: str, current_id: str) -> str | None:
+        return page_id if page_id in eligible_ids and page_id != current_id else None
+
+    for page in pages:
+        page_id = str(page["id"])
+        order = page_order[page_id]
+        previous_candidates = [
+            item for item in eligible if page_order[item["id"]] < order
+        ]
+        next_candidates = [
+            item for item in eligible if page_order[item["id"]] > order
+        ]
+        related: list[str]
+        if page["type"] == "artifact":
+            related = [
+                item
+                for item in specs[page_id].get("relatedEvidence", [])
+                if item in eligible_ids and item != page_id
+            ]
+            if page_id == "11-customer-evidence":
+                related.extend(
+                    item["id"]
+                    for item in pages
+                    if item["type"] == "session-evidence"
+                )
+        elif page["type"] == "session-evidence":
+            related = [
+                item
+                for item in ("11-customer-evidence", "12-synthesis")
+                if item in eligible_ids
+            ]
+        elif page["type"] == "prototype-launch":
+            related = [
+                item
+                for item in (
+                    "08-experiment",
+                    "09-storyboard",
+                    PROTOTYPE_BRIEF_ID,
+                    "10-test-plan",
+                    "11-customer-evidence",
+                )
+                if item in eligible_ids
+            ]
+        else:
+            related = []
+        page["relationships"] = {
+            "home": "home",
+            "previous": previous_candidates[-1]["id"] if previous_candidates else None,
+            "next": next_candidates[0]["id"] if next_candidates else None,
+            "relatedEvidence": list(dict.fromkeys(related)),
+            "decision": relationship_if_available("07-decision", page_id),
+            "prototype": relationship_if_available("prototype", page_id),
+            "outcome": relationship_if_available("13-outcome", page_id),
+        }
+
+    assignment_digest = (
+        sha256_bytes(assignment_manifest_path(workspace).read_bytes())
+        if assignment_manifest_path(workspace).exists()
+        else zero_digest
+    )
+    home_source = {
+        "state": state,
+        "assignmentManifestDigest": assignment_digest,
+        "pages": [
+            {"id": page["id"], "contentDigest": page["contentDigest"]}
+            for page in pages
+            if page["id"] != "home"
+        ],
+    }
+    by_id["home"]["contentDigest"] = sha256_bytes(
+        json_text(home_source).encode("utf-8")
+    )
+    export_record = export_metadata or {
+        "kind": "workspace",
+        "approvedBy": None,
+        "approvedAt": None,
+        "approvalDigest": None,
+        "selection": None,
+        "humanPublicationRequired": True,
+        "published": False,
+    }
+    version_source = {
+        "stateDigest": sha256_bytes(json_text(state).encode("utf-8")),
+        "pageDigests": [
+            {"id": page["id"], "contentDigest": page["contentDigest"]}
+            for page in pages
+        ],
+        "export": export_record,
+    }
+    css_payload = (HTML_KIT_DIR / "sprint.css").read_bytes()
+    return {
+        "schemaVersion": SITE_MANIFEST_SCHEMA_VERSION,
+        "recordType": "sprint-results-site-manifest",
+        "site": {
+            "title": str(state["title"]),
+            "slug": str(state["slug"]),
+            "methodProfile": str(state["methodProfile"]),
+            "executionMode": str(state["executionMode"]),
+            "route": str(state["route"]),
+            "terminalState": str(state["terminalState"]),
+            "sourceUpdatedAt": str(state["updatedAt"]),
+            "versionDigest": sha256_bytes(json_text(version_source).encode("utf-8")),
+        },
+        "export": export_record,
+        "pages": pages,
+        "assets": [
+            {
+                "path": "assets/sprint.css",
+                "sha256": sha256_bytes(css_payload),
+                "bytes": len(css_payload),
+            }
+        ],
+    }
+
+
+def render_site_navigation(site_manifest: dict[str, Any], current_page_id: str) -> str:
+    pages = {page["id"]: page for page in site_manifest["pages"]}
+    current = pages[current_page_id]
+    relationships = current["relationships"]
+    links: list[tuple[str, str]] = [("Home", "home")]
+    if current_page_id != "home":
+        links.append(("Current", current_page_id))
+    for label, key in (
+        ("Previous", "previous"),
+        ("Next", "next"),
+        ("Decision", "decision"),
+        ("Prototype", "prototype"),
+        ("Outcome", "outcome"),
+    ):
+        target_id = relationships.get(key)
+        if target_id:
+            links.append((label, target_id))
+    links.extend(
+        ("Related evidence", target_id)
+        for target_id in relationships.get("relatedEvidence", [])
+    )
+    rendered_links: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for label, target_id in links:
+        link_key = (label, target_id)
+        if link_key in seen or target_id not in pages:
+            continue
+        seen.add(link_key)
+        target = pages[target_id]
+        href = site_relative_href(str(current["path"]), str(target["path"]))
+        aria_current = ' aria-current="page"' if target_id == current_page_id else ""
+        rendered_links.append(
+            f'<li><a href="{escape(href)}"{aria_current}>'
+            f'{escape(label)}: {escape(target["title"])}</a></li>'
+        )
+    manifest_href = site_relative_href(str(current["path"]), SITE_MANIFEST_FILENAME)
+    rendered_links.append(
+        f'<li><a href="{escape(manifest_href)}" download>Site manifest</a></li>'
+    )
+    site = site_manifest["site"]
+    return (
+        '<nav class="site-navigation" aria-label="Sprint site">'
+        '<div class="shell site-navigation__inner">'
+        '<p class="site-navigation__context">'
+        f'<strong>{escape(site["title"])}</strong>'
+        f'<span>Current: {escape(current["title"])} · {escape(current["phase"])} · '
+        f'{escape(display_label(current["status"]))}</span>'
+        f'<span>{escape(display_label(site["route"]))} · '
+        f'{escape(display_label(site["executionMode"]))} · '
+        f'{escape(display_label(site["methodProfile"]))}</span>'
+        '</p>'
+        f'<ul class="site-navigation__links">{"".join(rendered_links)}</ul>'
+        '</div></nav>'
+    )
+
+
+def render_supporting_site_page(
+    site_manifest: dict[str, Any],
+    page: dict[str, Any],
+    state: dict[str, Any],
+    description: str,
+    content_html: str,
+) -> str:
+    template = (HTML_KIT_DIR / "site-page-template.html").read_text(encoding="utf-8")
+    return replace_tokens(
+        template,
+        {
+            "PAGE_DESCRIPTION": escape(description),
+            "PAGE_TITLE": escape(page["title"]),
+            "SPRINT_TITLE": escape(state["title"]),
+            "STYLESHEET_HREF": escape(
+                site_relative_href(str(page["path"]), "assets/sprint.css")
+            ),
+            "SITE_NAVIGATION_HTML": render_site_navigation(
+                site_manifest, str(page["id"])
+            ),
+            "PAGE_PHASE": escape(page["phase"]),
+            "STATUS_CLASS": class_for_status(str(page["status"])),
+            "PAGE_STATUS": escape(display_label(page["status"])),
+            "METHOD_PROFILE": escape(display_label(state["methodProfile"])),
+            "EXECUTION_MODE": escape(display_label(state["executionMode"])),
+            "SPRINT_ROUTE": escape(display_label(state["route"])),
+            "PAGE_CONTENT_HTML": content_html,
+            "HOME_HREF": escape(
+                site_relative_href(str(page["path"]), "index.html")
+            ),
+        },
+    )
+
+
+def render_session_evidence_page(
+    workspace: Path,
+    site_manifest: dict[str, Any],
+    page: dict[str, Any],
+    state: dict[str, Any],
+) -> str:
+    session_id = str(page["id"]).split(":", 1)[1]
+    customer_manifest = load_session_manifest(workspace)
+    entry = next(
+        item for item in customer_manifest["sessions"] if item["sessionId"] == session_id
+    )
+    summary_path = workspace_relative_file(
+        workspace, entry["summaryPath"], f"Session {session_id} summary"
+    )
+    summary = load_session_summary(summary_path)
+
+    def evidence_cards(values: list[dict[str, Any]], label: str) -> str:
+        if not values:
+            return "<p>Nothing recorded yet.</p>"
+        return "".join(
+            '<article class="provenance">'
+            f'<p class="eyebrow">{escape(label)} · {escape(item.get("id", "unlabelled"))}</p>'
+            f'<p>{escape(item.get("text", "Nothing recorded yet."))}</p>'
+            '</article>'
+            for item in values
+        )
+
+    task_rows = [
+        [
+            item.get("taskId", ""),
+            display_label(item.get("outcome")),
+            item.get("notes", ""),
+        ]
+        for item in summary.get("taskOutcomes", [])
+    ]
+    question_rows = [
+        [
+            item.get("questionId", ""),
+            display_label(item.get("assessment")),
+            item.get("notes", ""),
+        ]
+        for item in summary.get("questionEvidence", [])
+    ]
+    content = (
+        '<section class="section section--warning" aria-labelledby="session-privacy-title">'
+        '<p class="eyebrow">Privacy-minimized view</p>'
+        '<h2 id="session-privacy-title">Anonymized session evidence</h2>'
+        '<p>Participant identity, contact details, exact session date, raw-source locations, and quote locators are intentionally omitted. This page remains private unless the exact export receives a separate human publication approval.</p>'
+        '</section>'
+        '<section class="section" aria-labelledby="session-context-title">'
+        '<p class="eyebrow">Version context</p>'
+        '<h2 id="session-context-title">Session context</h2>'
+        '<dl>'
+        f'<dt>Segment</dt><dd>{escape(entry.get("participantSegment", "Not recorded"))}</dd>'
+        f'<dt>Participant fit</dt><dd>{escape(display_label(entry.get("participantFit")))}</dd>'
+        f'<dt>Protocol fidelity</dt><dd>{escape(display_label(entry.get("protocolFidelity")))}</dd>'
+        f'<dt>Prototype version</dt><dd>{escape(summary["prototypeVersion"])}</dd>'
+        f'<dt>Questions version</dt><dd>{escape(summary["questionsVersion"])}</dd>'
+        '</dl>'
+        f'<p>{escape(summary.get("qualificationSummary") or "Qualification not recorded yet.")}</p>'
+        '</section>'
+        '<section class="section" aria-labelledby="session-observations-title">'
+        '<p class="eyebrow">Before interpretation</p>'
+        '<h2 id="session-observations-title">Observed behavior</h2>'
+        f'{evidence_cards(summary.get("observations", []), "Observed")}'
+        '</section>'
+        '<section class="section" aria-labelledby="session-inferences-title">'
+        '<p class="eyebrow">Interpretation</p>'
+        '<h2 id="session-inferences-title">Inferences</h2>'
+        f'{evidence_cards(summary.get("inferences", []), "Inference")}'
+        '</section>'
+        '<section class="section" aria-labelledby="session-tasks-title">'
+        '<p class="eyebrow">Task evidence</p>'
+        '<h2 id="session-tasks-title">Task outcomes</h2>'
+        f'{render_table({"title": "Task outcomes", "columns": ["Task", "Outcome", "Notes"], "rows": task_rows})}'
+        '</section>'
+        '<section class="section" aria-labelledby="session-questions-title">'
+        '<p class="eyebrow">Question evidence</p>'
+        '<h2 id="session-questions-title">Sprint-question evidence</h2>'
+        f'{render_table({"title": "Sprint-question evidence", "columns": ["Question", "Assessment", "Notes"], "rows": question_rows})}'
+        '</section>'
+        '<section class="section" aria-labelledby="session-limits-title">'
+        '<p class="eyebrow">Boundaries</p>'
+        '<h2 id="session-limits-title">Limitations and uncertainties</h2>'
+        f'{render_list([*summary.get("limitations", []), *summary.get("uncertainties", [])])}'
+        '</section>'
+    )
+    return render_supporting_site_page(
+        site_manifest,
+        page,
+        state,
+        "Privacy-minimized evidence from one version-bound customer session.",
+        content,
+    )
+
+
+def render_prototype_launch_page(
+    workspace: Path,
+    site_manifest: dict[str, Any],
+    page: dict[str, Any],
+    state: dict[str, Any],
+) -> str:
+    prototype = page["prototype"]
+    record_path = workspace_relative_file(
+        workspace,
+        f"prototype/{prototype['version']}/tested-version.json",
+        "Prototype launch tested-version record",
+    )
+    record = load_tested_version(record_path)
+    artifact_href = site_relative_href(str(page["path"]), prototype["artifactPath"])
+    launch_links = [
+        f'<a class="launch-link" href="{escape(artifact_href)}">Open the packaged tested artifact</a>'
+    ]
+    deployment_url = safe_url(str(prototype.get("deploymentUrl") or ""))
+    if deployment_url:
+        launch_links.append(
+            f'<a class="launch-link" href="{deployment_url}">Open the versioned external deployment</a>'
+        )
+    expires_at = record["deployment"].get("expiresAt")
+    content = (
+        '<section class="section section--accent" aria-labelledby="prototype-launch-title">'
+        '<p class="eyebrow">Frozen test version</p>'
+        '<h2 id="prototype-launch-title">Launch the tested artifact</h2>'
+        f'<div class="tag-row">{"".join(launch_links)}</div>'
+        '<div class="callout"><strong>Evidence boundary:</strong> '
+        f'{escape(record["claims"]["statement"])}</div>'
+        '</section>'
+        '<section class="section" aria-labelledby="prototype-context-title">'
+        '<p class="eyebrow">Access and version context</p>'
+        '<h2 id="prototype-context-title">Before opening</h2>'
+        '<dl>'
+        f'<dt>Version</dt><dd>{escape(record["version"])}</dd>'
+        f'<dt>Artifact level</dt><dd>{escape(display_label(record["artifactLevel"]))}</dd>'
+        f'<dt>Access model</dt><dd>{escape(display_label(record["deployment"]["accessModel"]))}</dd>'
+        f'<dt>Deployment target</dt><dd>{escape(record["deployment"]["target"])}</dd>'
+        f'<dt>Expiry</dt><dd>{escape(display_date(expires_at) if expires_at else "No expiry recorded")}</dd>'
+        '</dl>'
+        f'<p><strong>Cleanup:</strong> {escape(record["deployment"]["cleanupPlan"])}</p>'
+        f'<p><strong>Rollback:</strong> {escape(record["deployment"]["rollbackPlan"])}</p>'
+        '</section>'
+    )
+    return render_supporting_site_page(
+        site_manifest,
+        page,
+        state,
+        "Contextual launch page for the immutable prototype version used in customer evidence.",
+        content,
+    )
+
+
 def render_artifact(
     workspace: Path,
     data: dict[str, Any],
     state: dict[str, Any],
     specs: dict[str, dict[str, Any]],
     assessment: dict[str, Any],
+    site_manifest: dict[str, Any],
 ) -> tuple[dict[str, Any], str]:
     require_valid_schema(
         data,
@@ -3221,7 +3848,15 @@ def render_artifact(
         if isinstance(section, dict)
     )
     if artifact_id == PROTOTYPE_BRIEF_ID:
-        primary_content += "\n" + render_prototype_brief(data["prototypeBrief"])
+        export_kind = site_manifest["export"]["kind"]
+        primary_content += "\n" + render_prototype_brief(
+            data["prototypeBrief"],
+            export_view=export_kind != "workspace",
+            shareable=export_kind == "shareable-site",
+            prototype_included=any(
+                page["id"] == "prototype" for page in site_manifest["pages"]
+            ),
+        )
     prototype_data_path = workspace / "artifact-data" / f"{PROTOTYPE_BRIEF_ID}.json"
     prototype_brief = None
     if artifact_id == "13-outcome" and prototype_data_path.exists():
@@ -3236,6 +3871,9 @@ def render_artifact(
             "ARTIFACT_PURPOSE": escape(spec["purpose"]),
             "ARTIFACT_TITLE": escape(spec["title"]),
             "SPRINT_TITLE": escape(state["title"]),
+            "SITE_NAVIGATION_HTML": render_site_navigation(
+                site_manifest, artifact_id
+            ),
             "SPRINT_PHASE": escape(spec["phase"]),
             "STATUS_CLASS": class_for_status(status),
             "ARTIFACT_STATUS": escape(status.replace("-", " ").title()),
@@ -3283,7 +3921,13 @@ def render_artifact(
                 else ""
             ),
             "PROTOTYPE_TRACEABILITY_HTML": (
-                render_prototype_traceability(prototype_brief, prefix="../")
+                render_prototype_traceability(
+                    prototype_brief,
+                    prefix="../",
+                    available_page_ids={
+                        page["id"] for page in site_manifest["pages"]
+                    },
+                )
                 if isinstance(prototype_brief, dict)
                 else ""
             ),
@@ -3372,7 +4016,10 @@ def render_artifact_links(artifacts: list[dict[str, Any]]) -> str:
 
 
 def render_prototype_traceability(
-    brief: dict[str, Any] | None, *, prefix: str = ""
+    brief: dict[str, Any] | None,
+    *,
+    prefix: str = "",
+    available_page_ids: set[str] | None = None,
 ) -> str:
     if not isinstance(brief, dict):
         return (
@@ -3388,22 +4035,25 @@ def render_prototype_traceability(
         ),
         None,
     )
-    brief_href = f"{prefix}artifacts/10-prototype-brief.html" if prefix else "artifacts/10-prototype-brief.html"
-    links = [f'<li><a href="{escape(brief_href)}">Approved prototype / MVP brief</a></li>']
-    if current_record is not None:
-        artifact_path = f"{prefix}{current_record['prototypePath']}"
-        record_path = f"{prefix}{current_record['recordPath']}"
-        links.extend(
-            [
-                f'<li><a href="{escape(artifact_path)}">Tested artifact {escape(current)}</a></li>',
-                f'<li><a href="{escape(record_path)}">Immutable deployment and version record</a></li>',
-            ]
+    available = available_page_ids or {PROTOTYPE_BRIEF_ID, "prototype"}
+    links: list[str] = []
+    if PROTOTYPE_BRIEF_ID in available:
+        brief_href = f"{prefix}artifacts/10-prototype-brief.html" if prefix else "artifacts/10-prototype-brief.html"
+        links.append(
+            f'<li><a href="{escape(brief_href)}">Approved prototype / MVP brief</a></li>'
+        )
+    if current_record is not None and "prototype" in available:
+        launch_path = f"{prefix}prototype-launch.html"
+        links.append(
+            f'<li><a href="{escape(launch_path)}">Immutable deployment and version record — tested artifact {escape(current)}</a></li>'
         )
         url = safe_url(str(current_record.get("deploymentUrl") or ""))
         if url:
             links.append(f'<li><a href="{url}">Versioned deployment URL</a></li>')
-    else:
+    elif current_record is None:
         links.append("<li>No tested version is frozen yet.</li>")
+    if not links:
+        links.append("<li>Prototype records are not included in this site export.</li>")
     return (
         '<section class="section" aria-labelledby="test-artifact-traceability">'
         '<p class="eyebrow">Version-bound evidence</p>'
@@ -3497,6 +4147,7 @@ def render_dashboard(
     manifest: dict[str, Any],
     assessment: dict[str, Any],
     prototype_brief: dict[str, Any] | None,
+    site_manifest: dict[str, Any],
 ) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
     skipped = set(state.get("skippedSteps", []))
@@ -3532,6 +4183,7 @@ def render_dashboard(
         template,
         {
             "SPRINT_TITLE": escape(state.get("title", "Untitled sprint")),
+            "SITE_NAVIGATION_HTML": render_site_navigation(site_manifest, "home"),
             "SPRINT_CHALLENGE": escape(state.get("challenge", "No challenge recorded")),
             "SPRINT_STATUS": escape(str(state.get("status", "active")).replace("-", " ").title()),
             "SPRINT_STATUS_CLASS": class_for_status(str(state.get("status", "active"))),
@@ -3578,7 +4230,8 @@ def render_dashboard(
             "ARTIFACT_COUNT": len(artifacts),
             "ARTIFACT_LINKS": render_artifact_links(artifacts),
             "TEST_ARTIFACT_TRACEABILITY": render_prototype_traceability(
-                prototype_brief
+                prototype_brief,
+                available_page_ids={page["id"] for page in site_manifest["pages"]},
             ),
             "ASSIGNMENT_COUNT": len(manifest.get("assignments", [])),
             "ASSIGNMENT_SUMMARY": render_assignment_provenance(manifest),
@@ -3642,33 +4295,55 @@ def load_workspace_documents(
     return state, specs, artifact_documents
 
 
-def build_render_plan(workspace: Path) -> RenderPlan:
+def build_render_plan(
+    workspace: Path,
+    *,
+    visibility: str = "private",
+    artifact_ids: set[str] | None = None,
+    session_ids: set[str] | None = None,
+    include_prototype: bool = True,
+    export_metadata: dict[str, Any] | None = None,
+) -> RenderPlan:
     source_state = read_json(state_path(workspace))
     state, specs, artifact_documents = load_workspace_documents(workspace)
     manifest = load_assignment_manifest(workspace)
-    registrations: list[dict[str, Any]] = []
+    all_registrations: list[dict[str, Any]] = []
     generated_files: dict[Path, str] = {
         workspace / "assets" / "sprint.css": (
             HTML_KIT_DIR / "sprint.css"
         ).read_text(encoding="utf-8")
     }
     data_paths = [path for path, _data in artifact_documents]
-    assessment = build_completion_assessment(workspace, state, artifact_documents)
     seen_ids: set[str] = set()
     for data_path, data in artifact_documents:
-        registration, rendered = render_artifact(
-            workspace, data, state, specs, assessment
-        )
-        artifact_id = str(registration["id"])
+        artifact_id = str(data["id"])
         if artifact_id in seen_ids:
             raise SprintError(f"Duplicate artifact id: {artifact_id}")
         seen_ids.add(artifact_id)
-        output_path = workspace / str(registration["path"])
-        if output_path in generated_files:
-            raise SprintError(f"Duplicate rendered output path: {output_path}")
-        generated_files[output_path] = rendered
-        registrations.append(registration)
-    registrations.sort(key=lambda item: item["id"])
+        spec = specs[artifact_id]
+        all_registrations.append(
+            {
+                "id": artifact_id,
+                "title": spec["title"],
+                "path": f"artifacts/{spec['filename']}",
+                "status": str(data.get("status", "draft")),
+                "step": spec["step"],
+                "updatedAt": str(data["updatedAt"]),
+            }
+        )
+    all_registrations.sort(key=lambda item: item["id"])
+    normalized_state = dict(state)
+    normalized_state["artifacts"] = all_registrations
+    require_valid_schema(normalized_state, "workspace-state", state_path(workspace))
+    render_state = normalized_state
+    assessment = build_completion_assessment(
+        workspace, render_state, artifact_documents
+    )
+    registrations = [
+        item
+        for item in all_registrations
+        if artifact_ids is None or item["id"] in artifact_ids
+    ]
     prototype_brief = next(
         (
             data.get("prototypeBrief")
@@ -3677,32 +4352,91 @@ def build_render_plan(workspace: Path) -> RenderPlan:
         ),
         None,
     )
+    site_manifest = build_site_manifest(
+        workspace,
+        render_state,
+        specs,
+        artifact_documents,
+        visibility=visibility,
+        artifact_ids=artifact_ids,
+        session_ids=session_ids,
+        include_prototype=include_prototype,
+        export_metadata=export_metadata,
+    )
+    for data_path, data in artifact_documents:
+        artifact_id = str(data["id"])
+        if artifact_ids is not None and artifact_id not in artifact_ids:
+            continue
+        registration, rendered = render_artifact(
+            workspace, data, render_state, specs, assessment, site_manifest
+        )
+        output_path = workspace / str(registration["path"])
+        if output_path in generated_files:
+            raise SprintError(f"Duplicate rendered output path: {output_path}")
+        generated_files[output_path] = rendered
+    for page in site_manifest["pages"]:
+        output_path = workspace / str(page["path"])
+        if page["type"] == "session-evidence":
+            generated_files[output_path] = render_session_evidence_page(
+                workspace, site_manifest, page, render_state
+            )
+        elif page["type"] == "prototype-launch":
+            generated_files[output_path] = render_prototype_launch_page(
+                workspace, site_manifest, page, render_state
+            )
     generated_files[workspace / "index.html"] = render_dashboard(
-        state, registrations, manifest, assessment, prototype_brief
+        render_state,
+        registrations,
+        manifest,
+        assessment,
+        prototype_brief,
+        site_manifest,
     )
 
-    normalized_state = dict(state)
-    normalized_state["artifacts"] = registrations
-    require_valid_schema(normalized_state, "workspace-state", state_path(workspace))
-    state_update = normalized_state if source_state != normalized_state else None
-    expected_artifact_files = {
-        path for path in generated_files if path.parent == workspace / "artifacts"
-    }
-    rendered_artifact_files = (
-        set((workspace / "artifacts").glob("*.html"))
-        if (workspace / "artifacts").exists()
-        else set()
+    for page in site_manifest["pages"]:
+        rendered = generated_files.get(workspace / str(page["path"]))
+        if rendered is None:
+            raise SprintError(f"Site manifest page has no rendered output: {page['path']}")
+        page["renderDigest"] = sha256_text(rendered)
+    require_valid_schema(
+        site_manifest, "site-manifest", workspace / SITE_MANIFEST_FILENAME
     )
+    generated_files[workspace / SITE_MANIFEST_FILENAME] = json_text(site_manifest)
+
+    filtered_render = (
+        artifact_ids is not None
+        or session_ids is not None
+        or not include_prototype
+        or visibility != "private"
+        or export_metadata is not None
+    )
+    state_update = (
+        None
+        if filtered_render
+        else (normalized_state if source_state != normalized_state else None)
+    )
+    stale_files: list[Path] = []
+    if not filtered_render:
+        expected_html_files = {
+            path for path in generated_files if path.suffix.lower() == ".html"
+        }
+        managed_html_files = set((workspace / "artifacts").glob("*.html"))
+        managed_html_files.update((workspace / "session-evidence").glob("*.html"))
+        prototype_launch = workspace / "prototype-launch.html"
+        if prototype_launch.exists():
+            managed_html_files.add(prototype_launch)
+        stale_files = sorted(managed_html_files - expected_html_files)
     return RenderPlan(
         registrations=registrations,
         generated_files=generated_files,
         state_update=state_update,
-        stale_files=sorted(rendered_artifact_files - expected_artifact_files),
+        stale_files=stale_files,
         canonical_files=[
             state_path(workspace),
             assignment_manifest_path(workspace),
             *data_paths,
         ],
+        site_manifest=site_manifest,
     )
 
 
@@ -8775,24 +9509,244 @@ def validate_state(state: dict[str, Any]) -> list[str]:
     return errors
 
 
-def local_link_errors(html_path: Path, workspace: Path) -> list[str]:
-    parser = LocalLinkParser()
-    parser.feed(html_path.read_text(encoding="utf-8"))
-    errors = []
-    for link in parser.links:
-        if link.startswith(("http://", "https://", "mailto:", "#", "data:")):
-            continue
-        target_text = link.split("#", 1)[0]
-        if not target_text:
-            continue
-        target = (html_path.parent / target_text).resolve()
+def local_reference_target(
+    source_path: Path, reference: str, site_root: Path
+) -> tuple[Path | None, str | None, str | None]:
+    parsed = urlsplit(reference)
+    scheme = parsed.scheme.lower()
+    if scheme in {"http", "https", "mailto", "tel", "data"}:
+        return None, parsed.fragment or None, None
+    if scheme or parsed.netloc:
+        return None, None, f"unsupported or non-portable URL scheme: {reference}"
+    decoded_path = unquote(parsed.path)
+    if decoded_path.startswith(("/", "\\")):
+        return None, None, f"root-absolute local link is not portable: {reference}"
+    if "\\" in decoded_path:
+        return None, None, f"local link must use URL-style separators: {reference}"
+    target = (source_path.parent / (decoded_path or source_path.name)).resolve()
+    try:
+        target.relative_to(site_root.resolve())
+    except ValueError:
+        return None, None, f"local link escapes site root: {reference}"
+    if target.is_dir():
+        target = target / "index.html"
+    return target, parsed.fragment or None, None
+
+
+def reference_errors(path: Path, site_root: Path) -> list[str]:
+    errors: list[str] = []
+    if path.suffix.lower() == ".html":
+        parser = LocalLinkParser()
         try:
-            target.relative_to(workspace)
-        except ValueError:
-            errors.append(f"{html_path}: local link escapes workspace: {link}")
+            parser.feed(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as error:
+            return [f"{path}: could not read HTML: {error}"]
+        for tag, attribute, reference in parser.references:
+            parsed = urlsplit(reference)
+            if parsed.scheme.lower() in {"http", "https", "mailto", "tel"} and tag != "a":
+                errors.append(
+                    f"{path}: external {tag} {attribute} is not an offline local asset: {reference}"
+                )
+                continue
+            target, fragment, problem = local_reference_target(
+                path, reference, site_root
+            )
+            if problem:
+                errors.append(f"{path}: {problem}")
+                continue
+            if target is None:
+                continue
+            if not target.exists():
+                errors.append(f"{path}: broken local link: {reference}")
+                continue
+            if fragment and target.suffix.lower() == ".html":
+                target_parser = LocalLinkParser()
+                try:
+                    target_parser.feed(target.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError) as error:
+                    errors.append(f"{path}: could not inspect fragment target {target}: {error}")
+                    continue
+                if unquote(fragment) not in target_parser.ids:
+                    errors.append(
+                        f"{path}: missing fragment target #{fragment} in {target}"
+                    )
+    elif path.suffix.lower() == ".css":
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            return [f"{path}: could not read CSS: {error}"]
+        references = re.findall(
+            r"url\(\s*['\"]?([^)'\"\s]+)|@import\s+['\"]([^'\"]+)", text
+        )
+        for first, second in references:
+            reference = first or second
+            if urlsplit(reference).scheme.lower() in {"http", "https"}:
+                errors.append(
+                    f"{path}: external CSS asset is not an offline local asset: {reference}"
+                )
+                continue
+            target, _fragment, problem = local_reference_target(
+                path, reference, site_root
+            )
+            if problem:
+                errors.append(f"{path}: {problem}")
+            elif target is not None and not target.exists():
+                errors.append(f"{path}: broken local asset: {reference}")
+    elif path.suffix.lower() in {".js", ".mjs"}:
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            return [f"{path}: could not read JavaScript: {error}"]
+        patterns = (
+            r"(?:^|[;\n])\s*import\s+(?:[^;\n]*?\s+from\s+)?['\"]([^'\"]+)['\"]",
+            r"(?:^|[;\n])\s*export\s+[^;\n]*?\s+from\s+['\"]([^'\"]+)['\"]",
+            r"\bimport\(\s*['\"]([^'\"]+)['\"]\s*\)",
+            r"\b(?:fetch|new\s+(?:Worker|SharedWorker))\(\s*['\"]([^'\"]+)['\"]",
+        )
+        references = [
+            match
+            for pattern in patterns
+            for match in re.findall(pattern, source, flags=re.MULTILINE)
+        ]
+        for reference in references:
+            if urlsplit(reference).scheme.lower() in {"http", "https"}:
+                errors.append(
+                    f"{path}: external JavaScript dependency is not an offline local asset: {reference}"
+                )
+                continue
+            target, _fragment, problem = local_reference_target(
+                path, reference, site_root
+            )
+            if problem:
+                errors.append(f"{path}: {problem}")
+            elif target is not None and not target.exists():
+                errors.append(f"{path}: broken local JavaScript dependency: {reference}")
+    return errors
+
+
+def local_link_errors(html_path: Path, workspace: Path) -> list[str]:
+    """Backward-compatible single-page wrapper around the full reference check."""
+
+    return reference_errors(html_path, workspace)
+
+
+def site_crawl_errors(site_root: Path, site_manifest: dict[str, Any]) -> list[str]:
+    errors = formatted_schema_errors(
+        site_manifest, "site-manifest", site_root / SITE_MANIFEST_FILENAME
+    )
+    if errors:
+        return errors
+    pages = site_manifest["pages"]
+    page_ids = [page["id"] for page in pages]
+    page_paths = [page["path"] for page in pages]
+    if len(page_ids) != len(set(page_ids)):
+        errors.append("Site manifest contains duplicate page IDs")
+    if len(page_paths) != len(set(page_paths)):
+        errors.append("Site manifest contains duplicate page paths")
+    asset_paths = [asset["path"] for asset in site_manifest["assets"]]
+    if len(asset_paths) != len(set(asset_paths)):
+        errors.append("Site manifest contains duplicate asset paths")
+    page_path_set = set(page_paths)
+    for asset in site_manifest["assets"]:
+        if asset["path"] in page_path_set:
+            errors.append(
+                f"Site manifest path is both a page and an asset: {asset['path']}"
+            )
+        asset_path = site_root / str(asset["path"])
+        if not asset_path.exists():
+            errors.append(f"Missing site-manifest asset: {asset['path']}")
             continue
-        if not target.exists():
-            errors.append(f"{html_path}: broken local link: {link}")
+        try:
+            payload = asset_path.read_bytes()
+        except OSError as error:
+            errors.append(f"Could not read site-manifest asset {asset['path']}: {error}")
+            continue
+        if sha256_bytes(payload) != asset["sha256"]:
+            errors.append(f"Stale asset digest for site-manifest asset: {asset['path']}")
+        if len(payload) != asset["bytes"]:
+            errors.append(f"Stale byte count for site-manifest asset: {asset['path']}")
+    known_ids = set(page_ids)
+    manifest_html_paths: set[Path] = set()
+    for page in pages:
+        for key in ("home", "previous", "next", "decision", "prototype", "outcome"):
+            target_id = page["relationships"].get(key)
+            if target_id is not None and target_id not in known_ids:
+                errors.append(
+                    f"Site manifest page {page['id']} {key} references unknown page {target_id}"
+                )
+        unknown_related = sorted(
+            set(page["relationships"]["relatedEvidence"]) - known_ids
+        )
+        if unknown_related:
+            errors.append(
+                f"Site manifest page {page['id']} has unknown related pages: {', '.join(unknown_related)}"
+            )
+        page_path = site_root / str(page["path"])
+        manifest_html_paths.add(page_path.resolve())
+        if not page_path.exists():
+            errors.append(f"Missing site-manifest page: {page['path']}")
+            continue
+        try:
+            payload = page_path.read_bytes()
+        except OSError as error:
+            errors.append(f"Could not read site-manifest page {page['path']}: {error}")
+            continue
+        if sha256_bytes(payload) != page["renderDigest"]:
+            errors.append(f"Stale render digest for site-manifest page: {page['path']}")
+        parser = LocalLinkParser()
+        try:
+            parser.feed(payload.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as error:
+            errors.append(f"Invalid HTML in site-manifest page {page['path']}: {error}")
+            continue
+        if parser.site_navigation_landmarks != 1:
+            errors.append(
+                f"Site-manifest page {page['path']} must contain exactly one Sprint site navigation landmark"
+            )
+        if parser.current_page_indicators < 1:
+            errors.append(
+                f"Site-manifest page {page['path']} is missing current-page indication"
+            )
+
+    all_html = sorted(site_root.rglob("*.html"))
+    for html_path in all_html:
+        text = html_path.read_text(encoding="utf-8")
+        if re.search(r"\{\{[A-Z0-9_]+\}\}", text):
+            errors.append(f"Unresolved template token in {html_path}")
+        errors.extend(reference_errors(html_path, site_root))
+    for css_path in sorted(site_root.rglob("*.css")):
+        errors.extend(reference_errors(css_path, site_root))
+    for javascript_pattern in ("*.js", "*.mjs"):
+        for javascript_path in sorted(site_root.rglob(javascript_pattern)):
+            errors.extend(reference_errors(javascript_path, site_root))
+
+    home = next((page for page in pages if page["id"] == "home"), None)
+    if home is None:
+        errors.append("Site manifest is missing the home page")
+        return errors
+    start = (site_root / home["path"]).resolve()
+    reachable: set[Path] = set()
+    pending = [start]
+    while pending:
+        current = pending.pop()
+        if current in reachable or not current.exists() or current.suffix.lower() != ".html":
+            continue
+        reachable.add(current)
+        parser = LocalLinkParser()
+        parser.feed(current.read_text(encoding="utf-8"))
+        for tag, attribute, reference in parser.references:
+            if tag != "a" or attribute != "href":
+                continue
+            target, _fragment, problem = local_reference_target(
+                current, reference, site_root
+            )
+            if problem is None and target is not None and target.suffix.lower() == ".html":
+                pending.append(target.resolve())
+    unreachable = sorted(manifest_html_paths - reachable)
+    for path in unreachable:
+        errors.append(
+            f"Site-manifest page is not reachable from index.html: {workspace_relative(path, site_root)}"
+        )
     return errors
 
 
@@ -9595,16 +10549,15 @@ def workspace_errors(workspace: Path) -> list[str]:
             errors.append(
                 "Completed prototype step is missing a frozen, trial-passed tested version"
             )
-    html_files = [workspace / "index.html", *sorted((workspace / "artifacts").glob("*.html"))]
-    html_files.extend(sorted((workspace / "prototype").glob("**/*.html")))
-    for html_path in html_files:
-        if not html_path.exists():
-            errors.append(f"Missing HTML file: {html_path}")
-            continue
-        text = html_path.read_text(encoding="utf-8")
-        if re.search(r"\{\{[A-Z0-9_]+\}\}", text):
-            errors.append(f"Unresolved template token in {html_path}")
-        errors.extend(local_link_errors(html_path, workspace))
+    site_manifest_path = workspace / SITE_MANIFEST_FILENAME
+    if not site_manifest_path.exists():
+        errors.append(f"Missing generated site manifest: {site_manifest_path}")
+    else:
+        try:
+            site_manifest = read_json(site_manifest_path)
+            errors.extend(site_crawl_errors(workspace, site_manifest))
+        except SprintError as error:
+            errors.append(str(error))
     if workspace_json_is_valid:
         try:
             errors.extend(rendered_output_errors(workspace))
@@ -9992,6 +10945,461 @@ def command_migrate(args: argparse.Namespace) -> None:
     write_texts_atomically({path: json_text(migrated) for path, _family, migrated in plan})
     print(f"Untouched backup: {backup}")
     print(f"Migrated or created {len(plan)} canonical JSON file(s)")
+
+
+EXPORT_TEXT_SUFFIXES = {
+    ".css",
+    ".csv",
+    ".html",
+    ".ini",
+    ".js",
+    ".json",
+    ".md",
+    ".mjs",
+    ".svg",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+EXPORT_NEVER_PATH_PARTS = {
+    ".git",
+    "account-evidence",
+    "contacts",
+    "identities",
+    "participant-contacts",
+    "participant-data",
+    "participant-identities",
+    "private-evidence",
+    "raw-evidence",
+    "recordings",
+    "source-evidence",
+    "transcripts",
+}
+SHAREABLE_FORBIDDEN_ROOTS = {
+    "artifact-data",
+    "customer-testing",
+    "working",
+}
+EXPORT_EMAIL_PATTERN = re.compile(
+    r"(?<![\w.+-])([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})(?![\w.-])",
+    re.IGNORECASE,
+)
+EXPORT_PHONE_PATTERN = re.compile(r"(?<!\w)\+\d[\d .()\-]{7,}\d(?!\w)")
+EXPORT_IDENTIFIER_PATTERN = re.compile(
+    r'''(?ix)
+    ["']?
+    (?:account|customer|org(?:anization)?|project|request|subscription|user|workspace)
+    [_-]?(?:id|identifier)?["']?\s*[:=]\s*["']([^"'\r\n]+)["']
+    ''',
+)
+EXPORT_SECRET_PATTERNS = (
+    ("OpenAI-style secret key", re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b")),
+    ("GitHub token", re.compile(r"\bgh[oprsu]_[A-Za-z0-9]{20,}\b")),
+    ("AWS access key", re.compile(r"\bAKIA[A-Z0-9]{16}\b")),
+    (
+        "private key",
+        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    ),
+)
+EXPORT_LOCAL_PATH_PATTERN = re.compile(
+    r"(?:file://|/(?:Users|home|private/var|var/folders)/[^\s<>'\"]+|[A-Za-z]:\\(?:Users|Documents)\\[^\s<>'\"]+)",
+    re.IGNORECASE,
+)
+
+
+def load_export_approval(path: Path) -> dict[str, Any]:
+    approval = read_json(path)
+    require_valid_schema(approval, "export-approval", path)
+    review = approval["redactionReview"]
+    required_checks = ["completed", "secretsChecked", "contactDetailsChecked"]
+    if approval["kind"] == "shareable-site":
+        required_checks.extend(
+            [
+                "rawEvidenceChecked",
+                "personalInformationChecked",
+                "customerConfidentialChecked",
+                "assetLicencesChecked",
+                "consentAndRightsChecked",
+            ]
+        )
+    missing_checks = [key for key in required_checks if review.get(key) is not True]
+    if missing_checks:
+        raise SprintError(
+            "Export approval has incomplete required review checks: "
+            + ", ".join(missing_checks)
+        )
+    return approval
+
+
+def export_candidate_errors(root: Path, kind: str) -> list[str]:
+    errors: list[str] = []
+    for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
+        relative = path.relative_to(root)
+        lower_parts = tuple(part.lower() for part in relative.parts)
+        if any(part in EXPORT_NEVER_PATH_PARTS for part in lower_parts):
+            errors.append(f"{relative}: prohibited private/contact evidence path")
+        if kind == "shareable-site":
+            if lower_parts and lower_parts[0] in SHAREABLE_FORBIDDEN_ROOTS:
+                errors.append(f"{relative}: private workspace records are not shareable-site files")
+            if path.name in {STATE_FILENAME, ASSIGNMENT_MANIFEST_FILENAME, SESSION_MANIFEST_FILENAME}:
+                errors.append(f"{relative}: private canonical record is not allowed in a shareable site")
+        lower_name = path.name.lower()
+        if (
+            lower_name == ".env"
+            or (lower_name.startswith(".env.") and lower_name != ".env.example")
+            or path.suffix.lower() in {".key", ".pem"}
+            or "contact-map" in lower_name
+            or "identity-map" in lower_name
+        ):
+            errors.append(f"{relative}: credential or separate contact/identity file is prohibited")
+        if path.suffix.lower() not in EXPORT_TEXT_SUFFIXES:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for match in EXPORT_EMAIL_PATTERN.finditer(line):
+                if match.group(2).lower() not in {"example.com", "example.net", "example.org"}:
+                    errors.append(
+                        f"{relative}:{line_number}: non-example email address requires removal"
+                    )
+            if EXPORT_PHONE_PATTERN.search(line) or "tel:" in line.lower():
+                errors.append(
+                    f"{relative}:{line_number}: likely phone/contact detail requires removal"
+                )
+            for label, pattern in EXPORT_SECRET_PATTERNS:
+                if pattern.search(line):
+                    errors.append(f"{relative}:{line_number}: likely {label}")
+            for match in EXPORT_IDENTIFIER_PATTERN.finditer(line):
+                value = match.group(1).strip().lower()
+                if not any(
+                    marker in value
+                    for marker in (
+                        "example",
+                        "not-collected",
+                        "placeholder",
+                        "redacted",
+                        "removed",
+                        "synthetic",
+                        "test",
+                        "unknown",
+                    )
+                ):
+                    errors.append(
+                        f"{relative}:{line_number}: likely private account/customer identifier"
+                    )
+            if EXPORT_LOCAL_PATH_PATTERN.search(line):
+                errors.append(
+                    f"{relative}:{line_number}: absolute local filesystem reference is not portable"
+                )
+    return errors
+
+
+def copy_export_file(source: Path, destination: Path, source_root: Path) -> None:
+    if source.is_symlink():
+        raise SprintError(f"Export refuses symbolic links: {source}")
+    resolved = source.resolve()
+    try:
+        resolved.relative_to(source_root.resolve())
+    except ValueError as error:
+        raise SprintError(f"Export source escapes the workspace: {source}") from error
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    try:
+        destination.chmod(PORTABLE_FILE_MODE)
+    except OSError as error:
+        raise SprintError(f"Could not set portable export permissions on {destination}: {error}") from error
+
+
+def copy_export_tree(
+    workspace: Path,
+    stage: Path,
+    relative_root: str,
+    *,
+    exclude: set[str] | None = None,
+) -> None:
+    source_root = workspace / relative_root
+    if not source_root.exists():
+        return
+    excluded = exclude or set()
+    for source in sorted(candidate for candidate in source_root.rglob("*") if candidate.is_file()):
+        relative = source.relative_to(workspace)
+        if any(part in excluded for part in relative.parts):
+            continue
+        copy_export_file(source, stage / relative, workspace)
+
+
+def copy_shareable_prototype(
+    workspace: Path, stage: Path, site_manifest: dict[str, Any]
+) -> None:
+    page = next(
+        (item for item in site_manifest["pages"] if item["type"] == "prototype-launch"),
+        None,
+    )
+    if page is None:
+        return
+    prototype = page["prototype"]
+    artifact_path = workspace_relative_file(
+        workspace, prototype["artifactPath"], "Shareable prototype artifact"
+    )
+    version_root = workspace / "prototype" / prototype["version"]
+    try:
+        artifact_path.relative_to(version_root)
+    except ValueError as error:
+        raise SprintError(
+            "The shareable prototype is outside its immutable version directory"
+        ) from error
+    record = load_tested_version(
+        workspace_relative_file(
+            workspace,
+            f"prototype/{prototype['version']}/tested-version.json",
+            "Shareable tested-version record",
+        )
+    )
+    context_path = Path(record["prototypeContext"]["path"])
+    for source in sorted(candidate for candidate in version_root.rglob("*") if candidate.is_file()):
+        relative = source.relative_to(workspace)
+        relative_to_version = source.relative_to(version_root)
+        if (
+            relative_to_version.parts
+            and relative_to_version.parts[0] == "sources"
+        ):
+            continue
+        if relative.as_posix() == context_path.as_posix():
+            continue
+        if source.name == "tested-version.json":
+            continue
+        copy_export_file(source, stage / relative, workspace)
+    if not (stage / prototype["artifactPath"]).exists():
+        raise SprintError("The packaged shareable prototype is missing its tested artifact")
+
+
+def export_assets(stage: Path, site_manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    page_paths = {page["path"] for page in site_manifest["pages"]}
+    assets = []
+    for path in sorted(candidate for candidate in stage.rglob("*") if candidate.is_file()):
+        relative = path.relative_to(stage).as_posix()
+        if relative == SITE_MANIFEST_FILENAME or relative in page_paths:
+            continue
+        payload = path.read_bytes()
+        assets.append(
+            {
+                "path": relative,
+                "sha256": sha256_bytes(payload),
+                "bytes": len(payload),
+            }
+        )
+    return assets
+
+
+def write_deterministic_zip(source: Path, destination: Path, timestamp: str) -> None:
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    year = max(1980, parsed.year)
+    temp_destination = destination.with_name(f".{destination.name}.preparing")
+    try:
+        with zipfile.ZipFile(temp_destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(candidate for candidate in source.rglob("*") if candidate.is_file()):
+                relative = path.relative_to(source).as_posix()
+                info = zipfile.ZipInfo(
+                    relative,
+                    (year, parsed.month, parsed.day, parsed.hour, parsed.minute, parsed.second),
+                )
+                info.create_system = 3
+                info.external_attr = PORTABLE_FILE_MODE << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, path.read_bytes())
+        os.replace(temp_destination, destination)
+    except (OSError, zipfile.BadZipFile) as error:
+        temp_destination.unlink(missing_ok=True)
+        raise SprintError(f"Could not create ZIP archive {destination}: {error}") from error
+
+
+def command_export(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    approval_path = Path(args.approval).expanduser().resolve()
+    approval = load_export_approval(approval_path)
+    workspace_validation = workspace_errors(workspace)
+    if workspace_validation:
+        raise SprintError(
+            "The source workspace must validate before export:\n"
+            + "\n".join(f"- {item}" for item in workspace_validation)
+        )
+    state, specs, artifact_documents = load_workspace_documents(workspace)
+    created_artifacts = {str(data["id"]): data for _path, data in artifact_documents}
+    customer_manifest = load_session_manifest(workspace)
+    session_entries = {
+        str(item["sessionId"]): item for item in customer_manifest["sessions"]
+    }
+    known_sessions = set(session_entries)
+    unknown_artifacts = sorted(set(approval["artifactIds"]) - set(created_artifacts))
+    unknown_sessions = sorted(set(approval["sessionIds"]) - known_sessions)
+    if unknown_artifacts:
+        raise SprintError(
+            "Export approval references artifacts that do not exist: "
+            + ", ".join(unknown_artifacts)
+        )
+    if unknown_sessions:
+        raise SprintError(
+            "Export approval references sessions that do not exist: "
+            + ", ".join(unknown_sessions)
+        )
+    if approval["kind"] == "shareable-site":
+        incomplete = sorted(
+            artifact_id
+            for artifact_id in approval["artifactIds"]
+            if created_artifacts[artifact_id].get("status") != "complete"
+        )
+        if incomplete:
+            raise SprintError(
+                "Shareable-site artifacts require complete status: "
+                + ", ".join(incomplete)
+            )
+        incomplete_sessions: list[str] = []
+        for session_id in approval["sessionIds"]:
+            entry = session_entries[session_id]
+            summary = load_session_summary(
+                workspace_relative_file(
+                    workspace,
+                    entry["summaryPath"],
+                    f"Shareable session {session_id} summary",
+                )
+            )
+            if (
+                summary.get("status") != "complete"
+                or summary.get("anonymized") is not True
+                or summary.get("containsDirectIdentifiers") is not False
+            ):
+                incomplete_sessions.append(session_id)
+        if incomplete_sessions:
+            raise SprintError(
+                "Shareable-site sessions require complete anonymized summaries "
+                "without direct identifiers: "
+                + ", ".join(sorted(incomplete_sessions))
+            )
+    approval_digest = sha256_bytes(approval_path.read_bytes())
+    is_shareable = approval["kind"] == "shareable-site"
+    export_metadata = {
+        "kind": approval["kind"],
+        "approvedBy": approval["approvedBy"],
+        "approvedAt": approval["approvedAt"],
+        "approvalDigest": approval_digest,
+        "selection": {
+            "artifactIds": (
+                list(approval["artifactIds"])
+                if is_shareable
+                else sorted(created_artifacts)
+            ),
+            "sessionIds": (
+                list(approval["sessionIds"])
+                if is_shareable
+                else sorted(known_sessions)
+            ),
+            "includePrototype": bool(approval["includePrototype"]),
+            "includeCanonicalData": bool(approval["includeCanonicalData"]),
+            "includeWorkingMaterial": bool(approval["includeWorkingMaterial"]),
+            "includeCustomerTesting": bool(approval["includeCustomerTesting"]),
+            "zipRequested": bool(args.zip),
+        },
+        "humanPublicationRequired": True,
+        "published": False,
+    }
+    plan = build_render_plan(
+        workspace,
+        visibility="shareable" if is_shareable else "private",
+        artifact_ids=set(approval["artifactIds"]) if is_shareable else None,
+        session_ids=set(approval["sessionIds"]) if is_shareable else None,
+        include_prototype=bool(approval["includePrototype"]),
+        export_metadata=export_metadata,
+    )
+    output = Path(args.output).expanduser().resolve()
+    try:
+        output.relative_to(workspace.resolve())
+    except ValueError:
+        pass
+    else:
+        raise SprintError("Export output must be outside the private source workspace")
+    if output.exists():
+        raise SprintError(f"Export output already exists; refusing to overwrite it: {output}")
+    zip_path = output.parent / f"{output.name}.zip"
+    if args.zip and zip_path.exists():
+        raise SprintError(f"ZIP output already exists; refusing to overwrite it: {zip_path}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=f".{output.name}-preparing-", dir=output.parent))
+    published = False
+    try:
+        for source_path, text in plan.generated_files.items():
+            relative = source_path.relative_to(workspace)
+            if relative.as_posix() == SITE_MANIFEST_FILENAME:
+                continue
+            write_text(stage / relative, text)
+        if is_shareable:
+            if approval["includePrototype"]:
+                copy_shareable_prototype(workspace, stage, plan.site_manifest)
+        else:
+            copy_export_file(workspace / ".gitignore", stage / ".gitignore", workspace)
+            if approval["includeCanonicalData"]:
+                for relative in (STATE_FILENAME, ASSIGNMENT_MANIFEST_FILENAME):
+                    copy_export_file(workspace / relative, stage / relative, workspace)
+                copy_export_tree(workspace, stage, "artifact-data")
+            if approval["includeWorkingMaterial"]:
+                copy_export_tree(workspace, stage, "working")
+            if approval["includeCustomerTesting"]:
+                copy_export_tree(workspace, stage, CUSTOMER_TESTING_DIR)
+            if approval["includePrototype"]:
+                copy_export_tree(workspace, stage, "prototype")
+
+        plan.site_manifest["assets"] = export_assets(stage, plan.site_manifest)
+        plan.site_manifest["site"]["versionDigest"] = sha256_bytes(
+            json_text(
+                {
+                    "pages": [
+                        {
+                            "id": page["id"],
+                            "contentDigest": page["contentDigest"],
+                            "renderDigest": page["renderDigest"],
+                        }
+                        for page in plan.site_manifest["pages"]
+                    ],
+                    "assets": plan.site_manifest["assets"],
+                    "export": plan.site_manifest["export"],
+                }
+            ).encode("utf-8")
+        )
+        require_valid_schema(
+            plan.site_manifest, "site-manifest", stage / SITE_MANIFEST_FILENAME
+        )
+        write_json(stage / SITE_MANIFEST_FILENAME, plan.site_manifest)
+        findings = export_candidate_errors(stage, approval["kind"])
+        findings.extend(site_crawl_errors(stage, plan.site_manifest))
+        if findings:
+            raise SprintError(
+                "Export preparation failed privacy, portability, or link checks:\n"
+                + "\n".join(f"- {item}" for item in findings)
+            )
+        os.replace(stage, output)
+        if args.zip:
+            try:
+                write_deterministic_zip(output, zip_path, approval["approvedAt"])
+            except SprintError:
+                zip_path.unlink(missing_ok=True)
+                try:
+                    shutil.rmtree(output)
+                except OSError as cleanup_error:
+                    raise SprintError(
+                        "ZIP preparation failed and the new export directory "
+                        f"could not be removed: {cleanup_error}"
+                    ) from cleanup_error
+                raise
+        published = True
+    finally:
+        if not published and stage.exists():
+            shutil.rmtree(stage)
+    print(f"Prepared {approval['kind']}: {output}")
+    if args.zip:
+        print(f"Prepared ZIP archive: {zip_path}")
+    print("No upload or publication was performed; a human must choose and approve a destination separately.")
 
 
 def command_render(args: argparse.Namespace) -> None:
@@ -10569,6 +11977,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     assignment_status_parser.add_argument("--note")
     assignment_status_parser.set_defaults(handler=command_assignment_status)
+
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Prepare an approved private archive or privacy-checked shareable static site",
+    )
+    export_parser.add_argument("--workspace", required=True)
+    export_parser.add_argument(
+        "--approval",
+        required=True,
+        help="Strict explicit export-approval JSON file",
+    )
+    export_parser.add_argument(
+        "--output",
+        required=True,
+        help="New deployment-ready directory outside the private workspace",
+    )
+    export_parser.add_argument(
+        "--zip",
+        action="store_true",
+        help="Also create a deterministic sibling ZIP archive",
+    )
+    export_parser.set_defaults(handler=command_export)
 
     render_parser = subparsers.add_parser("render", help="Render artifacts and dashboard")
     render_parser.add_argument("--workspace", required=True)

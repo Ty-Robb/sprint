@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{PAGE_DESCRIPTION}}">
+    <title>{{PAGE_TITLE}} — {{SPRINT_TITLE}}</title>
+    <link rel="stylesheet" href="{{STYLESHEET_HREF}}">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    {{SITE_NAVIGATION_HTML}}
+
+    <header class="site-header">
+      <div class="shell">
+        <p class="eyebrow">{{PAGE_PHASE}}</p>
+        <h1>{{PAGE_TITLE}}</h1>
+        <p class="lede">{{PAGE_DESCRIPTION}}</p>
+        <div class="meta-row" role="group" aria-label="Page metadata">
+          <span class="status {{STATUS_CLASS}}">{{PAGE_STATUS}}</span>
+          <span class="tag">Method: {{METHOD_PROFILE}}</span>
+          <span class="tag">Mode: {{EXECUTION_MODE}}</span>
+          <span class="tag">Route: {{SPRINT_ROUTE}}</span>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="shell">
+      {{PAGE_CONTENT_HTML}}
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell">
+        <p><a href="{{HOME_HREF}}">Return to the sprint dashboard</a></p>
+      </div>
+    </footer>
+  </body>
+</html>
