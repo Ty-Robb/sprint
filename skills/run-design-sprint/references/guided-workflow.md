@@ -39,6 +39,8 @@ The key commands are `init`, `set-challenge`, `question`, `new-artifact`, `artif
 
 Edit structured files below `artifact-data/`, then run `render`. Do not edit `index.html`, `sprint-state.json`, or generated files below `artifacts/` manually.
 
+Before initialising a workspace, read [privacy-and-publication.md](privacy-and-publication.md). Put the workspace below an access-controlled private root outside any public repository checkout. The workspace is private by default; anonymisation makes it safer to work with but does not make the whole bundle suitable for publication.
+
 ## Sprint state
 
 Maintain a machine-readable `sprint-state.json` next to `index.html`. Use this minimum shape:
@@ -80,6 +82,7 @@ Create user-facing artifacts as HTML:
 
 ```text
 design-sprint-<slug>/
+├── .gitignore
 ├── index.html
 ├── sprint-state.json
 ├── assets/
@@ -106,7 +109,7 @@ design-sprint-<slug>/
     └── index.html
 ```
 
-Create only artifacts required by the selected route. Omit `03-foundation.html` when a foundation stage is unnecessary. Store raw sensitive participant data outside the shareable artifact bundle or anonymise it.
+Create only artifacts required by the selected route. Omit `03-foundation.html` when a foundation stage is unnecessary. Store identity/contact maps, raw transcripts, recordings, account evidence, and usage-dashboard captures in separately access-controlled source storage, not in the workspace. The generated `.gitignore` is a fallback for common sensitive paths, not permission to put the workspace in a public repository.
 
 ## End-to-end workflow
 
@@ -243,6 +246,10 @@ Do not bypass these gates:
 5. Final outcome
 
 Record the human's exact decision, date, rationale, reservations, and overridden recommendations. A vote or AI consensus cannot replace the human decision.
+
+## Publication gate
+
+Completing a sprint does not approve its artifacts for public release. Before publishing any excerpt, fixture, screenshot, usage number, or cost claim, create a separate sanitized export and complete the [publication checklist](privacy-and-publication.md#publication-checklist). Keep the source workspace and any private case-study repository private.
 
 ## Resuming and stopping
 
