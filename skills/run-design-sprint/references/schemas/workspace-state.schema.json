@@ -27,7 +27,7 @@
   "allOf": [
     {
       "if": {
-        "properties": {"schemaVersion": {"enum": ["2.0", "3.0"]}},
+        "properties": {"schemaVersion": {"enum": ["2.0", "3.0", "4.0"]}},
         "required": ["schemaVersion"]
       },
       "then": {
@@ -44,7 +44,7 @@
     },
     {
       "if": {
-        "properties": {"schemaVersion": {"const": "3.0"}},
+        "properties": {"schemaVersion": {"enum": ["3.0", "4.0"]}},
         "required": ["schemaVersion"]
       },
       "then": {
@@ -628,7 +628,12 @@
         "target": {"type": "string"},
         "targetRationale": {"type": "string"},
         "sessionsPlanned": {"type": "integer", "minimum": 0},
-        "sessionsCompleted": {"type": "integer", "minimum": 0}
+        "sessionsInvited": {"type": "integer", "minimum": 0},
+        "sessionsAttempted": {"type": "integer", "minimum": 0},
+        "sessionsCompleted": {"type": "integer", "minimum": 0},
+        "sessionsQualified": {"type": "integer", "minimum": 0},
+        "sessionsExcluded": {"type": "integer", "minimum": 0},
+        "sessionsUsable": {"type": "integer", "minimum": 0}
       },
       "additionalProperties": false
     },

@@ -300,7 +300,7 @@ Have the Synthesis Analyst organise evidence by sprint question, not by preferre
 - recurring patterns;
 - contradictions;
 - outliers;
-- confidence and sample limitations;
+- descriptive evidence strength, contradictions, and sample limitations;
 - unanswered questions.
 
 Have the Critical Reviewer inspect the synthesis for cherry-picking, leading tasks, missing evidence, and overclaiming.
@@ -327,6 +327,6 @@ Ask:
 
 > Based on the evidence and remaining risk, which outcome do you choose—and why?
 
-Record the human's decision, rationale, reservations, confidence, owners, and dated next actions. Do not allow `Proceed`, `Iterate`, or `Pivot` without a real customer session.
+Record the human's decision, rationale, reservations, evidence strength, decision readiness, owners, and dated next actions. Do not allow `Proceed`, `Iterate`, or `Pivot` without usable real-customer evidence, and never use session count as a statistical-confidence score.
 
 **Definition of done:** Gate 5 is recorded, the outcome artifact is complete, the dashboard is current, and the workspace validator passes.

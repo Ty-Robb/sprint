@@ -16,7 +16,7 @@
     "updatedAt"
   ],
   "properties": {
-    "schemaVersion": {"const": "1.0"},
+    "schemaVersion": {"type": "string"},
     "recordType": {"const": "customer-session-manifest"},
     "testArtifactWorkflowVersion": {"const": "1.0"},
     "workspaceSlug": {
@@ -134,6 +134,13 @@
         "prototypeVersion": {"$ref": "#/$defs/version"},
         "testedVersion": {"$ref": "#/$defs/sourceDescriptor"},
         "questionsVersion": {"$ref": "#/$defs/version"},
+        "participantSegment": {"type": "string", "minLength": 1},
+        "participantFit": {"enum": ["unassessed", "qualified", "excluded"]},
+        "protocolFidelity": {"enum": ["not-assessed", "consistent", "minor-deviation", "material-deviation"]},
+        "criticalScenariosCovered": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "attempted": {"type": "boolean"},
+        "usable": {"type": "boolean"},
+        "exclusionReason": {"type": "string"},
         "status": {
           "enum": ["initialized", "packet-generated", "in-progress", "complete", "reopened", "blocked", "withdrawn"]
         },

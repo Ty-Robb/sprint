@@ -39,11 +39,11 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 - A guided, resumable workflow with explicit human decision gates
 - Separate method-profile, execution-mode, and route selectors with named selection provenance and a versioned fidelity contract
 - Bounded AI roles with a versioned assignment manifest, immutable packet/input digests, result-memo lifecycle, and enforced independent runs
-- A living HTML dashboard showing process completion separately from truthful terminal/validation state, method fidelity, evidence, human decision attestations, privacy-safe specialist provenance, and next action
+- A living HTML dashboard showing process status, method fidelity, descriptive evidence strength, and action-specific decision readiness independently
 - HTML sprint artifacts, from the brief and evidence ledger through the outcome report
 - Independent solution directions, a decision record, and a testable prototype
 - A test-artifact ladder and typed prototype/MVP brief with provider-neutral tool selection, explicit approvals, bounded build packets, moderated trials, and immutable deployment/version records
-- A real-customer test plan and traceable synthesis
+- A real-customer test plan with separate planned, invited, attempted, completed, qualified, excluded, and usable counts plus traceable material findings
 - A final proceed, iterate, pivot, investigate, or stop decision
 
 ## How it runs
@@ -98,7 +98,7 @@ python3 scripts/check_publication.py
 
 ## Status
 
-The skill supports a Sprint-book profile for full live sprints and an adaptive profile for research-first, foundation-plus-design, full, focused, and no-sprint routes. Live, self-test, and planning/rehearsal modes are explicit and auditable. Terminal state distinguishes live customer-tested work from self-test completion, planning/rehearsal completion, and other unvalidated closure in canonical JSON, dashboards, portable artifacts, and status exports. One-human-plus-AI substitutions and their limitations remain visible; AI-generated customer reactions are rehearsal only and never count as validation. Live Sprint-book work defaults to five suitable customer sessions. See [execution modes, closure, and restart](skills/run-design-sprint/references/execution-modes.md) before converting or restarting a rehearsal as live work.
+The skill supports a Sprint-book profile for full live sprints and an adaptive profile for research-first, foundation-plus-design, full, focused, and no-sprint routes. Live, self-test, and planning/rehearsal modes are explicit and auditable. Terminal state distinguishes live customer-tested work from self-test completion, planning/rehearsal completion, and other unvalidated closure in canonical JSON, dashboards, portable artifacts, and status exports. One-human-plus-AI substitutions and their limitations remain visible; AI-generated customer reactions are rehearsal only and never count as validation. Live Sprint-book work defaults to five suitable customer sessions. One or two usable sessions are reported as early/limited, three or four as partial directional, five as the book target met, and more than five as extended—never as statistical confidence or population validation. See [execution modes, closure, and restart](skills/run-design-sprint/references/execution-modes.md) before converting or restarting a rehearsal as live work.
 
 ## License
 

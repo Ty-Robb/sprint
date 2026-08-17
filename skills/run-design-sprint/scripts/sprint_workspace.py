@@ -31,16 +31,21 @@ SCHEMAS_DIR = REFERENCES_DIR / "schemas"
 
 STATE_FILENAME = "sprint-state.json"
 ASSIGNMENT_MANIFEST_FILENAME = "assignment-manifest.json"
-STATE_SCHEMA_VERSION = "3.0"
+STATE_SCHEMA_VERSION = "4.0"
 LEGACY_STATE_SCHEMA_VERSION = "1.0"
 PREVIOUS_STATE_SCHEMA_VERSION = "2.0"
-ARTIFACT_SCHEMA_VERSION = "2.0"
+INTERMEDIATE_STATE_SCHEMA_VERSION = "3.0"
+ARTIFACT_SCHEMA_VERSION = "3.0"
 LEGACY_ARTIFACT_SCHEMA_VERSION = "1.0"
+PREVIOUS_ARTIFACT_SCHEMA_VERSION = "2.0"
 REFERENCE_SCHEMA_VERSION = "1.0"
 FIDELITY_SCHEMA_VERSION = "1.0"
 ASSIGNMENT_MANIFEST_SCHEMA_VERSION = "1.0"
 ROLE_PACKET_VERSION = "1.0"
-SESSION_SCHEMA_VERSION = "1.0"
+SESSION_MANIFEST_SCHEMA_VERSION = "2.0"
+CUSTOMER_SESSION_SCHEMA_VERSION = "2.0"
+LEGACY_SESSION_SCHEMA_VERSION = "1.0"
+SESSION_SUMMARY_SCHEMA_VERSION = "1.0"
 TEST_ARTIFACT_WORKFLOW_VERSION = "1.0"
 PORTABLE_FILE_MODE = 0o644
 CUSTOMER_TESTING_DIR = "customer-testing"
@@ -56,11 +61,13 @@ SCHEMA_FAMILIES = {
         "schemas": {
             LEGACY_STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v1.schema.json",
             PREVIOUS_STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v2.schema.json",
-            STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v3.schema.json",
+            INTERMEDIATE_STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v3.schema.json",
+            STATE_SCHEMA_VERSION: SCHEMAS_DIR / "workspace-state-v4.schema.json",
         },
         "migratable": {
             LEGACY_STATE_SCHEMA_VERSION,
             PREVIOUS_STATE_SCHEMA_VERSION,
+            INTERMEDIATE_STATE_SCHEMA_VERSION,
         },
     },
     "artifact-data": {
@@ -68,9 +75,13 @@ SCHEMA_FAMILIES = {
         "current": ARTIFACT_SCHEMA_VERSION,
         "schemas": {
             LEGACY_ARTIFACT_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v1.schema.json",
-            ARTIFACT_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v2.schema.json",
+            PREVIOUS_ARTIFACT_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v2.schema.json",
+            ARTIFACT_SCHEMA_VERSION: SCHEMAS_DIR / "artifact-data-v3.schema.json",
         },
-        "migratable": {LEGACY_ARTIFACT_SCHEMA_VERSION},
+        "migratable": {
+            LEGACY_ARTIFACT_SCHEMA_VERSION,
+            PREVIOUS_ARTIFACT_SCHEMA_VERSION,
+        },
     },
     "artifact-specs": {
         "label": "artifact specifications",
@@ -108,25 +119,27 @@ SCHEMA_FAMILIES = {
     },
     "session-manifest": {
         "label": "customer-session manifest",
-        "current": SESSION_SCHEMA_VERSION,
+        "current": SESSION_MANIFEST_SCHEMA_VERSION,
         "schemas": {
-            SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "session-manifest-v1.schema.json"
+            LEGACY_SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "session-manifest-v1.schema.json",
+            SESSION_MANIFEST_SCHEMA_VERSION: SCHEMAS_DIR / "session-manifest-v2.schema.json",
         },
-        "migratable": set(),
+        "migratable": {LEGACY_SESSION_SCHEMA_VERSION},
     },
     "customer-session": {
         "label": "customer-session record",
-        "current": SESSION_SCHEMA_VERSION,
+        "current": CUSTOMER_SESSION_SCHEMA_VERSION,
         "schemas": {
-            SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "customer-session-v1.schema.json"
+            LEGACY_SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "customer-session-v1.schema.json",
+            CUSTOMER_SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "customer-session-v2.schema.json",
         },
-        "migratable": set(),
+        "migratable": {LEGACY_SESSION_SCHEMA_VERSION},
     },
     "session-summary": {
         "label": "customer-session summary",
-        "current": SESSION_SCHEMA_VERSION,
+        "current": SESSION_SUMMARY_SCHEMA_VERSION,
         "schemas": {
-            SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "session-summary-v1.schema.json"
+            SESSION_SUMMARY_SCHEMA_VERSION: SCHEMAS_DIR / "session-summary-v1.schema.json"
         },
         "migratable": set(),
     },
@@ -191,6 +204,27 @@ FIDELITY_ASSESSMENTS = {
     "partial",
     "self-test-rehearsal",
     "not-applicable",
+}
+PARTICIPANT_FITS = {"unassessed", "qualified", "excluded"}
+PROTOCOL_FIDELITIES = {
+    "not-assessed",
+    "consistent",
+    "minor-deviation",
+    "material-deviation",
+}
+EVIDENCE_BANDS = {
+    0: ("not-tested", "Not tested"),
+    1: ("early-limited", "Early / limited"),
+    2: ("early-limited", "Early / limited"),
+    3: ("partial-directional", "Partial directional"),
+    4: ("partial-directional", "Partial directional"),
+    5: ("book-target-met", "Book target met"),
+}
+DECISION_IMPACTS = {
+    "investigate-or-retest",
+    "correct-observed-failure",
+    "bounded-reversible-investment",
+    "defer-large-or-irreversible-investment",
 }
 PROTOTYPE_BRIEF_ID = "10-prototype-brief"
 ARTIFACT_LADDER = (
@@ -730,6 +764,7 @@ def workspace_path(value: str) -> Path:
 
 
 def workspace_relative_file(workspace: Path, value: str, label: str) -> Path:
+    workspace = workspace.resolve()
     candidate = (workspace / value).resolve()
     try:
         candidate.relative_to(workspace)
@@ -970,7 +1005,7 @@ def expected_terminal_state(state: dict[str, Any]) -> str:
     if mode == "planning-rehearsal":
         return "planning-rehearsal-complete-unvalidated"
     customer = state.get("customerTesting", {})
-    if mode == "live" and int(customer.get("sessionsCompleted", 0)) > 0:
+    if mode == "live" and int(customer.get("sessionsUsable", 0)) > 0:
         return "live-customer-tested"
     return "closed-unvalidated"
 
@@ -982,10 +1017,11 @@ def validation_truth(state: dict[str, Any]) -> tuple[str, str, str]:
     mode = str(state.get("executionMode", "live"))
     customer = state.get("customerTesting", {})
     completed = int(customer.get("sessionsCompleted", 0))
+    usable = int(customer.get("sessionsUsable", 0))
     if terminal_state == "live-customer-tested":
         return (
             "Live customer testing completed",
-            f"This live sprint includes {completed} recorded suitable real-customer session(s). Findings are directional, not statistical proof.",
+            f"This live sprint includes {usable} usable of {completed} completed real-customer session(s). Findings are directional, not statistical proof.",
             "section--accent",
         )
     if terminal_state == "self-test-complete-unvalidated":
@@ -1018,11 +1054,17 @@ def validation_truth(state: dict[str, Any]) -> tuple[str, str, str]:
             "This workspace describes or rehearses planned activity; it does not establish that the activity or customer validation occurred.",
             "section--warning",
         )
-    if completed > 0:
+    if usable > 0:
         return (
             "Live customer evidence recorded",
-            f"{completed} suitable real-customer session(s) are recorded; the sprint has not yet reached its terminal decision.",
+            f"{usable} usable of {completed} completed real-customer session(s) are recorded; the sprint has not yet reached its terminal decision.",
             "section--accent",
+        )
+    if completed > 0:
+        return (
+            "UNVALIDATED — no usable customer evidence",
+            f"{completed} real-customer session(s) were completed, but none are usable for synthesis or a customer-dependent decision.",
+            "section--warning",
         )
     return (
         "Live mode — customer validation pending",
@@ -1474,11 +1516,44 @@ def refresh_fidelity_summary(state: dict[str, Any]) -> None:
             limitations.insert(0, mode_limitation)
     skipped = state.get("skippedSteps", [])
     route = state.get("route")
+    customer = state.get("customerTesting", {})
+    customer_method_partial = (
+        mode == "live"
+        and isinstance(customer, dict)
+        and int(customer.get("sessionsPlanned", 0)) > 0
+        and int(customer.get("sessionsUsable", 0))
+        < int(customer.get("sessionsPlanned", 0))
+        and (
+            customer.get("status") in {"partial", "blocked"}
+            or "11-customer-sessions" in state.get("completedSteps", [])
+            or state.get("status") == "complete"
+        )
+    )
+    if customer_method_partial:
+        shortfall = int(customer.get("sessionsPlanned", 0)) - int(
+            customer.get("sessionsUsable", 0)
+        )
+        adaptations.append(
+            {
+                "step": "11-customer-sessions",
+                "type": "partial",
+                "description": (
+                    f"{customer.get('sessionsUsable', 0)}/{customer.get('sessionsPlanned', 0)} "
+                    "planned sessions are currently usable."
+                ),
+            }
+        )
+        limitation = (
+            f"{shortfall} planned customer session(s) are not usable; findings remain "
+            "bounded to the observed sample and cannot establish prevalence."
+        )
+        if limitation not in limitations:
+            limitations.append(limitation)
     if route == "no-sprint":
         assessment = "not-applicable"
     elif mode != "live":
         assessment = "self-test-rehearsal"
-    elif skipped:
+    elif skipped or customer_method_partial:
         assessment = "partial"
     elif adaptations:
         assessment = "adapted-with-documented-substitutions"
@@ -2206,6 +2281,487 @@ def render_current_fidelity_guidance(state: dict[str, Any]) -> str:
     )
 
 
+def selected_material_findings(
+    artifact_documents: list[tuple[Path, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Return the most decision-proximate material-finding set without duplicating it."""
+
+    by_id = {str(data.get("id")): data for _path, data in artifact_documents}
+    for artifact_id in ("13-outcome", "12-synthesis"):
+        findings = by_id.get(artifact_id, {}).get("materialFindings", [])
+        if isinstance(findings, list) and findings:
+            return [item for item in findings if isinstance(item, dict)]
+    findings: list[dict[str, Any]] = []
+    for _path, data in artifact_documents:
+        values = data.get("materialFindings", [])
+        if isinstance(values, list):
+            findings.extend(item for item in values if isinstance(item, dict))
+    return findings
+
+
+def outcome_assessment_from_documents(
+    artifact_documents: list[tuple[Path, dict[str, Any]]],
+) -> dict[str, Any]:
+    for _path, data in artifact_documents:
+        if data.get("id") == "13-outcome":
+            outcome = data.get("outcomeAssessment", {})
+            return outcome if isinstance(outcome, dict) else {}
+    return {}
+
+
+def evidence_band(usable: int) -> tuple[str, str]:
+    if usable > 5:
+        return "extended", "Extended"
+    return EVIDENCE_BANDS.get(usable, EVIDENCE_BANDS[0])
+
+
+def build_completion_assessment(
+    workspace: Path,
+    state: dict[str, Any],
+    artifact_documents: list[tuple[Path, dict[str, Any]]],
+) -> dict[str, Any]:
+    """Derive four independent, descriptive dimensions from canonical records."""
+
+    customer = state.get("customerTesting", {})
+    if not isinstance(customer, dict):
+        customer = {}
+    manifest = load_session_manifest(workspace)
+    entries = [
+        item for item in manifest.get("sessions", []) if isinstance(item, dict)
+    ]
+    completed_steps = set(state.get("completedSteps", []))
+    skipped_steps = set(state.get("skippedSteps", []))
+    not_applicable_steps = set(state.get("notApplicableSteps", []))
+    blocked_steps = {
+        str(load_artifact_specs().get(str(data.get("id")), {}).get("step"))
+        for _path, data in artifact_documents
+        if data.get("status") == "blocked"
+    }
+    blocked_steps.discard("None")
+    if customer.get("status") == "blocked":
+        blocked_steps.add("11-customer-sessions")
+    current = str(state.get("currentStep", "01-intake"))
+    if state.get("status") == "complete" and str(state.get("outcome", "")).lower() == "stop":
+        process_status = "stopped-deliberately"
+    elif state.get("status") == "complete":
+        process_status = "completed"
+    elif blocked_steps or state.get("status") == "paused":
+        process_status = "blocked"
+    elif not completed_steps and current == "01-intake":
+        process_status = "not-started"
+    elif skipped_steps and current == "13-outcome":
+        process_status = "partially-completed"
+    else:
+        process_status = "active"
+    accounted = completed_steps | skipped_steps | not_applicable_steps | blocked_steps
+    not_started_count = max(0, len(STEPS) - len(accounted) - (0 if current in accounted else 1))
+    process = {
+        "status": process_status,
+        "label": display_label(process_status),
+        "steps": {
+            "completed": len(completed_steps),
+            "skipped": len(skipped_steps),
+            "blocked": len(blocked_steps),
+            "notApplicable": len(not_applicable_steps),
+            "notStarted": not_started_count,
+        },
+        "explanation": (
+            "Workflow lifecycle and step dispositions are reported independently of "
+            "method adherence and customer evidence."
+        ),
+    }
+
+    usable_entries = [
+        item
+        for item in entries
+        if item.get("counted") is True and item.get("usable") is True
+    ]
+    usable = int(customer.get("sessionsUsable", len(usable_entries)))
+    attempted = int(customer.get("sessionsAttempted", 0))
+    completed = int(customer.get("sessionsCompleted", 0))
+    planned = int(customer.get("sessionsPlanned", 0))
+    band, band_label = evidence_band(usable)
+    segments = sorted(
+        {
+            str(item.get("participantSegment"))
+            for item in usable_entries
+            if str(item.get("participantSegment", "")).strip()
+        }
+    )
+    prototype_versions = sorted(
+        {str(item.get("prototypeVersion")) for item in usable_entries}
+    )
+    questions_versions = sorted(
+        {str(item.get("questionsVersion")) for item in usable_entries}
+    )
+    critical_scenarios = sorted(
+        {
+            str(scenario)
+            for item in usable_entries
+            for scenario in item.get("criticalScenariosCovered", [])
+        }
+    )
+    protocol_deviations = [
+        str(item.get("sessionId"))
+        for item in usable_entries
+        if item.get("protocolFidelity") != "consistent"
+    ]
+    findings = selected_material_findings(artifact_documents)
+    contradiction_count = sum(
+        len(item.get("contradictions", []))
+        for item in findings
+        if isinstance(item.get("contradictions", []), list)
+    )
+    outlier_count = sum(
+        len(item.get("outliers", []))
+        for item in findings
+        if isinstance(item.get("outliers", []), list)
+    )
+    inferred_findings = sum(
+        item.get("directness") in {"inference", "mixed"} for item in findings
+    )
+    remaining_uncertainty_count = sum(
+        len(item.get("remainingUncertainty", []))
+        for item in findings
+        if isinstance(item.get("remainingUncertainty", []), list)
+    )
+    moderator_deviation_sessions: list[str] = []
+    for entry in usable_entries:
+        try:
+            summary_path = workspace_relative_file(
+                workspace,
+                str(entry["summaryPath"]),
+                f"Evidence assessment summary {entry['sessionId']}",
+            )
+            summary = load_session_summary(summary_path)
+        except SprintError:
+            continue
+        if summary.get("moderatorDeviations"):
+            moderator_deviation_sessions.append(str(entry["sessionId"]))
+    mixed_segments = len(segments) > 1
+    mixed_versions = len(prototype_versions) > 1 or len(questions_versions) > 1
+    unusable_completed = max(0, completed - usable)
+    mixed_quality = bool(
+        protocol_deviations
+        or moderator_deviation_sessions
+        or unusable_completed
+        or int(customer.get("sessionsExcluded", 0))
+    )
+    mixed_evidence = contradiction_count > 0 or outlier_count > 0
+    if usable == 0:
+        quality = "not-tested"
+    elif mixed_segments:
+        quality = "mixed-segment"
+    elif mixed_quality or mixed_versions or mixed_evidence:
+        quality = "mixed-quality"
+    else:
+        quality = "consistent-directional"
+    factors = [
+        f"{usable} usable of {attempted} attempted session(s).",
+        f"Participant fit: {customer.get('sessionsQualified', 0)} qualified and {customer.get('sessionsExcluded', 0)} excluded.",
+        (
+            f"Target-segment coverage: {', '.join(segments)}."
+            if segments
+            else "No usable target-segment coverage is recorded."
+        ),
+        (
+            f"Tested versions: prototype {', '.join(prototype_versions)}; questions {', '.join(questions_versions)}."
+            if usable_entries
+            else "No usable prototype or question version is tested."
+        ),
+        (
+            f"Critical-scenario coverage: {', '.join(critical_scenarios)}."
+            if critical_scenarios
+            else "No usable critical-scenario coverage is recorded."
+        ),
+        f"Material findings retain {contradiction_count} contradiction record(s), {outlier_count} outlier record(s), {inferred_findings} inferred or mixed finding(s), and {remaining_uncertainty_count} remaining uncertainty item(s).",
+    ]
+    limitations: list[str] = []
+    if state.get("executionMode") != "live":
+        limitations.append(
+            "This is a rehearsal mode; synthetic activity is not customer evidence."
+        )
+    elif usable == 0:
+        limitations.append(
+            "No usable real-customer session exists, so customer-dependent decisions remain untested."
+        )
+    if planned and usable < planned:
+        limitations.append(
+            f"Only {usable}/{planned} planned sessions are usable; the remaining sample and prevalence are unknown."
+        )
+    if unusable_completed:
+        limitations.append(
+            f"{unusable_completed} completed session(s) are not usable because participant fit or evidence quality was insufficient."
+        )
+    if mixed_segments:
+        limitations.append(
+            "Usable sessions span multiple customer segments; counts cannot be treated as within-segment convergence."
+        )
+    if mixed_versions:
+        limitations.append(
+            "Usable sessions used different prototype or question versions, so apparent differences may be version effects."
+        )
+    if protocol_deviations:
+        limitations.append(
+            "Usable sessions include documented protocol deviations: "
+            + ", ".join(protocol_deviations)
+            + "."
+        )
+    if moderator_deviation_sessions:
+        limitations.append(
+            "Usable summaries contain moderator deviations: "
+            + ", ".join(moderator_deviation_sessions)
+            + "."
+        )
+    if contradiction_count:
+        limitations.append(
+            "Material findings contain contradictory observations that remain unresolved."
+        )
+    if outlier_count:
+        limitations.append(
+            "Material findings retain outlying observations that should be investigated rather than averaged away."
+        )
+    if usable:
+        limitations.append(
+            "These descriptive bands report method coverage only; they do not establish statistical confidence, representativeness, or population prevalence."
+        )
+    evidence = {
+        "band": band,
+        "label": band_label,
+        "quality": quality,
+        "description": (
+            f"{band_label}: {usable} suitable usable session(s), assessed with participant fit, "
+            "protocol consistency, versions, segment coverage, contradictions, directness, and uncertainty."
+        ),
+        "factors": factors,
+        "limitations": limitations,
+        "mixedSegments": mixed_segments,
+        "mixedVersions": mixed_versions,
+        "mixedQuality": mixed_quality,
+        "mixedEvidence": mixed_evidence,
+    }
+
+    outcome = outcome_assessment_from_documents(artifact_documents)
+    proposed_impact = str(outcome.get("decisionImpact", ""))
+    if proposed_impact not in DECISION_IMPACTS:
+        finding_impacts = {
+            str(item.get("nextDecision", {}).get("impact"))
+            for item in findings
+            if isinstance(item.get("nextDecision"), dict)
+        }
+        if "correct-observed-failure" in finding_impacts:
+            proposed_impact = "correct-observed-failure"
+        elif "bounded-reversible-investment" in finding_impacts:
+            proposed_impact = "bounded-reversible-investment"
+        else:
+            proposed_impact = "investigate-or-retest"
+    proposed_action = str(outcome.get("justifiedDecision", "")).strip() or (
+        "Record the specific proposed action in the outcome assessment."
+    )
+    if state.get("executionMode") != "live" or usable == 0:
+        readiness = "insufficient-to-decide"
+        reason = "No usable real-customer evidence supports a customer-dependent decision."
+    elif proposed_impact == "defer-large-or-irreversible-investment":
+        readiness = "insufficient-for-large-or-irreversible-investment"
+        reason = (
+            "Directional sprint evidence cannot justify population claims or a large, irreversible commitment."
+        )
+    elif proposed_impact == "correct-observed-failure" and any(
+        item.get("directness") in {"direct-observation", "mixed"}
+        for item in findings
+    ):
+        readiness = "sufficient-to-correct-an-observed-failure"
+        reason = (
+            "Traceable direct observations justify correcting the bounded failure and retesting; they do not prove prevalence."
+        )
+    elif (
+        proposed_impact == "bounded-reversible-investment"
+        and planned > 0
+        and usable >= planned
+        and band not in {"not-tested", "early-limited"}
+        and findings
+        and not (mixed_segments or mixed_versions or mixed_quality or mixed_evidence)
+    ):
+        readiness = "sufficient-for-a-bounded-reversible-investment"
+        reason = (
+            "The planned method target is met with consistent, qualified, traceable evidence; the investment must remain bounded and reversible."
+        )
+    else:
+        readiness = "sufficient-to-investigate-or-run-another-test"
+        reason = (
+            "The observed sample can direct the next learning step, but remaining coverage or quality limitations constrain a stronger action."
+        )
+    decision = {
+        "status": readiness,
+        "label": display_label(readiness),
+        "proposedAction": proposed_action,
+        "reason": reason,
+    }
+    fidelity_summary = state.get("fidelity", {}).get("summary", {})
+    return {
+        "processStatus": process,
+        "methodFidelity": {
+            "status": str(fidelity_summary.get("assessment", "unknown")),
+            "label": display_label(fidelity_summary.get("assessment")),
+            "adaptations": fidelity_summary.get("adaptations", []),
+            "limitations": fidelity_summary.get("limitations", []),
+        },
+        "evidenceStrength": evidence,
+        "decisionReadiness": decision,
+        "sessionCounts": {
+            "planned": planned,
+            "invited": int(customer.get("sessionsInvited", 0)),
+            "attempted": attempted,
+            "completed": completed,
+            "qualified": int(customer.get("sessionsQualified", 0)),
+            "excluded": int(customer.get("sessionsExcluded", 0)),
+            "usable": usable,
+        },
+        "materialFindings": findings,
+        "limitations": limitations,
+    }
+
+
+def render_completion_dimensions(assessment: dict[str, Any]) -> str:
+    cards = []
+    for key, title, detail_key in (
+        ("processStatus", "Process status", "explanation"),
+        ("methodFidelity", "Method fidelity", "status"),
+        ("evidenceStrength", "Evidence strength", "description"),
+        ("decisionReadiness", "Decision readiness", "reason"),
+    ):
+        value = assessment[key]
+        detail = value.get(detail_key, "")
+        if key == "methodFidelity":
+            detail = (
+                "Method adherence is derived from the selected profile, route, mode, "
+                "documented adaptations, omissions, and testing shortfall."
+            )
+        cards.append(
+            '<article class="assessment-card">'
+            f'<span class="metric__label">{escape(title)}</span>'
+            f'<strong>{escape(value.get("label", "Unknown"))}</strong>'
+            f'<p>{escape(detail)}</p>'
+            "</article>"
+        )
+    return "\n".join(cards)
+
+
+def render_session_counts(assessment: dict[str, Any]) -> str:
+    counts = assessment["sessionCounts"]
+    return "\n".join(
+        '<div class="metric metric--compact">'
+        f'<span class="metric__label">{escape(display_label(name))}</span>'
+        f'<span class="metric__value">{escape(value)}</span></div>'
+        for name, value in counts.items()
+    )
+
+
+def render_assessment_limitations(assessment: dict[str, Any]) -> str:
+    limitations = assessment.get("limitations", [])
+    if not limitations:
+        return "<li>No automatic evidence limitations apply yet.</li>"
+    return "\n".join(f"<li>{escape(item)}</li>" for item in limitations)
+
+
+def render_material_findings(assessment: dict[str, Any]) -> str:
+    findings = assessment.get("materialFindings", [])
+    if not findings:
+        return (
+            '<p>No material customer finding is recorded. Rehearsal and untested claims '
+            "do not appear as customer evidence.</p>"
+        )
+    usable = int(assessment.get("sessionCounts", {}).get("usable", 0))
+    output: list[str] = []
+    for finding in findings:
+        support = finding.get("support", [])
+        contradictions = finding.get("contradictions", [])
+        outliers = finding.get("outliers", [])
+        supporting_sessions = {
+            str(item.get("sessionId")) for item in support if isinstance(item, dict)
+        }
+        provenance_items = []
+        for label, sources in (
+            ("Supports", support),
+            ("Contradicts", contradictions),
+            ("Outlier", outliers),
+        ):
+            for source in sources:
+                if not isinstance(source, dict):
+                    continue
+                provenance_items.append(
+                    "<li>"
+                    f"<strong>{escape(label)}:</strong> {escape(source.get('participantId'))} / "
+                    f"{escape(source.get('sessionId'))} · prototype {escape(source.get('prototypeVersion'))} · "
+                    f"questions {escape(source.get('questionsVersion'))} · {escape(display_label(source.get('sourceType')))} "
+                    f"({escape(', '.join(source.get('evidenceIds', [])))})</li>"
+                )
+        automatic = list(finding.get("limitations", []))
+        if contradictions:
+            automatic.append(
+                f"{len(contradictions)} contradictory provenance record(s) remain visible."
+            )
+        if outliers:
+            automatic.append(
+                f"{len(outliers)} outlier provenance record(s) remain visible."
+            )
+        if len(supporting_sessions) < usable:
+            automatic.append(
+                f"This finding is supported by {len(supporting_sessions)} of {usable} usable sessions; non-supporting sessions are not silently counted as agreement."
+            )
+        for item in assessment.get("limitations", []):
+            if item not in automatic:
+                automatic.append(item)
+        decision = finding.get("nextDecision", {})
+        output.append(
+            '<article class="finding-card">'
+            f'<p class="eyebrow">{escape(finding.get("id"))} · {len(supporting_sessions)}/{usable} usable support</p>'
+            f'<h3>{escape(finding.get("statement"))}</h3>'
+            f'<p><strong>Directness:</strong> {escape(display_label(finding.get("directness")))}</p>'
+            '<h4>Support, contradictions, and provenance</h4><ul>'
+            + ("\n".join(provenance_items) or "<li>No provenance recorded.</li>")
+            + "</ul><h4>Limitations and remaining uncertainty</h4><ul>"
+            + "\n".join(f"<li>{escape(item)}</li>" for item in automatic)
+            + "\n"
+            + "\n".join(
+                f"<li>{escape(item)}</li>"
+                for item in finding.get("remainingUncertainty", [])
+            )
+            + "</ul><h4>Next decision</h4>"
+            f'<p><strong>{escape(display_label(decision.get("impact")))}</strong>: '
+            f'{escape(decision.get("action"))}</p>'
+            f'<p>{escape(decision.get("rationale"))}</p>'
+            f'<p><strong>Smallest next learning action:</strong> {escape(decision.get("smallestNextLearningAction"))}</p>'
+            "</article>"
+        )
+    return "\n".join(output)
+
+
+def render_outcome_statements(data: dict[str, Any]) -> str:
+    outcome = data.get("outcomeAssessment", {})
+    if not isinstance(outcome, dict):
+        return ""
+    labels = (
+        ("Process completed", "processCompleted"),
+        ("Method adaptations", "methodAdaptations"),
+        ("Evidence supports", "evidenceSupports"),
+        ("Evidence cannot support", "evidenceCannotSupport"),
+        ("Justified decision", "justifiedDecision"),
+        ("Smallest next learning action", "smallestNextLearningAction"),
+    )
+    return (
+        '<section class="section" aria-labelledby="outcome-statements-title">'
+        '<p class="eyebrow">Explicit handoff</p>'
+        '<h2 id="outcome-statements-title">Outcome boundaries and next learning</h2>'
+        '<dl class="definition-list">'
+        + "\n".join(
+            f"<dt>{escape(label)}</dt><dd>{escape(outcome.get(key) or 'Not established yet.')}</dd>"
+            for label, key in labels
+        )
+        + "</dl></section>"
+    )
+
+
 def text_values(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -2509,6 +3065,79 @@ def artifact_data_errors(
                 errors.append(
                     f"$.evidence[{index}].{field}: evidence text cannot be blank"
                 )
+    findings = data.get("materialFindings", [])
+    finding_ids = [
+        item.get("id") for item in findings if isinstance(item, dict)
+    ]
+    if len(finding_ids) != len(set(finding_ids)):
+        errors.append("$.materialFindings: material finding IDs must be unique")
+    for index, finding in enumerate(findings):
+        if not isinstance(finding, dict):
+            continue
+        support_keys = [
+            (
+                item.get("sessionId"),
+                item.get("sourceType"),
+                tuple(item.get("evidenceIds", [])),
+            )
+            for item in finding.get("support", [])
+            if isinstance(item, dict)
+        ]
+        contradiction_keys = [
+            (
+                item.get("sessionId"),
+                item.get("sourceType"),
+                tuple(item.get("evidenceIds", [])),
+            )
+            for item in finding.get("contradictions", [])
+            if isinstance(item, dict)
+        ]
+        outlier_keys = [
+            (
+                item.get("sessionId"),
+                item.get("sourceType"),
+                tuple(item.get("evidenceIds", [])),
+            )
+            for item in finding.get("outliers", [])
+            if isinstance(item, dict)
+        ]
+        if len(support_keys) != len(set(support_keys)):
+            errors.append(
+                f"$.materialFindings[{index}].support: duplicate provenance records"
+            )
+        if len(contradiction_keys) != len(set(contradiction_keys)):
+            errors.append(
+                f"$.materialFindings[{index}].contradictions: duplicate provenance records"
+            )
+        if len(outlier_keys) != len(set(outlier_keys)):
+            errors.append(
+                f"$.materialFindings[{index}].outliers: duplicate provenance records"
+            )
+        if (
+            set(support_keys) & set(contradiction_keys)
+            or set(support_keys) & set(outlier_keys)
+            or set(contradiction_keys) & set(outlier_keys)
+        ):
+            errors.append(
+                f"$.materialFindings[{index}]: the same evidence cannot be support, contradiction, or outlier more than once"
+            )
+    if artifact_id == "13-outcome" and data.get("status") in {
+        "ready-for-decision",
+        "complete",
+    }:
+        outcome = data.get("outcomeAssessment", {})
+        for field in (
+            "processCompleted",
+            "methodAdaptations",
+            "evidenceSupports",
+            "evidenceCannotSupport",
+            "justifiedDecision",
+            "smallestNextLearningAction",
+        ):
+            if not meaningful_text(outcome.get(field)):
+                errors.append(
+                    f"$.outcomeAssessment.{field}: a ready outcome must state this explicitly"
+                )
     return errors
 
 
@@ -2570,6 +3199,7 @@ def render_artifact(
     data: dict[str, Any],
     state: dict[str, Any],
     specs: dict[str, dict[str, Any]],
+    assessment: dict[str, Any],
 ) -> tuple[dict[str, Any], str]:
     require_valid_schema(
         data,
@@ -2578,6 +3208,7 @@ def render_artifact(
     )
     errors = artifact_data_errors(data, specs)
     errors.extend(evidence_claim_errors(data, state))
+    errors.extend(material_finding_errors(workspace, data, assessment))
     if errors:
         raise SprintError(f"Artifact {data.get('id')} is invalid: {'; '.join(errors)}")
     artifact_id = str(data["id"])
@@ -2621,6 +3252,28 @@ def render_artifact(
             "UPDATED_DISPLAY": escape(display_date(updated_at)),
             "SUMMARY_HTML": render_paragraphs(data.get("summary", [])),
             "PRIMARY_CONTENT_HTML": primary_content,
+            "OUTCOME_STATEMENTS_HTML": (
+                render_outcome_statements(data) if artifact_id == "13-outcome" else ""
+            ),
+            "COMPLETION_ASSESSMENT_HTML": (
+                '<section class="section" aria-labelledby="completion-assessment-title">'
+                '<p class="eyebrow">Four-dimensional assessment</p>'
+                '<h2 id="completion-assessment-title">Completion, evidence, and decision readiness</h2>'
+                '<div class="assessment-grid">'
+                f'{render_completion_dimensions(assessment)}</div>'
+                '<h3>Automatically generated limitations</h3><ul>'
+                f'{render_assessment_limitations(assessment)}</ul></section>'
+                if artifact_id == "13-outcome"
+                else ""
+            ),
+            "MATERIAL_FINDINGS_HTML": (
+                '<section class="section" aria-labelledby="material-findings-title">'
+                '<p class="eyebrow">Decision evidence</p>'
+                '<h2 id="material-findings-title">Material findings</h2>'
+                f'{render_material_findings(assessment)}</section>'
+                if artifact_id in {"12-synthesis", "13-outcome"}
+                else ""
+            ),
             "EVIDENCE_HTML": render_evidence(data.get("evidence", [])),
             "UNKNOWNS_HTML": render_list(data.get("unknowns", [])),
             "NEXT_ACTION_HTML": render_list(data.get("nextActions", []), ordered=True),
@@ -2842,6 +3495,7 @@ def render_dashboard(
     state: dict[str, Any],
     artifacts: list[dict[str, Any]],
     manifest: dict[str, Any],
+    assessment: dict[str, Any],
     prototype_brief: dict[str, Any] | None,
 ) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
@@ -2897,6 +3551,15 @@ def render_dashboard(
             "UPDATED_ISO": escape(updated_at),
             "UPDATED_DISPLAY": escape(display_date(updated_at)),
             "PROGRESS_PERCENT": progress,
+            "PROCESS_STATUS": escape(assessment["processStatus"]["label"]),
+            "COMPLETION_DIMENSIONS": render_completion_dimensions(assessment),
+            "SESSION_COUNTS": render_session_counts(assessment),
+            "EVIDENCE_STRENGTH": escape(assessment["evidenceStrength"]["label"]),
+            "EVIDENCE_QUALITY": escape(display_label(assessment["evidenceStrength"]["quality"])),
+            "DECISION_READINESS": escape(assessment["decisionReadiness"]["label"]),
+            "DECISION_READINESS_REASON": escape(assessment["decisionReadiness"]["reason"]),
+            "ASSESSMENT_LIMITATIONS": render_assessment_limitations(assessment),
+            "MATERIAL_FINDINGS": render_material_findings(assessment),
             "CURRENT_STEP": escape(f"{current}: {step_name(current)}"),
             "COMPLETED_STEPS": completed,
             "SKIPPED_STEPS": len(skipped),
@@ -2990,9 +3653,12 @@ def build_render_plan(workspace: Path) -> RenderPlan:
         ).read_text(encoding="utf-8")
     }
     data_paths = [path for path, _data in artifact_documents]
+    assessment = build_completion_assessment(workspace, state, artifact_documents)
     seen_ids: set[str] = set()
     for data_path, data in artifact_documents:
-        registration, rendered = render_artifact(workspace, data, state, specs)
+        registration, rendered = render_artifact(
+            workspace, data, state, specs, assessment
+        )
         artifact_id = str(registration["id"])
         if artifact_id in seen_ids:
             raise SprintError(f"Duplicate artifact id: {artifact_id}")
@@ -3012,7 +3678,7 @@ def build_render_plan(workspace: Path) -> RenderPlan:
         None,
     )
     generated_files[workspace / "index.html"] = render_dashboard(
-        state, registrations, manifest, prototype_brief
+        state, registrations, manifest, assessment, prototype_brief
     )
 
     normalized_state = dict(state)
@@ -3203,7 +3869,7 @@ def new_artifact_data(
     artifact_id: str, spec: dict[str, Any], timestamp: str | None = None
 ) -> dict[str, Any]:
     now = timestamp or utc_now()
-    data = {
+    data: dict[str, Any] = {
         "schemaVersion": ARTIFACT_SCHEMA_VERSION,
         "id": artifact_id,
         "status": "draft",
@@ -3211,9 +3877,20 @@ def new_artifact_data(
         "summary": ["This artifact is in progress."],
         "sections": [empty_section(title) for title in spec["requiredSections"]],
         "evidence": [],
+        "materialFindings": [],
         "unknowns": [],
         "nextActions": ["Replace draft entries with evidence-backed content."],
     }
+    if artifact_id == "13-outcome":
+        data["outcomeAssessment"] = {
+            "processCompleted": "",
+            "methodAdaptations": "",
+            "evidenceSupports": "",
+            "evidenceCannotSupport": "",
+            "justifiedDecision": "",
+            "decisionImpact": "investigate-or-retest",
+            "smallestNextLearningAction": "",
+        }
     if artifact_id == PROTOTYPE_BRIEF_ID:
         data["prototypeBrief"] = initial_prototype_brief()
         data["sections"] = [
@@ -3281,7 +3958,7 @@ def initial_session_manifest(
     warning_percent: int = DEFAULT_CONTEXT_WARNING_PERCENT,
 ) -> dict[str, Any]:
     return {
-        "schemaVersion": SESSION_SCHEMA_VERSION,
+        "schemaVersion": SESSION_MANIFEST_SCHEMA_VERSION,
         "recordType": "customer-session-manifest",
         "testArtifactWorkflowVersion": TEST_ARTIFACT_WORKFLOW_VERSION,
         "workspaceSlug": workspace_slug,
@@ -3385,23 +4062,39 @@ def sync_customer_testing_from_manifest(
     sessions = [
         item for item in manifest.get("sessions", []) if isinstance(item, dict)
     ]
-    counted = sum(item.get("counted") is True for item in sessions)
-    planned = int(customer.get("sessionsPlanned", 0))
-    if planned < len(sessions):
-        planned = len(sessions)
-    customer["sessionsPlanned"] = planned
-    customer["sessionsCompleted"] = counted
-    if counted:
-        customer["status"] = "complete" if planned and counted >= planned else "partial"
-    elif any(
-        item.get("status") in {"in-progress", "reopened", "packet-generated"}
+    invited = max(int(customer.get("sessionsInvited", 0)), len(sessions))
+    attempted = sum(item.get("attempted") is True for item in sessions)
+    completed = sum(item.get("counted") is True for item in sessions)
+    qualified = sum(item.get("participantFit") == "qualified" for item in sessions)
+    excluded = sum(item.get("participantFit") == "excluded" for item in sessions)
+    usable = sum(
+        item.get("counted") is True and item.get("usable") is True
         for item in sessions
-    ):
+    )
+    planned = int(customer.get("sessionsPlanned", 0))
+    customer["sessionsPlanned"] = planned
+    customer["sessionsInvited"] = invited
+    customer["sessionsAttempted"] = attempted
+    customer["sessionsCompleted"] = completed
+    customer["sessionsQualified"] = qualified
+    customer["sessionsExcluded"] = excluded
+    customer["sessionsUsable"] = usable
+    if customer.get("status") == "blocked" and (not planned or usable < planned):
+        pass
+    elif planned and usable >= planned:
+        customer["status"] = "complete"
+    elif completed:
+        customer["status"] = "partial"
+    elif attempted:
         customer["status"] = "in-progress"
     elif any(item.get("status") == "blocked" for item in sessions):
         customer["status"] = "blocked"
     elif sessions:
         customer["status"] = "scheduled"
+    elif invited:
+        customer["status"] = (
+            "scheduled" if customer.get("status") == "scheduled" else "recruiting"
+        )
     if sessions and not str(customer.get("target", "")).strip():
         customer["target"] = "Participants matching the approved recruitment criteria"
         customer["targetRationale"] = (
@@ -3585,6 +4278,119 @@ def session_summary_errors(
     return errors
 
 
+def material_finding_errors(
+    workspace: Path,
+    data: dict[str, Any],
+    assessment: dict[str, Any],
+) -> list[str]:
+    """Validate finding support, contradiction, participant, and version provenance."""
+
+    errors: list[str] = []
+    findings = data.get("materialFindings", [])
+    usable = int(assessment.get("sessionCounts", {}).get("usable", 0))
+    if (
+        data.get("id") in {"12-synthesis", "13-outcome"}
+        and data.get("status") in {"ready-for-decision", "complete"}
+        and usable > 0
+        and not findings
+    ):
+        errors.append(
+            "A ready synthesis or outcome with usable sessions requires traceable materialFindings"
+        )
+    if not findings:
+        return errors
+    manifest = load_session_manifest(workspace)
+    entries = {
+        str(item["sessionId"]): item
+        for item in manifest["sessions"]
+        if isinstance(item, dict)
+    }
+    summary_cache: dict[str, dict[str, Any]] = {}
+    for finding_index, finding in enumerate(findings):
+        if not isinstance(finding, dict):
+            continue
+        direct_support = False
+        for collection_name in ("support", "contradictions", "outliers"):
+            for source_index, source in enumerate(finding.get(collection_name, [])):
+                if not isinstance(source, dict):
+                    continue
+                prefix = (
+                    f"materialFindings[{finding_index}].{collection_name}[{source_index}]"
+                )
+                session_id = str(source.get("sessionId", ""))
+                entry = entries.get(session_id)
+                if entry is None:
+                    errors.append(f"{prefix} references unknown session {session_id}")
+                    continue
+                for source_key, entry_key in (
+                    ("participantId", "participantId"),
+                    ("prototypeVersion", "prototypeVersion"),
+                    ("questionsVersion", "questionsVersion"),
+                ):
+                    if source.get(source_key) != entry.get(entry_key):
+                        errors.append(
+                            f"{prefix}.{source_key} does not match session {session_id}"
+                        )
+                if collection_name == "support" and not entry.get("usable"):
+                    errors.append(
+                        f"{prefix} uses non-usable session {session_id} as finding support"
+                    )
+                if collection_name in {"contradictions", "outliers"} and not entry.get("counted"):
+                    errors.append(
+                        f"{prefix} uses a non-complete session as retained evidence"
+                    )
+                summary = summary_cache.get(session_id)
+                if summary is None:
+                    summary_path = workspace_relative_file(
+                        workspace,
+                        str(entry["summaryPath"]),
+                        f"Finding provenance summary {session_id}",
+                    )
+                    summary = load_session_summary(summary_path)
+                    summary_cache[session_id] = summary
+                source_type = source.get("sourceType")
+                if source_type == "direct-observation":
+                    known_ids = {
+                        str(item["id"])
+                        for item in summary["observations"]
+                        if isinstance(item, dict)
+                    }
+                    if collection_name == "support":
+                        direct_support = True
+                else:
+                    known_ids = {
+                        str(item["id"])
+                        for item in summary["inferences"]
+                        if isinstance(item, dict)
+                    }
+                unknown = sorted(set(source.get("evidenceIds", [])) - known_ids)
+                if unknown:
+                    errors.append(
+                        f"{prefix}.evidenceIds contains unknown {source_type} IDs: {', '.join(unknown)}"
+                    )
+        if finding.get("directness") == "direct-observation" and not direct_support:
+            errors.append(
+                f"materialFindings[{finding_index}] claims direct observation without direct support"
+            )
+        impact = finding.get("nextDecision", {}).get("impact")
+        if impact == "correct-observed-failure" and not direct_support:
+            errors.append(
+                f"materialFindings[{finding_index}] cannot justify a correction without direct observed support"
+            )
+        evidence = assessment.get("evidenceStrength", {})
+        if impact == "bounded-reversible-investment" and (
+            evidence.get("band") in {"not-tested", "early-limited"}
+            or evidence.get("mixedSegments")
+            or evidence.get("mixedQuality")
+            or evidence.get("mixedVersions")
+            or evidence.get("mixedEvidence")
+        ):
+            errors.append(
+                f"materialFindings[{finding_index}] does not support a bounded investment under the current evidence limitations"
+            )
+    return errors
+
+
 def command_init(args: argparse.Namespace) -> None:
     title = args.title.strip()
     challenge = args.challenge.strip()
@@ -3685,7 +4491,12 @@ def command_init(args: argparse.Namespace) -> None:
                 else ""
             ),
             "sessionsPlanned": session_target,
+            "sessionsInvited": 0,
+            "sessionsAttempted": 0,
             "sessionsCompleted": 0,
+            "sessionsQualified": 0,
+            "sessionsExcluded": 0,
+            "sessionsUsable": 0,
         },
         "openQuestions": [
             "Who is the specific target customer?",
@@ -5234,6 +6045,10 @@ def command_session_init(args: argparse.Namespace) -> None:
     state, _specs, _artifacts = load_workspace_documents(workspace)
     if state.get("executionMode") != "live":
         raise SprintError("Customer sessions may only be initialized in live mode")
+    if int(state.get("customerTesting", {}).get("sessionsPlanned", 0)) < 1:
+        raise SprintError(
+            "Record a positive planned customer-session target before initializing sessions"
+        )
     now = utc_now()
     if manifest_path(workspace).exists():
         manifest = load_session_manifest(workspace)
@@ -5346,14 +6161,35 @@ def command_session_init(args: argparse.Namespace) -> None:
     summary_relative = summary_path.relative_to(workspace).as_posix()
     consent_status = args.consent_status
     consent_recorded_at = now if consent_status != "pending" else None
+    participant_fit = args.participant_fit
+    participant_segment = args.participant_segment.strip()
+    fit_rationale = args.fit_rationale.strip()
+    if not participant_segment:
+        raise SprintError("--participant-segment cannot be empty")
+    if participant_fit != "unassessed" and not fit_rationale:
+        raise SprintError(
+            "A qualified or excluded participant requires --fit-rationale"
+        )
     record = {
-        "schemaVersion": SESSION_SCHEMA_VERSION,
+        "schemaVersion": CUSTOMER_SESSION_SCHEMA_VERSION,
         "recordType": "customer-session",
         "sessionId": session_id,
         "participantId": participant_id,
         "sessionDate": args.session_date,
         "runMode": args.run_mode,
         "status": "initialized",
+        "participant": {
+            "segment": participant_segment,
+            "fit": participant_fit,
+            "fitRationale": fit_rationale,
+        },
+        "evidenceQuality": {
+            "attemptedAt": None,
+            "protocolFidelity": "not-assessed",
+            "criticalScenariosCovered": [],
+            "usable": False,
+            "exclusionReason": "",
+        },
         "prototypeVersion": prototype_version,
         "questionsVersion": questions_version,
         "artifacts": {
@@ -5409,7 +6245,7 @@ def command_session_init(args: argparse.Namespace) -> None:
     if tested_version is not None:
         record["artifacts"]["testedVersion"] = tested_version
     summary = {
-        "schemaVersion": SESSION_SCHEMA_VERSION,
+        "schemaVersion": SESSION_SUMMARY_SCHEMA_VERSION,
         "recordType": "customer-session-summary",
         "sessionId": session_id,
         "participantId": participant_id,
@@ -5441,6 +6277,13 @@ def command_session_init(args: argparse.Namespace) -> None:
         "sessionDate": args.session_date,
         "prototypeVersion": prototype_version,
         "questionsVersion": questions_version,
+        "participantSegment": participant_segment,
+        "participantFit": participant_fit,
+        "protocolFidelity": "not-assessed",
+        "criticalScenariosCovered": [],
+        "attempted": False,
+        "usable": False,
+        "exclusionReason": "",
         "status": "initialized",
         "recordPath": record_relative,
         "summaryPath": summary_relative,
@@ -5654,9 +6497,16 @@ def command_session_checkpoint(args: argparse.Namespace) -> None:
     record["checkpoint"]["lastPersistedAt"] = now
     entry["status"] = args.status
     entry["updatedAt"] = now
+    if args.status == "in-progress":
+        record["evidenceQuality"]["attemptedAt"] = (
+            record["evidenceQuality"].get("attemptedAt") or now
+        )
+        entry["attempted"] = True
     if args.status == "withdrawn":
         entry["counted"] = False
         entry["includeInSynthesis"] = False
+        entry["usable"] = False
+        record["evidenceQuality"]["usable"] = False
         mark_synthesis_stale(manifest)
     sync_customer_testing_from_manifest(state, manifest)
     persist_customer_documents(
@@ -5749,6 +6599,44 @@ def command_session_complete(args: argparse.Namespace) -> None:
             record["limitations"].append(normalized)
         if normalized and normalized not in summary["limitations"]:
             summary["limitations"].append(normalized)
+    if args.protocol_fidelity is None:
+        raise SprintError("Completing a session requires --protocol-fidelity")
+    if not args.usable and not args.exclude_from_evidence:
+        raise SprintError(
+            "Completing a session requires either --usable or --exclude-from-evidence"
+        )
+    if summary.get("moderatorDeviations") and args.protocol_fidelity == "consistent":
+        raise SprintError(
+            "A session with moderator deviations cannot claim a consistent protocol; classify the deviation"
+        )
+    critical_scenarios = sorted(
+        {value.strip() for value in args.critical_scenario if value.strip()}
+    )
+    exclusion_reason = args.exclusion_reason.strip()
+    participant = record["participant"]
+    if participant["fit"] == "unassessed":
+        raise SprintError(
+            "Classify participant fit as qualified or excluded before completing the session"
+        )
+    if not participant["fitRationale"].strip():
+        raise SprintError("Completed participant fit requires a rationale")
+    if args.usable:
+        if participant["fit"] != "qualified":
+            raise SprintError("Only a qualified participant session can be usable")
+        if args.protocol_fidelity == "material-deviation":
+            raise SprintError(
+                "A materially deviated protocol cannot be marked usable; exclude it and explain why"
+            )
+        if not critical_scenarios:
+            raise SprintError(
+                "A usable session must name at least one covered critical scenario"
+            )
+        if exclusion_reason:
+            raise SprintError("A usable session cannot have an exclusion reason")
+    elif not exclusion_reason:
+        raise SprintError(
+            "--exclude-from-evidence requires a non-empty --exclusion-reason"
+        )
     summary_errors = session_summary_errors(summary, record, require_complete=True)
     if summary_errors:
         raise SprintError(
@@ -5771,6 +6659,13 @@ def command_session_complete(args: argparse.Namespace) -> None:
             "unavailableReason": args.usage_unavailable_reason.strip(),
         }
     record["rawEvidence"] = copy.deepcopy(summary["sourceReferences"])
+    record["evidenceQuality"] = {
+        "attemptedAt": record["evidenceQuality"].get("attemptedAt") or now,
+        "protocolFidelity": args.protocol_fidelity,
+        "criticalScenariosCovered": critical_scenarios,
+        "usable": bool(args.usable),
+        "exclusionReason": exclusion_reason,
+    }
     record["status"] = "complete"
     record["completedAt"] = now
     record["checkpoint"] = {
@@ -5791,18 +6686,51 @@ def command_session_complete(args: argparse.Namespace) -> None:
     summary["updatedAt"] = now
     entry["status"] = "complete"
     entry["counted"] = True
-    entry["includeInSynthesis"] = True
+    entry["attempted"] = True
+    entry["participantSegment"] = participant["segment"]
+    entry["participantFit"] = participant["fit"]
+    entry["protocolFidelity"] = args.protocol_fidelity
+    entry["criticalScenariosCovered"] = critical_scenarios
+    entry["usable"] = bool(args.usable)
+    entry["exclusionReason"] = exclusion_reason
+    entry["includeInSynthesis"] = bool(args.usable)
     entry["summarySha256"] = sha256_text(json_text(summary))
     entry["completedAt"] = now
     entry["updatedAt"] = now
+    if args.protocol_fidelity != "consistent":
+        add_fidelity_deviation(
+            state,
+            "11-customer-sessions",
+            {
+                "id": f"session-protocol-{record['sessionId']}",
+                "type": (
+                    "omission"
+                    if args.protocol_fidelity == "material-deviation"
+                    else "substitution"
+                ),
+                "canonicalMethod": "Run a consistent neutral one-to-one customer protocol",
+                "selectedMethod": (
+                    f"Session {record['sessionId']} completed with {args.protocol_fidelity.replace('-', ' ')}"
+                ),
+                "preservedPurpose": (
+                    "The session remains traceable; its usability and limitations are assessed explicitly."
+                ),
+                "reason": (
+                    exclusion_reason
+                    or "The session record documents a protocol deviation."
+                ),
+                "impact": impact_record(
+                    "The customer-session protocol was not followed consistently.",
+                    "The deviation can introduce moderator or protocol effects and is retained in evidence quality.",
+                    "Any decision must remain bounded to findings robust to the documented deviation.",
+                ),
+                "recordedAt": now,
+            },
+        )
     mark_synthesis_stale(manifest)
     sync_customer_testing_from_manifest(state, manifest)
     planned = state["customerTesting"]["sessionsPlanned"]
     counted = state["customerTesting"]["sessionsCompleted"]
-    if planned and counted > planned:
-        raise SprintError(
-            "Completing this session would exceed the planned target; update the customer plan first"
-        )
     persist_customer_documents(
         workspace,
         state,
@@ -5842,9 +6770,11 @@ def command_session_reopen(args: argparse.Namespace) -> None:
         "lastPersistedAt": now,
     }
     summary["status"] = "draft"
+    record["evidenceQuality"]["usable"] = False
     entry["status"] = "reopened"
     entry["counted"] = False
     entry["includeInSynthesis"] = False
+    entry["usable"] = False
     entry["summarySha256"] = None
     entry.pop("completedAt", None)
     entry["updatedAt"] = now
@@ -5895,14 +6825,18 @@ def command_synthesis_packet(args: argparse.Namespace) -> None:
         entries = [
             item
             for item in manifest["sessions"]
-            if item["counted"] and item["includeInSynthesis"]
+            if item["counted"] and item["usable"] and item["includeInSynthesis"]
         ]
     if not entries:
         raise SprintError("No completed, counted session summaries are available")
     for entry in entries:
-        if entry["status"] != "complete" or not entry["counted"]:
+        if (
+            entry["status"] != "complete"
+            or not entry["counted"]
+            or not entry["usable"]
+        ):
             raise SprintError(
-                f"Session {entry['sessionId']} is not complete and countable"
+                f"Session {entry['sessionId']} is not complete, qualified, and usable"
             )
     question_versions = {entry["questionsVersion"] for entry in entries}
     if len(question_versions) != 1:
@@ -5992,7 +6926,7 @@ SHA-256: `{catalog['scorecard']['sha256']}`
 - Claims, each with `claimId`, label, text, and one or more session/evidence trace IDs.
 - Question-by-question findings.
 - Patterns, contradictions, and outliers.
-- Confidence bounded by the available sessions.
+- Evidence strength bounded by the available sessions and their quality.
 - Limitations, uncertainties, and evidence gaps.
 - Prototype-version effects and recommended next action.
 """
@@ -6044,9 +6978,11 @@ def command_customer(args: argparse.Namespace) -> None:
         raise SprintError(f"Invalid customer-testing status: {args.status}")
     planned = args.planned
     completed = args.completed
+    invited = args.invited
     mode = state.get("executionMode")
     if mode != "live" and (
         (completed or 0) > 0
+        or (invited or 0) > 0
         or args.status in {"in-progress", "complete", "partial"}
     ):
         raise SprintError(
@@ -6065,21 +7001,34 @@ def command_customer(args: argparse.Namespace) -> None:
                 f"found {canonical_completed} counted session(s), not {completed}. "
                 "Use session-complete or session-reopen."
             )
-        if planned < len(manifest["sessions"]):
-            raise SprintError(
-                "Planned sessions cannot be lower than the number of initialized session records"
+        minimum_invited = len(manifest["sessions"])
+        if invited is None:
+            invited = max(
+                int(state.get("customerTesting", {}).get("sessionsInvited", 0)),
+                minimum_invited,
             )
-    elif completed is None:
-        completed = 0
-    if planned < 0 or completed < 0:
+        elif invited < minimum_invited:
+            raise SprintError(
+                "Invited sessions cannot be lower than the number of initialized session records"
+            )
+    else:
+        if completed is None:
+            completed = 0
+        if invited is None:
+            invited = int(
+                state.get("customerTesting", {}).get("sessionsInvited", 0)
+            )
+    assert invited is not None
+    assert completed is not None
+    if planned < 0 or invited < 0 or completed < 0:
         raise SprintError("Session counts cannot be negative")
-    if completed > planned:
-        raise SprintError("Completed sessions cannot exceed planned sessions")
+    if completed > invited:
+        raise SprintError("Completed sessions cannot exceed invited sessions")
     target = args.target.strip()
     if planned and not target:
         raise SprintError("A planned customer session target must name the suitable audience")
     if mode != "live" and (
-        completed > 0 or planned > 0 or args.status != "not-planned"
+        completed > 0 or invited > 0 or planned > 0 or args.status != "not-planned"
     ):
         raise SprintError(
             f"Execution mode {mode} cannot record live customer sessions; it "
@@ -6130,8 +7079,24 @@ def command_customer(args: argparse.Namespace) -> None:
         "target": target,
         "targetRationale": target_rationale,
         "sessionsPlanned": planned,
+        "sessionsInvited": invited,
+        "sessionsAttempted": int(
+            state.get("customerTesting", {}).get("sessionsAttempted", 0)
+        ),
         "sessionsCompleted": completed,
+        "sessionsQualified": int(
+            state.get("customerTesting", {}).get("sessionsQualified", 0)
+        ),
+        "sessionsExcluded": int(
+            state.get("customerTesting", {}).get("sessionsExcluded", 0)
+        ),
+        "sessionsUsable": int(
+            state.get("customerTesting", {}).get("sessionsUsable", 0)
+        ),
     }
+    if manifest_path(workspace).exists():
+        sync_customer_testing_from_manifest(state, manifest)
+        state["customerTesting"]["status"] = args.status
     if args.status in {"recruiting", "scheduled", "in-progress", "blocked"}:
         state["status"] = "waiting-for-customers" if args.status == "blocked" else state["status"]
     transition_errors = customer_testing_errors(state)
@@ -7069,12 +8034,19 @@ def skip_policy_error(state: dict[str, Any], step_id: str) -> str | None:
             "Live customer sessions may be skipped only when customer testing is "
             "blocked with zero completed sessions; otherwise record suitable sessions"
         )
-    if step_id == "12-synthesis" and "11-customer-sessions" in state.get(
-        "skippedSteps", []
-    ):
-        if mode != "live" or (
-            customer.get("status") == "blocked"
-            and customer.get("sessionsCompleted") == 0
+    if step_id == "12-synthesis":
+        if "11-customer-sessions" in state.get("skippedSteps", []):
+            if mode != "live" or (
+                customer.get("status") == "blocked"
+                and customer.get("sessionsCompleted") == 0
+            ):
+                return None
+        if (
+            mode == "live"
+            and "11-customer-sessions" in state.get("completedSteps", [])
+            and customer.get("status") in {"partial", "blocked"}
+            and customer.get("sessionsCompleted", 0) > 0
+            and customer.get("sessionsUsable", 0) == 0
         ):
             return None
     return (
@@ -7133,19 +8105,42 @@ def customer_testing_errors(state: dict[str, Any]) -> list[str]:
     if not isinstance(customer, dict):
         return ["customerTesting must be an object"]
     status = customer.get("status")
-    planned = customer.get("sessionsPlanned")
-    completed = customer.get("sessionsCompleted")
-    if not isinstance(planned, int) or isinstance(planned, bool):
-        errors.append("Customer sessionsPlanned must be an integer")
+    count_names = (
+        "sessionsPlanned",
+        "sessionsInvited",
+        "sessionsAttempted",
+        "sessionsCompleted",
+        "sessionsQualified",
+        "sessionsExcluded",
+        "sessionsUsable",
+    )
+    counts: dict[str, int] = {}
+    for name in count_names:
+        value = customer.get(name)
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors.append(f"Customer {name} must be an integer")
+        else:
+            counts[name] = value
+    if errors:
         return errors
-    if not isinstance(completed, int) or isinstance(completed, bool):
-        errors.append("Customer sessionsCompleted must be an integer")
-        return errors
-    if planned < 0 or completed < 0:
+    if any(value < 0 for value in counts.values()):
         errors.append("Customer session counts cannot be negative")
         return errors
-    if completed > planned:
-        errors.append("Completed customer sessions cannot exceed planned sessions")
+    planned = counts["sessionsPlanned"]
+    invited = counts["sessionsInvited"]
+    attempted = counts["sessionsAttempted"]
+    completed = counts["sessionsCompleted"]
+    qualified = counts["sessionsQualified"]
+    excluded = counts["sessionsExcluded"]
+    usable = counts["sessionsUsable"]
+    if attempted > invited:
+        errors.append("Attempted customer sessions cannot exceed invited sessions")
+    if completed > attempted:
+        errors.append("Completed customer sessions cannot exceed attempted sessions")
+    if qualified + excluded > invited:
+        errors.append("Qualified plus excluded participants cannot exceed invited sessions")
+    if usable > completed or usable > qualified:
+        errors.append("Usable sessions cannot exceed completed or qualified sessions")
     target = str(customer.get("target", ""))
     rationale = str(customer.get("targetRationale", ""))
     if planned > 0 and not target.strip():
@@ -7154,48 +8149,46 @@ def customer_testing_errors(state: dict[str, Any]) -> list[str]:
         errors.append("Planned customer sessions require a non-empty target rationale")
 
     if status == "not-planned":
-        if completed != 0:
+        if any((invited, attempted, completed, qualified, excluded, usable)):
             errors.append(
-                "Customer status not-planned requires zero completed sessions"
+                "Customer status not-planned requires zero invited, attempted, completed, qualified, excluded, and usable sessions"
             )
     elif status == "recruiting":
-        if planned < 1 or completed != 0:
+        if planned < 1 or completed != 0 or attempted != 0:
             errors.append(
-                "Customer status recruiting requires planned sessions and zero "
-                "completed sessions; use in-progress or partial after a session"
+                "Customer status recruiting requires a positive plan and no attempted or completed sessions"
             )
     elif status == "scheduled":
-        if planned < 1 or completed != 0:
+        if planned < 1 or invited < 1 or completed != 0:
             errors.append(
-                "Customer status scheduled requires planned sessions and zero completed sessions"
+                "Customer status scheduled requires planned and invited sessions with zero completed sessions"
             )
     elif status == "in-progress":
-        if planned < 1 or not 0 <= completed < planned:
+        if planned < 1 or attempted < 1 or usable >= planned:
             errors.append(
-                "Customer status in-progress requires a positive plan with fewer "
-                "completed sessions than planned"
+                "Customer status in-progress requires an attempted session and fewer usable sessions than planned"
             )
     elif status == "complete":
-        if planned < 1 or completed != planned:
+        if planned < 1 or usable < planned:
             errors.append(
-                "Customer status complete requires completed sessions to equal a positive planned count"
+                "Customer status complete requires usable sessions to meet or exceed the positive planned target"
             )
     elif status == "partial":
-        if planned < 2 or not 0 < completed < planned:
+        if planned < 1 or completed < 1 or usable >= planned:
             errors.append(
-                "Customer status partial requires 0 < completed sessions < planned sessions"
+                "Customer status partial requires completed activity with fewer usable sessions than planned"
             )
     elif status == "blocked":
-        if planned > 0 and completed >= planned:
+        if planned > 0 and usable >= planned:
             errors.append(
-                "Customer status blocked requires fewer completed sessions than planned"
+                "Customer status blocked requires fewer usable sessions than planned"
             )
 
     if state.get("executionMode") != "live":
-        if status != "not-planned" or planned != 0 or completed != 0:
+        if status != "not-planned" or any(counts.values()):
             errors.append(
                 "Non-live execution modes require customer status not-planned and "
-                "zero planned/completed sessions"
+                "zero customer-session counts"
             )
     return errors
 
@@ -7537,12 +8530,23 @@ def terminal_state_errors(state: dict[str, Any]) -> list[str]:
                 "A live untested terminal state requires blocked customer testing with zero sessions"
             )
     else:
-        if (
-            "11-customer-sessions" not in completed
-            or "12-synthesis" not in completed
-        ):
+        usable = int(customer.get("sessionsUsable", 0))
+        if "11-customer-sessions" not in completed:
             errors.append(
-                "A tested live terminal state requires completed customer sessions and synthesis"
+                "A live terminal state with attempted testing requires completed customer sessions"
+            )
+        if usable == 0:
+            if "12-synthesis" not in skipped:
+                errors.append(
+                    "A live terminal state with zero usable sessions requires synthesis to be explicitly skipped"
+                )
+            if outcome not in {"investigate", "stop"}:
+                errors.append(
+                    "A live run with zero usable sessions may close only as Investigate or Stop"
+                )
+        elif "12-synthesis" not in completed:
+            errors.append(
+                "A tested live terminal state with usable evidence requires completed synthesis"
             )
         if customer.get("status") not in {"complete", "partial"}:
             errors.append(
@@ -7968,6 +8972,31 @@ def customer_testing_record_errors(
         ):
             if entry[key] != record[key]:
                 errors.append(f"Session {session_id} manifest {key} does not match its record")
+        participant = record["participant"]
+        quality = record["evidenceQuality"]
+        for entry_key, record_value in (
+            ("participantSegment", participant["segment"]),
+            ("participantFit", participant["fit"]),
+            ("protocolFidelity", quality["protocolFidelity"]),
+            ("criticalScenariosCovered", quality["criticalScenariosCovered"]),
+            ("usable", quality["usable"]),
+            ("exclusionReason", quality["exclusionReason"]),
+        ):
+            if entry[entry_key] != record_value:
+                errors.append(
+                    f"Session {session_id} manifest {entry_key} does not match its record"
+                )
+        attempted_should_be_true = quality["attemptedAt"] is not None
+        if entry["attempted"] != attempted_should_be_true:
+            errors.append(
+                f"Session {session_id} attempted flag must match attemptedAt"
+            )
+        if participant["fit"] != "unassessed" and not participant[
+            "fitRationale"
+        ].strip():
+            errors.append(
+                f"Session {session_id} participant fit requires a rationale"
+            )
         if record["artifacts"]["summaryPath"] != entry["summaryPath"]:
             errors.append(f"Session {session_id} record points to a different summary")
         if requires_tested_version:
@@ -8054,9 +9083,39 @@ def customer_testing_record_errors(
             errors.append(
                 f"Session {session_id} counted flag must match complete status"
             )
-        if entry["includeInSynthesis"] and not entry["counted"]:
+        if entry["includeInSynthesis"] and (
+            not entry["counted"] or not entry["usable"]
+        ):
             errors.append(
-                f"Session {session_id} cannot enter synthesis unless it is counted"
+                f"Session {session_id} cannot enter synthesis unless it is completed and usable"
+            )
+        if quality["usable"]:
+            if record["status"] != "complete":
+                errors.append(f"Session {session_id} is usable before completion")
+            if participant["fit"] != "qualified":
+                errors.append(
+                    f"Session {session_id} is usable without a qualified participant"
+                )
+            if quality["protocolFidelity"] in {
+                "not-assessed",
+                "material-deviation",
+            }:
+                errors.append(
+                    f"Session {session_id} is usable without an acceptable protocol assessment"
+                )
+            if not quality["criticalScenariosCovered"]:
+                errors.append(
+                    f"Session {session_id} is usable without critical-scenario coverage"
+                )
+            if quality["exclusionReason"].strip():
+                errors.append(
+                    f"Session {session_id} is usable but retains an exclusion reason"
+                )
+        elif record["status"] == "complete" and not quality[
+            "exclusionReason"
+        ].strip():
+            errors.append(
+                f"Session {session_id} is completed but unusable without an exclusion reason"
             )
         if record["status"] == "complete":
             if summary["status"] != "complete":
@@ -8169,10 +9228,18 @@ def customer_testing_record_errors(
     canonical_state = copy.deepcopy(state)
     sync_customer_testing_from_manifest(canonical_state, manifest)
     canonical_customer = canonical_state.get("customerTesting", {})
-    if customer.get("sessionsPlanned") != canonical_customer.get("sessionsPlanned"):
-        errors.append(
-            "sprint-state customer planned count is lower than the session manifest requires"
-        )
+    for count_name in (
+        "sessionsInvited",
+        "sessionsAttempted",
+        "sessionsCompleted",
+        "sessionsQualified",
+        "sessionsExcluded",
+        "sessionsUsable",
+    ):
+        if customer.get(count_name) != canonical_customer.get(count_name):
+            errors.append(
+                f"sprint-state customer {count_name} does not match the session manifest"
+            )
     if customer.get("status") != canonical_customer.get("status"):
         errors.append(
             "sprint-state customer status does not match the session manifest lifecycle"
@@ -8197,9 +9264,13 @@ def customer_testing_record_errors(
         if set(hash_session_ids) != set(synthesis["sessionIds"]):
             errors.append("Synthesis summary hashes do not match the selected sessions")
         for item in selected_entries.values():
-            if not item["counted"] or item["status"] != "complete":
+            if (
+                not item["counted"]
+                or not item["usable"]
+                or item["status"] != "complete"
+            ):
                 errors.append(
-                    f"Synthesis packet references non-complete session {item['sessionId']}"
+                    f"Synthesis packet references non-usable session {item['sessionId']}"
                 )
             if item["questionsVersion"] != synthesis["questionsVersion"]:
                 errors.append(
@@ -8460,6 +9531,7 @@ def workspace_errors(workspace: Path) -> list[str]:
         {item["id"]: item for item in state["artifacts"]} if state_is_valid else {}
     )
     artifact_documents: dict[str, dict[str, Any]] = {}
+    artifact_document_pairs: list[tuple[Path, dict[str, Any]]] = []
     for data_path in sorted((workspace / "artifact-data").glob("*.json")):
         try:
             data = read_json(data_path)
@@ -8490,6 +9562,7 @@ def workspace_errors(workspace: Path) -> list[str]:
             workspace_json_is_valid = False
         artifact_id = data["id"]
         artifact_documents[artifact_id] = data
+        artifact_document_pairs.append((data_path, data))
         if artifact_id in specs:
             output = workspace / "artifacts" / specs[artifact_id]["filename"]
             if not output.exists():
@@ -8500,6 +9573,20 @@ def workspace_errors(workspace: Path) -> list[str]:
         errors.extend(
             artifact_workflow_errors(state, specs, artifact_documents)
         )
+        try:
+            assessment = build_completion_assessment(
+                workspace, state, artifact_document_pairs
+            )
+            for data_path, data in artifact_document_pairs:
+                finding_errors = material_finding_errors(
+                    workspace, data, assessment
+                )
+                errors.extend(f"{data_path}: {item}" for item in finding_errors)
+                if finding_errors:
+                    workspace_json_is_valid = False
+        except SprintError as error:
+            errors.append(str(error))
+            workspace_json_is_valid = False
     if state_is_valid and "10-prototype" in state["completedSteps"]:
         brief_data = artifact_documents.get(PROTOTYPE_BRIEF_ID, {})
         brief = brief_data.get("prototypeBrief", {})
@@ -8528,17 +9615,31 @@ def workspace_errors(workspace: Path) -> list[str]:
     return errors
 
 
-def migrate_workspace_state_v1_to_v3(data: dict[str, Any]) -> dict[str, Any]:
-    """Add explicit mode, fidelity, terminal, and skip-audit records."""
+def add_evidence_count_dimensions(state: dict[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(state)
+    customer = migrated.setdefault("customerTesting", {})
+    completed = int(customer.get("sessionsCompleted", 0))
+    customer.setdefault("sessionsInvited", completed)
+    customer.setdefault("sessionsAttempted", completed)
+    customer.setdefault("sessionsQualified", 0)
+    customer.setdefault("sessionsExcluded", 0)
+    customer.setdefault("sessionsUsable", 0)
+    if customer.get("status") == "complete" and completed:
+        customer["status"] = "partial"
+    migrated["schemaVersion"] = STATE_SCHEMA_VERSION
+    return migrated
 
-    return migrate_legacy_state(data)
+
+def migrate_workspace_state_v1_to_v4(data: dict[str, Any]) -> dict[str, Any]:
+    """Add fidelity, terminal truth, skip audit, and evidence dimensions."""
+
+    return add_evidence_count_dimensions(migrate_legacy_state(data))
 
 
-def migrate_workspace_state_v2_to_v3(data: dict[str, Any]) -> dict[str, Any]:
-    """Add truthful terminal classification and auditable skip records."""
+def add_terminal_state_dimensions(data: dict[str, Any]) -> dict[str, Any]:
+    """Add the schema-3 terminal classification and auditable skip records."""
 
     migrated = copy.deepcopy(data)
-    migrated["schemaVersion"] = STATE_SCHEMA_VERSION
     fallback_timestamp = str(
         migrated.get("updatedAt") or migrated.get("createdAt") or utc_now()
     )
@@ -8580,21 +9681,128 @@ def migrate_workspace_state_v2_to_v3(data: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
-def migrate_artifact_data_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
-    """Migrate validated legacy artifact content without changing its meaning."""
+def migrate_workspace_state_v2_to_v4(data: dict[str, Any]) -> dict[str, Any]:
+    """Add terminal truth and independently counted evidence dimensions."""
+
+    return add_evidence_count_dimensions(add_terminal_state_dimensions(data))
+
+
+def migrate_workspace_state_v3_to_v4(data: dict[str, Any]) -> dict[str, Any]:
+    """Preserve schema-3 terminal truth while adding evidence dimensions."""
+
+    return add_evidence_count_dimensions(data)
+
+
+def migrate_artifact_data_to_v3(data: dict[str, Any]) -> dict[str, Any]:
+    """Add explicit material-findings and outcome-boundary containers."""
 
     migrated = copy.deepcopy(data)
     migrated["schemaVersion"] = ARTIFACT_SCHEMA_VERSION
+    for section in migrated.get("sections", []):
+        if isinstance(section, dict) and section.get("title") == "Confidence":
+            section["title"] = "Evidence strength"
+    migrated.setdefault("materialFindings", [])
+    for finding in migrated["materialFindings"]:
+        if isinstance(finding, dict):
+            finding.setdefault("outliers", [])
+    if migrated.get("id") == "13-outcome":
+        migrated.setdefault(
+            "outcomeAssessment",
+            {
+                "processCompleted": "Legacy outcome; process completion requires review.",
+                "methodAdaptations": "Legacy outcome; method adaptations require review.",
+                "evidenceSupports": "Legacy outcome; supported claims require review.",
+                "evidenceCannotSupport": "Statistical confidence, representativeness, and prevalence were not established.",
+                "justifiedDecision": "Investigate the legacy evidence before relying on this outcome.",
+                "decisionImpact": "investigate-or-retest",
+                "smallestNextLearningAction": "Reassess the legacy session records and add traceable material findings.",
+            },
+        )
+    return migrated
+
+
+def migrate_session_manifest_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(data)
+    migrated["schemaVersion"] = SESSION_MANIFEST_SCHEMA_VERSION
+    for entry in migrated.get("sessions", []):
+        completed = entry.get("counted") is True
+        entry.setdefault("participantSegment", "Legacy unclassified segment")
+        entry.setdefault("participantFit", "unassessed")
+        entry.setdefault("protocolFidelity", "not-assessed")
+        entry.setdefault("criticalScenariosCovered", [])
+        entry.setdefault(
+            "attempted",
+            completed
+            or entry.get("status") in {"in-progress", "reopened", "complete"},
+        )
+        entry.setdefault("usable", False)
+        entry.setdefault(
+            "exclusionReason",
+            (
+                "Legacy completion requires participant-fit, protocol, and scenario reassessment before synthesis."
+                if completed
+                else ""
+            ),
+        )
+        if completed:
+            entry["includeInSynthesis"] = False
+    if migrated.get("synthesis", {}).get("status") == "packet-generated":
+        migrated["synthesis"]["status"] = "stale"
+    return migrated
+
+
+def migrate_customer_session_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    migrated = copy.deepcopy(data)
+    migrated["schemaVersion"] = CUSTOMER_SESSION_SCHEMA_VERSION
+    completed = migrated.get("status") == "complete"
+    migrated.setdefault(
+        "participant",
+        {
+            "segment": "Legacy unclassified segment",
+            "fit": "unassessed",
+            "fitRationale": "Participant fit was not explicitly assessed in schema 1.0.",
+        },
+    )
+    migrated.setdefault(
+        "evidenceQuality",
+        {
+            "attemptedAt": (
+                migrated.get("completedAt")
+                if completed
+                else (
+                    migrated.get("updatedAt")
+                    if migrated.get("status") in {"in-progress", "reopened"}
+                    else None
+                )
+            ),
+            "protocolFidelity": "not-assessed",
+            "criticalScenariosCovered": [],
+            "usable": False,
+            "exclusionReason": (
+                "Legacy completion requires participant-fit, protocol, and scenario reassessment before synthesis."
+                if completed
+                else ""
+            ),
+        },
+    )
     return migrated
 
 
 MIGRATIONS = {
     "workspace-state": {
-        (LEGACY_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v1_to_v3,
-        (PREVIOUS_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v2_to_v3,
+        (LEGACY_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v1_to_v4,
+        (PREVIOUS_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v2_to_v4,
+        (INTERMEDIATE_STATE_SCHEMA_VERSION, STATE_SCHEMA_VERSION): migrate_workspace_state_v3_to_v4,
     },
     "artifact-data": {
-        (LEGACY_ARTIFACT_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION): migrate_artifact_data_v1_to_v2
+        (LEGACY_ARTIFACT_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION): migrate_artifact_data_to_v3,
+        (PREVIOUS_ARTIFACT_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION): migrate_artifact_data_to_v3,
+    },
+    "session-manifest": {
+        (LEGACY_SESSION_SCHEMA_VERSION, SESSION_MANIFEST_SCHEMA_VERSION): migrate_session_manifest_v1_to_v2,
+    },
+    "customer-session": {
+        (LEGACY_SESSION_SCHEMA_VERSION, CUSTOMER_SESSION_SCHEMA_VERSION): migrate_customer_session_v1_to_v2,
     },
 }
 
@@ -8607,6 +9815,15 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
     if data_dir.exists():
         documents.extend(
             (path, "artifact-data") for path in sorted(data_dir.glob("*.json"))
+        )
+    customer_manifest = manifest_path(workspace)
+    if customer_manifest.exists():
+        documents.append((customer_manifest, "session-manifest"))
+    session_root = workspace / CUSTOMER_TESTING_DIR / "sessions"
+    if session_root.exists():
+        documents.extend(
+            (path, "customer-session")
+            for path in sorted(session_root.glob("*/session.json"))
         )
     plan: list[tuple[Path, str, dict[str, Any]]] = []
     errors: list[str] = []
@@ -8673,13 +9890,13 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
                 )
                 continue
         plan.append((path, family, migrated))
-    manifest_path = assignment_manifest_path(workspace)
-    if manifest_path.exists():
+    assignment_path = assignment_manifest_path(workspace)
+    if assignment_path.exists():
         try:
-            manifest = read_json(manifest_path)
+            manifest = read_json(assignment_path)
             errors.extend(
                 formatted_schema_errors(
-                    manifest, "assignment-manifest", manifest_path
+                    manifest, "assignment-manifest", assignment_path
                 )
             )
         except SprintError as error:
@@ -8694,12 +9911,35 @@ def migration_plan(workspace: Path) -> list[tuple[Path, str, dict[str, Any]]]:
             )
             manifest = empty_assignment_manifest(manifest_timestamp)
             manifest_errors = formatted_schema_errors(
-                manifest, "assignment-manifest", manifest_path
+                manifest, "assignment-manifest", assignment_path
             )
             if manifest_errors:
                 errors.extend(manifest_errors)
             else:
-                plan.append((manifest_path, "assignment-manifest", manifest))
+                plan.append((assignment_path, "assignment-manifest", manifest))
+        except SprintError as error:
+            errors.append(str(error))
+    if not customer_manifest.exists():
+        try:
+            source_state = read_json(state_path(workspace))
+            customer_timestamp = str(
+                source_state.get("updatedAt")
+                or source_state.get("createdAt")
+                or utc_now()
+            )
+            session_manifest = initial_session_manifest(
+                str(source_state.get("slug", "migrated-sprint")),
+                customer_timestamp,
+            )
+            session_manifest_errors = formatted_schema_errors(
+                session_manifest, "session-manifest", customer_manifest
+            )
+            if session_manifest_errors:
+                errors.extend(session_manifest_errors)
+            else:
+                plan.append(
+                    (customer_manifest, "session-manifest", session_manifest)
+                )
         except SprintError as error:
             errors.append(str(error))
     if errors:
@@ -8785,10 +10025,22 @@ def command_validate(args: argparse.Namespace) -> None:
 
 def command_status(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
-    state, _specs, _artifacts = load_workspace_documents(workspace)
+    state, _specs, artifact_documents = load_workspace_documents(workspace)
     manifest = load_assignment_manifest(workspace)
+    assessment = build_completion_assessment(
+        workspace, state, artifact_documents
+    )
     if args.json:
-        print(json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True))
+        exported = copy.deepcopy(state)
+        exported["completionAssessment"] = assessment
+        print(
+            json.dumps(
+                exported,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
         return
     print(f"Sprint: {state['title']}")
     print(f"Method profile: {state['methodProfile']}")
@@ -8804,7 +10056,22 @@ def command_status(args: argparse.Namespace) -> None:
         "Method fidelity: "
         f"{state.get('fidelity', {}).get('summary', {}).get('assessment', 'unknown')}"
     )
-    print(f"Process status: {state['status']}")
+    print(f"Process status: {assessment['processStatus']['status']}")
+    print(
+        "Process steps: "
+        + ", ".join(
+            f"{display_label(name)} {value}"
+            for name, value in assessment["processStatus"]["steps"].items()
+        )
+    )
+    print(
+        "Evidence strength: "
+        f"{assessment['evidenceStrength']['band']} ({assessment['evidenceStrength']['quality']})"
+    )
+    print(
+        "Decision readiness: "
+        f"{assessment['decisionReadiness']['status']} — {assessment['decisionReadiness']['reason']}"
+    )
     print(f"Terminal state: {state['terminalState']}")
     validation_label, validation_notice, _validation_class = validation_truth(state)
     print(f"Validation status: {validation_label}")
@@ -8833,11 +10100,16 @@ def command_status(args: argparse.Namespace) -> None:
     )
     print(f"Specialist assignments: {returned}/{len(assignments)} returned or accepted")
     customer = state.get("customerTesting", {})
+    counts = assessment["sessionCounts"]
+    print(f"Customer testing: {customer.get('status')}")
     print(
-        "Customer testing: "
-        f"{customer.get('status')}, {customer.get('sessionsCompleted', 0)}/"
-        f"{customer.get('sessionsPlanned', 0)} sessions"
+        "Session counts: "
+        + ", ".join(f"{name} {value}" for name, value in counts.items())
     )
+    if assessment["limitations"]:
+        print("Automatic limitations:")
+        for limitation in assessment["limitations"]:
+            print(f"- {limitation}")
     if manifest_path(workspace).exists():
         manifest = load_session_manifest(workspace)
         current_versions = manifest["currentVersions"]
@@ -9094,6 +10366,21 @@ def build_parser() -> argparse.ArgumentParser:
     session_init_parser.add_argument("--session-id", required=True)
     session_init_parser.add_argument("--participant-id", required=True)
     session_init_parser.add_argument(
+        "--participant-segment",
+        required=True,
+        help="Stable, non-identifying target-customer segment label",
+    )
+    session_init_parser.add_argument(
+        "--participant-fit",
+        choices=sorted(PARTICIPANT_FITS),
+        default="unassessed",
+    )
+    session_init_parser.add_argument(
+        "--fit-rationale",
+        default="",
+        help="Why this participant is qualified or excluded",
+    )
+    session_init_parser.add_argument(
         "--session-date",
         default=datetime.now(timezone.utc).date().isoformat(),
     )
@@ -9173,6 +10460,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     session_complete_parser.add_argument("--removed-category", action="append", default=[])
     session_complete_parser.add_argument("--limitation", action="append", default=[])
+    session_complete_parser.add_argument(
+        "--protocol-fidelity",
+        choices=sorted(PROTOCOL_FIDELITIES - {"not-assessed"}),
+    )
+    session_complete_parser.add_argument(
+        "--critical-scenario",
+        action="append",
+        default=[],
+        help="Critical scenario actually covered; repeat for multiple scenarios",
+    )
+    usable_group = session_complete_parser.add_mutually_exclusive_group()
+    usable_group.add_argument(
+        "--usable",
+        action="store_true",
+        help="Include this completed, qualified session in evidence synthesis",
+    )
+    usable_group.add_argument(
+        "--exclude-from-evidence",
+        action="store_true",
+        help="Complete the record without treating the session as usable evidence",
+    )
+    session_complete_parser.add_argument(
+        "--exclusion-reason",
+        default="",
+        help="Required when the completed session is not usable",
+    )
     session_complete_parser.add_argument("--usage-input-tokens", type=int)
     session_complete_parser.add_argument("--usage-output-tokens", type=int)
     session_complete_parser.add_argument("--usage-total-tokens", type=int)
@@ -9204,6 +10517,11 @@ def build_parser() -> argparse.ArgumentParser:
     customer_parser.add_argument("--status", required=True, choices=sorted(CUSTOMER_STATUSES))
     customer_parser.add_argument("--target", default="")
     customer_parser.add_argument("--planned", type=int, default=0)
+    customer_parser.add_argument(
+        "--invited",
+        type=int,
+        help="People invited so far; attempts and later counts remain manifest-derived",
+    )
     customer_parser.add_argument("--completed", type=int)
     customer_parser.add_argument("--rationale")
     customer_parser.set_defaults(handler=command_customer)

@@ -180,6 +180,8 @@ In live mode, if no real customer evidence is available, stop at `Ready for cust
 
 For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, auditably skip the live customer-session and customer-evidence synthesis steps, use only `Synthetic rehearsal` labels for role-play, and never complete a customer-evidence artifact.
 
+Keep planned, invited, attempted, completed, qualified, excluded, and usable counts separate. Report zero usable as not tested, one or two as early/limited, three or four as partial directional, five as the book target met, and more than five as extended. These are method-coverage descriptions, never statistical confidence or population validation. A completed session enters synthesis only when participant fit, protocol fidelity, critical-scenario coverage, and explicit usability support it.
+
 For every live participant, follow the full command sequence in
 `references/customer-testing.md`. Never set a completed count directly: the
 session manifest derives it from unique validated records. Start the participant
@@ -188,8 +190,10 @@ and preserve immutable files for every prototype/questions version.
 
 ## Complete the sprint
 
-Finish only after the human makes a recorded outcome decision: `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`. Publish the final HTML outcome report with evidence, confidence, unresolved risks, owners, and dated next actions. Mark customer testing truthfully as complete, partial, or not conducted.
+Finish only after the human makes a recorded outcome decision: `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`. Publish the final HTML outcome report with process status, method fidelity, descriptive evidence strength, decision readiness, limitations, unresolved risks, owners, and dated next actions. Mark customer testing truthfully as complete, partial, or not conducted; never translate participant count into statistical confidence.
 
 The dashboard, every rendered artifact, status output, and any sanitized export must show process completion separately from `terminalState`, customer validation, and the generated method-fidelity assessment. The fidelity summary must list the one-human-plus-AI team-model adaptation, every material deviation, and the limitations those choices place on evidence and decision readiness.
+
+Every material finding must retain `n/N` support, contradictions, anonymized participant/session IDs, prototype and question versions, exact observation/inference IDs, limitations, remaining uncertainty, and an action-specific next decision with the smallest next learning action. Keep mixed segments, mixed versions, moderator deviations, excluded sessions, and automatic partial-evidence limitations visible.
 
 Run `validate --workspace <sprint-directory>` before handoff. Do not call the sprint complete while validation errors remain.

@@ -26,13 +26,35 @@
     "updatedAt"
   ],
   "properties": {
-    "schemaVersion": {"const": "1.0"},
+    "schemaVersion": {"type": "string"},
     "recordType": {"const": "customer-session"},
     "sessionId": {"$ref": "#/$defs/sessionIdentifier"},
     "participantId": {"$ref": "#/$defs/participantIdentifier"},
     "sessionDate": {"type": "string", "format": "date"},
     "runMode": {"enum": ["human-run", "agent-assisted"]},
     "status": {"enum": ["initialized", "packet-generated", "in-progress", "complete", "reopened", "blocked", "withdrawn"]},
+    "participant": {
+      "type": "object",
+      "required": ["segment", "fit", "fitRationale"],
+      "properties": {
+        "segment": {"type": "string", "minLength": 1},
+        "fit": {"enum": ["unassessed", "qualified", "excluded"]},
+        "fitRationale": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "evidenceQuality": {
+      "type": "object",
+      "required": ["attemptedAt", "protocolFidelity", "criticalScenariosCovered", "usable", "exclusionReason"],
+      "properties": {
+        "attemptedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "protocolFidelity": {"enum": ["not-assessed", "consistent", "minor-deviation", "material-deviation"]},
+        "criticalScenariosCovered": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "usable": {"type": "boolean"},
+        "exclusionReason": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
     "prototypeVersion": {"$ref": "#/$defs/version"},
     "questionsVersion": {"$ref": "#/$defs/version"},
     "artifacts": {

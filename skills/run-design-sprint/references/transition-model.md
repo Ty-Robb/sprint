@@ -89,23 +89,39 @@ claims or sources do not count as content.
 
 | Status | Count invariant |
 |---|---|
-| `not-planned` | `sessionsCompleted == 0`; a Sprint-book live target may already be configured |
-| `recruiting` | `sessionsPlanned > 0` and `sessionsCompleted == 0` |
-| `scheduled` | `sessionsPlanned > 0` and `sessionsCompleted == 0` |
-| `in-progress` | `0 <= sessionsCompleted < sessionsPlanned`; the manifest has a packet-generated, active, or reopened session |
-| `complete` | `sessionsPlanned > 0` and both counts are equal |
-| `partial` | `0 < sessionsCompleted < sessionsPlanned` |
-| `blocked` | completed sessions remain below the planned count; zero/zero is allowed before a target is secured |
+| `not-planned` | invited, attempted, completed, qualified, excluded, and usable are zero; a Sprint-book live target may already be configured |
+| `recruiting` | `sessionsPlanned > 0`, with no attempted or completed sessions |
+| `scheduled` | planned and invited are positive, with zero completed sessions |
+| `in-progress` | at least one session is attempted and usable remains below the planned target |
+| `complete` | `sessionsPlanned > 0` and usable meets or exceeds the target; extended sessions do not rewrite the plan |
+| `partial` | at least one session completed and usable remains below the planned target |
+| `blocked` | usable remains below the planned target; zero activity is allowed before a target is secured |
 
 Positive plans require a non-blank audience and rationale. Counts cannot be
-negative or exceed the plan. Non-live modes require `not-planned` and zero/zero.
+negative; attempted cannot exceed invited, completed cannot exceed attempted,
+qualified plus excluded cannot exceed invited, and usable cannot exceed either
+completed or qualified. Completed and usable may exceed the planned target so
+extended testing remains visible. Non-live modes require `not-planned` and all
+seven counts at zero.
 Every completed live session must be a counted entry in the canonical session
 manifest with an isolated session record and a complete anonymized summary.
 Completed records require granted consent, completed or unnecessary redaction,
 immutable prototype/question version bindings, a unique participant/session
-identity, and non-empty traceable evidence. The manifest count must equal
-`sessionsCompleted`; the rendered `11-customer-evidence` artifact presents the
-evidence but is not the source of truth for completion.
+identity, and non-empty traceable evidence. The manifest lifecycle and quality
+fields must reconcile the attempted, completed, qualified, excluded, and usable
+state counts. Only completed, qualified, explicitly usable sessions may enter
+synthesis; the rendered `11-customer-evidence` artifact presents the evidence
+but is not the source of truth for any count.
+
+Customer-session bands are descriptive: zero usable is `not-tested`, one or two
+is `early-limited`, three or four is `partial-directional`, five is
+`book-target-met`, and more than five is `extended`. These labels report method
+coverage, never statistical confidence, representativeness, or prevalence.
+
+When real sessions were completed but none are usable, step 11 may be completed
+as partial and step 12 must be explicitly skipped with the evidence-quality
+reason. That terminal path is still `not-tested` for evidence strength and may
+close only as `Investigate` or `Stop`.
 
 ## Terminal states
 
@@ -131,7 +147,7 @@ The terminal evidence modes are:
 | `no-sprint` | `terminalState: closed-unvalidated`; only the direct or post-research no-sprint history; Gates 2–4 not applicable | `Investigate` or `Stop` |
 
 The `complete` process status can be entered only by closing Gate 5. It never
-stands alone: schema 3.0 requires the matching `terminalState`. Updating a
+stands alone: schema 3.0 and later require the matching `terminalState`. Updating a
 generic next action cannot manufacture either terminal record. See
 [execution-modes.md](execution-modes.md) for the rendered labels and restart
 rules.

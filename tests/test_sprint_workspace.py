@@ -77,6 +77,16 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertIs(fixture["containsRealCustomerData"], False)
         return fixture["document"]
 
+    def current_state_fixture(self, relative_path: str) -> dict:
+        return WORKSPACE_MODULE.migrate_workspace_state_v3_to_v4(
+            self.fixture_document(relative_path)
+        )
+
+    def current_artifact_fixture(self, relative_path: str) -> dict:
+        return WORKSPACE_MODULE.migrate_artifact_data_to_v3(
+            self.fixture_document(relative_path)
+        )
+
     def complete_artifact(self, artifact_id: str) -> None:
         path = f"artifact-data/{artifact_id}.json"
         data = self.read_json(path)
@@ -94,6 +104,59 @@ class SprintWorkspaceTests(unittest.TestCase):
             for key in ("items", "rows", "cards", "body"):
                 section.pop(key, None)
         data["nextActions"] = ["Continue to the next sprint step."]
+        if artifact_id in {"12-synthesis", "13-outcome"}:
+            manifest_path = self.workspace / "customer-testing" / "session-manifest.json"
+            if manifest_path.exists():
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                usable = [
+                    item
+                    for item in manifest["sessions"]
+                    if item.get("counted") and item.get("usable")
+                ]
+                if usable:
+                    entry = usable[0]
+                    summary = self.read_json(entry["summaryPath"])
+                    data["materialFindings"] = [
+                        {
+                            "id": "FINDING-1",
+                            "statement": "The observed task flow caused hesitation.",
+                            "directness": "direct-observation",
+                            "support": [
+                                {
+                                    "sessionId": entry["sessionId"],
+                                    "participantId": entry["participantId"],
+                                    "prototypeVersion": entry["prototypeVersion"],
+                                    "questionsVersion": entry["questionsVersion"],
+                                    "sourceType": "direct-observation",
+                                    "evidenceIds": [summary["observations"][0]["id"]],
+                                }
+                            ],
+                            "contradictions": [],
+                            "outliers": [],
+                            "limitations": [
+                                "Directional observed sample; prevalence is unknown."
+                            ],
+                            "remainingUncertainty": [
+                                "Whether a corrected version removes the hesitation."
+                            ],
+                            "nextDecision": {
+                                "impact": "correct-observed-failure",
+                                "action": "Correct the observed hesitation point and retest.",
+                                "rationale": "A traceable observation identifies a bounded failure.",
+                                "smallestNextLearningAction": "Retest the corrected task with one qualified participant.",
+                            },
+                        }
+                    ]
+        if artifact_id == "13-outcome":
+            data["outcomeAssessment"] = {
+                "processCompleted": "The applicable workflow steps and human gates were completed.",
+                "methodAdaptations": "Recorded route, team-model, and customer-testing adaptations remain visible.",
+                "evidenceSupports": "The observed sample supports the bounded recorded finding.",
+                "evidenceCannotSupport": "It cannot establish prevalence, representativeness, or statistical confidence.",
+                "justifiedDecision": "Take the recorded bounded next action.",
+                "decisionImpact": "correct-observed-failure",
+                "smallestNextLearningAction": "Correct the observed issue and run the next qualified session.",
+            }
         self.write_json(path, data)
         self.run_cli("render", "--workspace", str(self.workspace))
 
@@ -566,6 +629,8 @@ class SprintWorkspaceTests(unittest.TestCase):
             target,
             "--planned",
             str(planned),
+            "--invited",
+            str(planned),
         )
 
     def initialise_customer_session(
@@ -574,6 +639,12 @@ class SprintWorkspaceTests(unittest.TestCase):
         participant_id: str,
         *,
         session_date: str = "2026-08-17",
+        participant_segment: str = "Target segment",
+        participant_fit: str = "qualified",
+        fit_rationale: str = "Matches the approved behavioural recruitment criteria.",
+        prototype_version: str = "proto-v1",
+        questions_version: str = "questions-v1",
+        activate_versions: bool = False,
     ) -> None:
         self.prepare_customer_session_inputs()
         self.run_cli(
@@ -584,12 +655,18 @@ class SprintWorkspaceTests(unittest.TestCase):
             session_id,
             "--participant-id",
             participant_id,
+            "--participant-segment",
+            participant_segment,
+            "--participant-fit",
+            participant_fit,
+            "--fit-rationale",
+            fit_rationale,
             "--session-date",
             session_date,
             "--prototype-version",
-            "proto-v1",
+            prototype_version,
             "--questions-version",
-            "questions-v1",
+            questions_version,
             "--prototype",
             "prototype/proto-v1/index.html",
             "--prototype-context",
@@ -606,6 +683,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             f"consent-register:{session_id}",
             "--redaction-status",
             "complete",
+            *(["--activate-versions"] if activate_versions else []),
         )
 
     def populate_customer_summary(self, session_id: str, observation: str) -> None:
@@ -661,7 +739,15 @@ class SprintWorkspaceTests(unittest.TestCase):
         summary["uncertainties"] = ["Whether repeated use removes the hesitation."]
         self.write_json(path, summary)
 
-    def complete_customer_session(self, session_id: str, observation: str) -> None:
+    def complete_customer_session(
+        self,
+        session_id: str,
+        observation: str,
+        *,
+        protocol_fidelity: str = "consistent",
+        usable: bool = True,
+        exclusion_reason: str = "",
+    ) -> None:
         record = self.read_json(f"customer-testing/sessions/{session_id}/session.json")
         if record["packet"]["path"] is None:
             self.run_cli(
@@ -678,9 +764,65 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(self.workspace),
             "--session-id",
             session_id,
+            "--protocol-fidelity",
+            protocol_fidelity,
+            *(
+                ["--critical-scenario", "TASK-1", "--usable"]
+                if usable
+                else ["--exclude-from-evidence", "--exclusion-reason", exclusion_reason]
+            ),
             "--usage-unavailable-reason",
             "The test runtime did not expose token or request measurements.",
         )
+
+    def finding_source(
+        self, session_id: str, *, source_type: str = "direct-observation"
+    ) -> dict:
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        entry = next(
+            item for item in manifest["sessions"] if item["sessionId"] == session_id
+        )
+        summary = self.read_json(entry["summaryPath"])
+        collection = (
+            summary["observations"]
+            if source_type == "direct-observation"
+            else summary["inferences"]
+        )
+        return {
+            "sessionId": session_id,
+            "participantId": entry["participantId"],
+            "prototypeVersion": entry["prototypeVersion"],
+            "questionsVersion": entry["questionsVersion"],
+            "sourceType": source_type,
+            "evidenceIds": [collection[0]["id"]],
+        }
+
+    def material_finding(
+        self,
+        support_session_ids: list[str],
+        *,
+        contradiction_session_ids: list[str] | None = None,
+        impact: str = "investigate-or-retest",
+    ) -> dict:
+        return {
+            "id": "FINDING-TEST",
+            "statement": "Participants encountered the bounded observed failure.",
+            "directness": "direct-observation",
+            "support": [self.finding_source(value) for value in support_session_ids],
+            "contradictions": [
+                self.finding_source(value)
+                for value in (contradiction_session_ids or [])
+            ],
+            "outliers": [],
+            "limitations": ["Observed sprint sample; prevalence remains unknown."],
+            "remainingUncertainty": ["Whether the next prototype corrects the failure."],
+            "nextDecision": {
+                "impact": impact,
+                "action": "Take the bounded action named by this test finding.",
+                "rationale": "The action is explicitly tied to traceable observations.",
+                "smallestNextLearningAction": "Retest the changed prototype with a qualified participant.",
+            },
+        }
 
     def test_init_renders_valid_escaped_workspace(self) -> None:
         challenge = "Help <parents> avoid <script>alert('x')</script>"
@@ -1039,7 +1181,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         (self.workspace / "artifact-data").mkdir(parents=True)
         self.write_json(
             "sprint-state.json",
-            self.fixture_document("schemas/valid/workspace-state-v3.synthetic.json"),
+            self.current_state_fixture("schemas/valid/workspace-state-v3.synthetic.json"),
         )
         self.write_json(
             "assignment-manifest.json",
@@ -1049,7 +1191,15 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         self.write_json(
             "artifact-data/01-sprint-brief.json",
-            self.fixture_document("schemas/valid/artifact-data-v2.synthetic.json"),
+            self.current_artifact_fixture("schemas/valid/artifact-data-v2.synthetic.json"),
+        )
+        (self.workspace / "customer-testing").mkdir()
+        state = self.read_json("sprint-state.json")
+        self.write_json(
+            "customer-testing/session-manifest.json",
+            WORKSPACE_MODULE.initial_session_manifest(
+                state["slug"], state["updatedAt"]
+            ),
         )
 
         self.run_cli("render", "--workspace", str(self.workspace))
@@ -1111,7 +1261,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.workspace.mkdir()
         self.write_json(
             "sprint-state.json",
-            self.fixture_document("schemas/invalid/workspace-state-v3.synthetic.json"),
+            self.current_state_fixture("schemas/invalid/workspace-state-v3.synthetic.json"),
         )
 
         result = self.run_cli(
@@ -1126,7 +1276,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         (self.workspace / "artifact-data").mkdir(parents=True)
         self.write_json(
             "sprint-state.json",
-            self.fixture_document("schemas/valid/workspace-state-v3.synthetic.json"),
+            self.current_state_fixture("schemas/valid/workspace-state-v3.synthetic.json"),
         )
         self.write_json(
             "assignment-manifest.json",
@@ -1137,7 +1287,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         artifact_path = self.workspace / "artifact-data" / "01-sprint-brief.json"
         self.write_json(
             "artifact-data/01-sprint-brief.json",
-            self.fixture_document(
+            self.current_artifact_fixture(
                 "schemas/nested-error/artifact-data-v2.synthetic.json"
             ),
         )
@@ -1178,7 +1328,7 @@ class SprintWorkspaceTests(unittest.TestCase):
 
     def test_unsupported_schema_version_fails_with_remediation(self) -> None:
         self.workspace.mkdir()
-        state = self.fixture_document(
+        state = self.current_state_fixture(
             "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["schemaVersion"] = "99.0"
@@ -1191,13 +1341,13 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("$.schemaVersion", result.stderr)
         self.assertIn("unsupported version '99.0'", result.stderr)
-        self.assertIn("3.0 (current)", result.stderr)
+        self.assertIn("4.0 (current)", result.stderr)
         self.assertIn("1.0 (migratable)", result.stderr)
         self.assertIn("2.0 (migratable)", result.stderr)
 
     def test_schema_rejects_bad_formats_and_undeclared_fields(self) -> None:
         self.workspace.mkdir()
-        state = self.fixture_document(
+        state = self.current_state_fixture(
             "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["updatedAt"] = "2026-08-17"
@@ -1214,7 +1364,7 @@ class SprintWorkspaceTests(unittest.TestCase):
 
     def test_loader_rejects_nonstandard_json_numbers(self) -> None:
         self.workspace.mkdir()
-        state = self.fixture_document(
+        state = self.current_state_fixture(
             "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["customerTesting"]["sessionsPlanned"] = float("nan")
@@ -1229,7 +1379,7 @@ class SprintWorkspaceTests(unittest.TestCase):
 
     def test_gate_rejects_invalid_nested_state_before_decision_mutation(self) -> None:
         self.workspace.mkdir()
-        state = self.fixture_document(
+        state = self.current_state_fixture(
             "schemas/valid/workspace-state-v3.synthetic.json"
         )
         state["route"] = "full-design-sprint"
@@ -1314,10 +1464,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(backup),
         )
         self.assertIn("Untouched backup", migrated.stdout)
-        expected_state = self.fixture_document(
+        expected_state = self.current_state_fixture(
             "legacy-workspace-expected/state.synthetic.json"
         )
-        expected_artifact = self.fixture_document(
+        expected_artifact = self.current_artifact_fixture(
             "legacy-workspace-expected/artifact-data/01-sprint-brief.synthetic.json"
         )
         self.assertEqual(self.read_json("sprint-state.json"), expected_state)
@@ -1359,7 +1509,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--backup",
             str(unused_backup),
         )
-        self.assertIn("already uses state schema version 3.0", no_op.stdout)
+        self.assertIn("already uses state schema version 4.0", no_op.stdout)
         self.assertFalse(unused_backup.exists())
         self.run_cli("render", "--workspace", str(self.workspace))
         self.run_cli("validate", "--workspace", str(self.workspace))
@@ -1414,9 +1564,61 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(backup),
         )
         migrated = self.read_json("sprint-state.json")
-        self.assertEqual(migrated["schemaVersion"], "3.0")
+        self.assertEqual(migrated["schemaVersion"], "4.0")
         self.assertEqual(migrated["terminalState"], "not-terminal")
         self.assertEqual(migrated["skipRecords"], [])
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_schema_three_state_migrates_independent_evidence_counts(self) -> None:
+        self.initialise()
+        state = self.read_json("sprint-state.json")
+        state["schemaVersion"] = "3.0"
+        for key in (
+            "sessionsInvited",
+            "sessionsAttempted",
+            "sessionsQualified",
+            "sessionsExcluded",
+            "sessionsUsable",
+        ):
+            state["customerTesting"].pop(key)
+        self.write_json("sprint-state.json", state)
+
+        blocked = self.run_cli(
+            "status", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("version '3.0' is legacy", blocked.stderr)
+
+        backup = Path(self.temporary_directory.name) / "schema-three-backup"
+        self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(backup),
+        )
+        migrated = self.read_json("sprint-state.json")
+        self.assertEqual(migrated["schemaVersion"], "4.0")
+        self.assertEqual(
+            {
+                key: migrated["customerTesting"][key]
+                for key in (
+                    "sessionsInvited",
+                    "sessionsAttempted",
+                    "sessionsQualified",
+                    "sessionsExcluded",
+                    "sessionsUsable",
+                )
+            },
+            {
+                "sessionsInvited": 0,
+                "sessionsAttempted": 0,
+                "sessionsQualified": 0,
+                "sessionsExcluded": 0,
+                "sessionsUsable": 0,
+            },
+        )
         self.run_cli("render", "--workspace", str(self.workspace))
         self.run_cli("validate", "--workspace", str(self.workspace))
 
@@ -1571,7 +1773,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(self.workspace),
         )
         state = self.read_json("sprint-state.json")
-        self.assertEqual(state["schemaVersion"], "3.0")
+        self.assertEqual(state["schemaVersion"], "4.0")
         self.assertEqual(state["methodProfile"], "sprint-book")
         self.assertEqual(state["executionMode"], "live")
         self.assertEqual(
@@ -2030,7 +2232,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(migration.returncode, 0, migration.stderr)
         self.run_cli("render", "--workspace", str(self.workspace))
         migrated = self.read_json("sprint-state.json")
-        self.assertEqual(migrated["schemaVersion"], "3.0")
+        self.assertEqual(migrated["schemaVersion"], "4.0")
         self.assertEqual(migrated["methodProfile"], "adaptive-design-sprint")
         self.assertEqual(migrated["executionMode"], "live")
         self.assertEqual(migrated["notApplicableSteps"], ["04-foundation"])
@@ -2047,6 +2249,67 @@ class SprintWorkspaceTests(unittest.TestCase):
             "human Decider (legacy label unavailable)",
         )
         self.assertEqual(migrated["decisions"][0]["status"], "active")
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_session_quality_migration_requires_honest_reassessment(self) -> None:
+        self.initialise()
+        self.set_customer_plan(1)
+        self.initialise_customer_session("S01", "P01")
+        self.complete_customer_session(
+            "S01", "The participant encountered the bounded test flow."
+        )
+        state = self.read_json("sprint-state.json")
+        state["schemaVersion"] = "2.0"
+        for key in (
+            "sessionsInvited",
+            "sessionsAttempted",
+            "sessionsQualified",
+            "sessionsExcluded",
+            "sessionsUsable",
+        ):
+            state["customerTesting"].pop(key)
+        self.write_json("sprint-state.json", state)
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        manifest["schemaVersion"] = "1.0"
+        for key in (
+            "participantSegment",
+            "participantFit",
+            "protocolFidelity",
+            "criticalScenariosCovered",
+            "attempted",
+            "usable",
+            "exclusionReason",
+        ):
+            manifest["sessions"][0].pop(key)
+        self.write_json("customer-testing/session-manifest.json", manifest)
+        record = self.read_json("customer-testing/sessions/S01/session.json")
+        record["schemaVersion"] = "1.0"
+        record.pop("participant")
+        record.pop("evidenceQuality")
+        self.write_json("customer-testing/sessions/S01/session.json", record)
+
+        backup = Path(self.temporary_directory.name) / "quality-migration-backup"
+        self.run_cli(
+            "migrate",
+            "--workspace",
+            str(self.workspace),
+            "--backup",
+            str(backup),
+        )
+        migrated_state = self.read_json("sprint-state.json")
+        migrated_manifest = self.read_json("customer-testing/session-manifest.json")
+        migrated_record = self.read_json("customer-testing/sessions/S01/session.json")
+        self.assertEqual(migrated_state["customerTesting"]["sessionsCompleted"], 1)
+        self.assertEqual(migrated_state["customerTesting"]["sessionsUsable"], 0)
+        self.assertEqual(migrated_state["customerTesting"]["status"], "partial")
+        self.assertFalse(migrated_manifest["sessions"][0]["usable"])
+        self.assertFalse(migrated_manifest["sessions"][0]["includeInSynthesis"])
+        self.assertEqual(migrated_record["participant"]["fit"], "unassessed")
+        self.assertEqual(
+            migrated_record["evidenceQuality"]["protocolFidelity"],
+            "not-assessed",
+        )
+        self.run_cli("render", "--workspace", str(self.workspace))
         self.run_cli("validate", "--workspace", str(self.workspace))
 
     def test_role_packet_is_bounded_to_declared_inputs(self) -> None:
@@ -2890,7 +3153,12 @@ class SprintWorkspaceTests(unittest.TestCase):
         def customer_state(
             status: str,
             planned: int,
+            invited: int,
+            attempted: int,
             completed: int,
+            qualified: int,
+            excluded: int,
+            usable: int,
             mode: str = "live",
         ) -> dict:
             state = {
@@ -2900,60 +3168,66 @@ class SprintWorkspaceTests(unittest.TestCase):
                     "target": "Qualified participants" if planned else "",
                     "targetRationale": "Selected for the test." if planned else "",
                     "sessionsPlanned": planned,
+                    "sessionsInvited": invited,
+                    "sessionsAttempted": attempted,
                     "sessionsCompleted": completed,
+                    "sessionsQualified": qualified,
+                    "sessionsExcluded": excluded,
+                    "sessionsUsable": usable,
                 },
             }
             state["terminalState"] = WORKSPACE_MODULE.expected_terminal_state(state)
             return state
 
         valid = [
-            ("not-planned", 0, 0),
-            ("not-planned", 5, 0),
-            ("recruiting", 3, 0),
-            ("scheduled", 3, 0),
-            ("in-progress", 3, 0),
-            ("in-progress", 3, 1),
-            ("complete", 3, 3),
-            ("partial", 3, 1),
-            ("blocked", 3, 0),
+            ("not-planned", 0, 0, 0, 0, 0, 0, 0),
+            ("not-planned", 5, 0, 0, 0, 0, 0, 0),
+            ("recruiting", 3, 2, 0, 0, 1, 1, 0),
+            ("scheduled", 3, 3, 0, 0, 3, 0, 0),
+            ("in-progress", 3, 3, 1, 0, 2, 0, 0),
+            ("in-progress", 3, 3, 2, 1, 2, 0, 1),
+            ("complete", 3, 4, 4, 4, 3, 1, 3),
+            ("partial", 3, 3, 2, 1, 2, 0, 1),
+            ("blocked", 3, 2, 1, 0, 1, 0, 0),
         ]
-        for status, planned, completed in valid:
+        for values in valid:
+            status = values[0]
             with self.subTest(valid=status):
                 self.assertEqual(
                     WORKSPACE_MODULE.customer_testing_errors(
-                        customer_state(status, planned, completed)
+                        customer_state(*values)
                     ),
                     [],
                 )
 
         invalid = [
-            ("not-planned", 1, 1),
-            ("recruiting", 0, 0),
-            ("recruiting", 3, 1),
-            ("scheduled", 3, 1),
-            ("in-progress", 3, 3),
-            ("complete", 3, 2),
-            ("partial", 3, 0),
-            ("partial", 3, 3),
-            ("blocked", 3, 3),
+            ("not-planned", 1, 1, 0, 0, 1, 0, 0),
+            ("recruiting", 0, 0, 0, 0, 0, 0, 0),
+            ("scheduled", 3, 3, 0, 1, 1, 0, 1),
+            ("in-progress", 3, 3, 0, 0, 2, 0, 0),
+            ("complete", 3, 3, 3, 3, 2, 1, 2),
+            ("partial", 3, 3, 0, 0, 2, 0, 0),
+            ("blocked", 3, 3, 3, 3, 3, 0, 3),
+            ("partial", 3, 2, 3, 2, 2, 0, 2),
+            ("partial", 3, 3, 2, 2, 1, 2, 2),
         ]
-        for status, planned, completed in invalid:
-            with self.subTest(invalid=status, planned=planned, completed=completed):
+        for values in invalid:
+            with self.subTest(invalid=values[0], planned=values[1]):
                 self.assertTrue(
                     WORKSPACE_MODULE.customer_testing_errors(
-                        customer_state(status, planned, completed)
+                        customer_state(*values)
                     )
                 )
         for mode in ("self-test", "planning-rehearsal"):
             self.assertEqual(
                 WORKSPACE_MODULE.customer_testing_errors(
-                    customer_state("not-planned", 0, 0, mode)
+                    customer_state("not-planned", 0, 0, 0, 0, 0, 0, 0, mode)
                 ),
                 [],
             )
             self.assertTrue(
                 WORKSPACE_MODULE.customer_testing_errors(
-                    customer_state("recruiting", 1, 0, mode)
+                    customer_state("recruiting", 1, 1, 0, 0, 1, 0, 0, mode)
                 )
             )
 
@@ -2964,7 +3238,12 @@ class SprintWorkspaceTests(unittest.TestCase):
             "target": "Qualified participants",
             "targetRationale": "Selected for the test.",
             "sessionsPlanned": 1,
+            "sessionsInvited": 1,
+            "sessionsAttempted": 1,
             "sessionsCompleted": 1,
+            "sessionsQualified": 1,
+            "sessionsExcluded": 0,
+            "sessionsUsable": 1,
         }
         self.write_json("sprint-state.json", state)
         result = self.run_cli(
@@ -2989,6 +3268,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             customer_status: str,
             planned: int,
             session_count: int,
+            usable_count: int | None = None,
         ) -> dict:
             state = {
                 "route": route,
@@ -3011,6 +3291,9 @@ class SprintWorkspaceTests(unittest.TestCase):
                     "status": customer_status,
                     "sessionsPlanned": planned,
                     "sessionsCompleted": session_count,
+                    "sessionsUsable": (
+                        session_count if usable_count is None else usable_count
+                    ),
                 },
             }
             state["terminalState"] = WORKSPACE_MODULE.expected_terminal_state(state)
@@ -3057,6 +3340,17 @@ class SprintWorkspaceTests(unittest.TestCase):
                 session_count=0,
             ),
             terminal(
+                route="full-design-sprint",
+                mode="live",
+                completed=[item for item in full_steps if item != "12-synthesis"],
+                skipped=["12-synthesis"],
+                outcome="Investigate",
+                customer_status="partial",
+                planned=2,
+                session_count=1,
+                usable_count=0,
+            ),
+            terminal(
                 route="no-sprint",
                 mode="live",
                 completed=["01-intake", "02-qualify", "13-outcome"],
@@ -3072,6 +3366,8 @@ class SprintWorkspaceTests(unittest.TestCase):
                 self.assertEqual(
                     WORKSPACE_MODULE.terminal_state_errors(state), []
                 )
+        self.assertEqual(valid[0]["terminalState"], "live-customer-tested")
+        self.assertEqual(valid[3]["terminalState"], "closed-unvalidated")
 
         invalid = [
             terminal(
@@ -3121,6 +3417,17 @@ class SprintWorkspaceTests(unittest.TestCase):
                 customer_status="blocked",
                 planned=2,
                 session_count=0,
+            ),
+            terminal(
+                route="full-design-sprint",
+                mode="live",
+                completed=[item for item in full_steps if item != "12-synthesis"],
+                skipped=["12-synthesis"],
+                outcome="Proceed",
+                customer_status="partial",
+                planned=2,
+                session_count=1,
+                usable_count=0,
             ),
             terminal(
                 route="full-design-sprint",
@@ -3756,7 +4063,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "S01",
         )
         packet_state = self.read_json("sprint-state.json")
-        self.assertEqual(packet_state["customerTesting"]["status"], "in-progress")
+        self.assertEqual(packet_state["customerTesting"]["status"], "scheduled")
         self.assertEqual(packet_state["customerTesting"]["sessionsCompleted"], 0)
         self.run_cli("validate", "--workspace", str(self.workspace))
         raw_path = (
@@ -3875,6 +4182,11 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(self.workspace),
             "--session-id",
             "S01",
+            "--protocol-fidelity",
+            "consistent",
+            "--critical-scenario",
+            "TASK-1",
+            "--usable",
             "--usage-input-tokens",
             "1200",
             "--usage-output-tokens",
@@ -4369,6 +4681,358 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         self.assertEqual(reopen.returncode, 2)
         self.assertIn("terminal state cannot be reopened", reopen.stderr)
+
+    def test_session_counts_and_descriptive_bands_reach_extended_without_confidence_claims(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Band Test",
+            "--challenge",
+            "Keep method coverage separate from confidence",
+            "--method-profile",
+            "sprint-book",
+            "--execution-mode",
+            "live",
+            "--selected-by",
+            "Test Decider",
+            "--profile-reason",
+            "Use the Sprint-book testing target.",
+            "--mode-reason",
+            "Qualified real-customer sessions are planned.",
+            "--output",
+            str(self.workspace),
+        )
+        self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "scheduled",
+            "--target",
+            "Qualified target-segment participants",
+            "--planned",
+            "5",
+            "--invited",
+            "7",
+        )
+        expected_bands = {
+            1: "early-limited",
+            2: "early-limited",
+            3: "partial-directional",
+            4: "partial-directional",
+            5: "book-target-met",
+            6: "extended",
+        }
+        for index in range(1, 7):
+            session_id = f"S{index:02d}"
+            participant_id = f"P{index:02d}"
+            self.initialise_customer_session(session_id, participant_id)
+            self.complete_customer_session(
+                session_id,
+                f"Participant {participant_id} encountered the same bounded failure.",
+            )
+            status = json.loads(
+                self.run_cli(
+                    "status", "--workspace", str(self.workspace), "--json"
+                ).stdout
+            )
+            assessment = status["completionAssessment"]
+            self.assertEqual(
+                assessment["evidenceStrength"]["band"], expected_bands[index]
+            )
+            if index < 5:
+                self.assertEqual(
+                    assessment["methodFidelity"]["status"], "partial"
+                )
+            if index == 3:
+                outcome = WORKSPACE_MODULE.new_artifact_data(
+                    "13-outcome",
+                    WORKSPACE_MODULE.load_artifact_specs()["13-outcome"],
+                )
+                outcome["materialFindings"] = [
+                    self.material_finding(
+                        ["S01", "S02", "S03"],
+                        impact="correct-observed-failure",
+                    )
+                ]
+                outcome["outcomeAssessment"]["justifiedDecision"] = (
+                    "Correct the observed critical failure and retest."
+                )
+                outcome["outcomeAssessment"]["decisionImpact"] = (
+                    "correct-observed-failure"
+                )
+                directional = WORKSPACE_MODULE.build_completion_assessment(
+                    self.workspace,
+                    self.read_json("sprint-state.json"),
+                    [(Path("outcome.json"), outcome)],
+                )
+                self.assertEqual(
+                    directional["decisionReadiness"]["status"],
+                    "sufficient-to-correct-an-observed-failure",
+                )
+                self.assertTrue(
+                    any("3/5" in item for item in directional["limitations"])
+                )
+            if index == 5:
+                outcome = WORKSPACE_MODULE.new_artifact_data(
+                    "13-outcome",
+                    WORKSPACE_MODULE.load_artifact_specs()["13-outcome"],
+                )
+                outcome["materialFindings"] = [
+                    self.material_finding(
+                        ["S01", "S02", "S03", "S04", "S05"],
+                        impact="bounded-reversible-investment",
+                    )
+                ]
+                outcome["outcomeAssessment"]["justifiedDecision"] = (
+                    "Make a bounded reversible investment."
+                )
+                outcome["outcomeAssessment"]["decisionImpact"] = (
+                    "bounded-reversible-investment"
+                )
+                target_met = WORKSPACE_MODULE.build_completion_assessment(
+                    self.workspace,
+                    self.read_json("sprint-state.json"),
+                    [(Path("outcome.json"), outcome)],
+                )
+                self.assertEqual(
+                    target_met["decisionReadiness"]["status"],
+                    "sufficient-for-a-bounded-reversible-investment",
+                )
+                outcome["outcomeAssessment"]["decisionImpact"] = (
+                    "defer-large-or-irreversible-investment"
+                )
+                large_decision = WORKSPACE_MODULE.build_completion_assessment(
+                    self.workspace,
+                    self.read_json("sprint-state.json"),
+                    [(Path("outcome.json"), outcome)],
+                )
+                self.assertEqual(
+                    large_decision["decisionReadiness"]["status"],
+                    "insufficient-for-large-or-irreversible-investment",
+                )
+
+        counts = assessment["sessionCounts"]
+        self.assertEqual(
+            counts,
+            {
+                "planned": 5,
+                "invited": 7,
+                "attempted": 6,
+                "completed": 6,
+                "qualified": 6,
+                "excluded": 0,
+                "usable": 6,
+            },
+        )
+        self.assertEqual(assessment["methodFidelity"]["status"], "adapted-with-documented-substitutions")
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Extended", dashboard)
+        self.assertIn("do not establish statistical confidence", dashboard)
+        self.assertNotIn("statistically validated", dashboard.lower())
+
+    def test_quality_segments_versions_and_decision_impact_remain_independent(self) -> None:
+        self.initialise()
+        self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "scheduled",
+            "--target",
+            "Qualified participants in the primary segment",
+            "--planned",
+            "5",
+            "--invited",
+            "6",
+        )
+        for index in range(1, 7):
+            excluded = index == 6
+            second_segment = index >= 4 and not excluded
+            version_two = index >= 4
+            session_id = f"S{index:02d}"
+            self.initialise_customer_session(
+                session_id,
+                f"P{index:02d}",
+                participant_segment=(
+                    "Adjacent segment" if second_segment else "Primary segment"
+                ),
+                participant_fit="excluded" if excluded else "qualified",
+                fit_rationale=(
+                    "Does not meet the approved behavioural criteria."
+                    if excluded
+                    else "Meets the approved behavioural criteria."
+                ),
+                prototype_version="proto-v1",
+                questions_version="questions-v2" if version_two else "questions-v1",
+                activate_versions=index == 4,
+            )
+            self.complete_customer_session(
+                session_id,
+                f"Observed bounded result for P{index:02d}.",
+                protocol_fidelity=("minor-deviation" if index == 5 else "consistent"),
+                usable=not excluded,
+                exclusion_reason=(
+                    "Participant was outside the approved target criteria."
+                    if excluded
+                    else ""
+                ),
+            )
+
+        finding = self.material_finding(
+            ["S01", "S02", "S03", "S04", "S05"],
+            impact="bounded-reversible-investment",
+        )
+        outcome = WORKSPACE_MODULE.new_artifact_data(
+            "13-outcome",
+            WORKSPACE_MODULE.load_artifact_specs()["13-outcome"],
+        )
+        outcome["materialFindings"] = [finding]
+        outcome["outcomeAssessment"]["justifiedDecision"] = (
+            "Make a bounded reversible investment."
+        )
+        outcome["outcomeAssessment"]["decisionImpact"] = (
+            "bounded-reversible-investment"
+        )
+        state = self.read_json("sprint-state.json")
+        assessment = WORKSPACE_MODULE.build_completion_assessment(
+            self.workspace, state, [(Path("outcome.json"), outcome)]
+        )
+
+        self.assertEqual(assessment["evidenceStrength"]["band"], "book-target-met")
+        self.assertEqual(assessment["evidenceStrength"]["quality"], "mixed-segment")
+        self.assertTrue(assessment["evidenceStrength"]["mixedVersions"])
+        self.assertTrue(assessment["evidenceStrength"]["mixedQuality"])
+        self.assertEqual(
+            assessment["sessionCounts"],
+            {
+                "planned": 5,
+                "invited": 6,
+                "attempted": 6,
+                "completed": 6,
+                "qualified": 5,
+                "excluded": 1,
+                "usable": 5,
+            },
+        )
+        self.assertEqual(
+            assessment["decisionReadiness"]["status"],
+            "sufficient-to-investigate-or-run-another-test",
+        )
+        self.assertTrue(
+            any("multiple customer segments" in item for item in assessment["limitations"])
+        )
+        finding_errors = WORKSPACE_MODULE.material_finding_errors(
+            self.workspace, outcome, assessment
+        )
+        self.assertTrue(
+            any("does not support a bounded investment" in item for item in finding_errors)
+        )
+
+    def test_material_findings_validate_provenance_and_render_mixed_evidence_limitations(self) -> None:
+        self.initialise()
+        self.set_customer_plan(2)
+        for index in (1, 2):
+            session_id = f"S{index:02d}"
+            self.initialise_customer_session(session_id, f"P{index:02d}")
+            self.complete_customer_session(
+                session_id, f"Observed result for participant P{index:02d}."
+            )
+        finding = self.material_finding(
+            ["S01"],
+            contradiction_session_ids=["S02"],
+            impact="correct-observed-failure",
+        )
+        synthesis = WORKSPACE_MODULE.new_artifact_data(
+            "12-synthesis",
+            WORKSPACE_MODULE.load_artifact_specs()["12-synthesis"],
+        )
+        synthesis["materialFindings"] = [finding]
+        state = self.read_json("sprint-state.json")
+        documents = [(Path("synthesis.json"), synthesis)]
+        assessment = WORKSPACE_MODULE.build_completion_assessment(
+            self.workspace, state, documents
+        )
+
+        self.assertEqual(
+            WORKSPACE_MODULE.material_finding_errors(
+                self.workspace, synthesis, assessment
+            ),
+            [],
+        )
+        rendered = WORKSPACE_MODULE.render_material_findings(assessment)
+        self.assertIn("1/2 usable support", rendered)
+        self.assertIn("P01 / S01", rendered)
+        self.assertIn("prototype proto-v1", rendered)
+        self.assertIn("contradictory provenance record", rendered)
+        self.assertIn("prevalence", rendered)
+        self.assertEqual(
+            assessment["decisionReadiness"]["status"],
+            "sufficient-to-correct-an-observed-failure",
+        )
+
+        early_investment = json.loads(json.dumps(synthesis))
+        early_investment["materialFindings"][0]["nextDecision"]["impact"] = (
+            "bounded-reversible-investment"
+        )
+        early_assessment = WORKSPACE_MODULE.build_completion_assessment(
+            self.workspace, state, [(Path("synthesis.json"), early_investment)]
+        )
+        self.assertEqual(
+            early_assessment["decisionReadiness"]["status"],
+            "sufficient-to-investigate-or-run-another-test",
+        )
+        self.assertTrue(
+            any(
+                "does not support a bounded investment" in item
+                for item in WORKSPACE_MODULE.material_finding_errors(
+                    self.workspace, early_investment, early_assessment
+                )
+            )
+        )
+
+        tampered = json.loads(json.dumps(synthesis))
+        tampered["materialFindings"][0]["support"][0]["participantId"] = "P99"
+        tampered["materialFindings"][0]["support"][0]["prototypeVersion"] = "proto-v99"
+        errors = WORKSPACE_MODULE.material_finding_errors(
+            self.workspace, tampered, assessment
+        )
+        self.assertTrue(any("participantId does not match" in item for item in errors))
+        self.assertTrue(any("prototypeVersion does not match" in item for item in errors))
+
+    def test_non_live_modes_keep_fidelity_evidence_and_readiness_unvalidated(self) -> None:
+        for mode in ("self-test", "planning-rehearsal"):
+            workspace = Path(self.temporary_directory.name) / mode
+            self.run_cli(
+                "init",
+                "--title",
+                f"{mode} assessment",
+                "--challenge",
+                "Exercise the four-dimensional model",
+                "--execution-mode",
+                mode,
+                "--selected-by",
+                "Test Decider",
+                "--mode-reason",
+                "Exercise the explicit non-live assessment boundary.",
+                "--output",
+                str(workspace),
+            )
+            payload = json.loads(
+                self.run_cli(
+                    "status", "--workspace", str(workspace), "--json"
+                ).stdout
+            )["completionAssessment"]
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    payload["methodFidelity"]["status"], "self-test-rehearsal"
+                )
+                self.assertEqual(payload["evidenceStrength"]["band"], "not-tested")
+                self.assertEqual(
+                    payload["decisionReadiness"]["status"],
+                    "insufficient-to-decide",
+                )
+                self.assertEqual(payload["sessionCounts"]["usable"], 0)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/customer-session-v2.schema.json",
+  "title": "Isolated customer-session record 2.0",
+  "allOf": [
+    {"$ref": "customer-session-v1.schema.json"},
+    {
+      "type": "object",
+      "properties": {"schemaVersion": {"const": "2.0"}},
+      "required": ["schemaVersion", "participant", "evidenceQuality"]
+    }
+  ]
+}

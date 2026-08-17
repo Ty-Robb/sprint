@@ -9,16 +9,16 @@ dependency-free and reports instance locations as JSONPath, for example
 
 | Family | Files | Current version | Compatibility |
 |---|---|---:|---|
-| Workspace state | `sprint-state.json` | `3.0` | `1.0` and `2.0` are migratable |
+| Workspace state | `sprint-state.json` | `4.0` | `1.0`, `2.0`, and `3.0` are migratable |
 | Assignment manifest | `assignment-manifest.json` | `1.0` | Current only; created when absent during workspace migration |
-| Artifact data | `artifact-data/*.json` | `2.0` | `1.0` is migratable |
+| Artifact data | `artifact-data/*.json` | `3.0` | `1.0` and `2.0` are migratable |
 | Artifact specifications | `references/artifact-specs.json` | `1.0` | Current only |
 | Role contracts | `references/role-contracts.json` | `1.0` | Current only |
 | Method profiles | `references/method-profiles.json` | `1.0` | Current only |
-| Session manifest | `customer-testing/session-manifest.json` | `1.0` | Current only |
-| Customer session | `customer-testing/sessions/*/session.json` | `1.0` | Current only |
+| Session manifest | `customer-testing/session-manifest.json` | `2.0` | `1.0` is migratable |
+| Customer session | `customer-testing/sessions/*/session.json` | `2.0` | `1.0` is migratable |
 | Session summary | `customer-testing/sessions/*/summary.json` | `1.0` | Current only |
-| Prototype/MVP brief | `artifact-data/10-prototype-brief.json` → `prototypeBrief` | `1.0` nested in artifact data `2.0` | Current only |
+| Prototype/MVP brief | `artifact-data/10-prototype-brief.json` → `prototypeBrief` | `1.0` nested in artifact data `3.0` | Current only |
 | Immutable tested version | `prototype/*/tested-version.json` | `1.0` | Current only; records are never migrated in place |
 | Public usage evidence | `*.usage-evidence.json` publication records | `1.0` | Current only |
 | Redacted usage record | `*.usage-record.json` publication records | `1.0` | Current only |
@@ -37,13 +37,17 @@ and completed gate records' explicit decision reference. The assignment schema
 requires packet/input and result digests, assignee/run identity, timestamps,
 lifecycle status, required outputs, and independence metadata.
 
-The session manifest is the canonical membership and counting record. Each
+The session manifest is the canonical membership, lifecycle, quality, and counting record. Each
 manifest entry resolves to one isolated strict session record and one strict
 anonymized summary. Runtime validation reconciles version hashes, participant
 and session IDs, statuses, source pointers, packet hashes, synthesis inputs,
 and the aggregate count in workspace state. These three families deliberately
-start at `1.0` independently of workspace-state schema `3.0`; they have no
-legacy version or migration path. New manifests carry the optional
+use independent versions from workspace state. Manifest and session schema
+`2.0` add participant segment/fit, attempted lifecycle, protocol fidelity,
+critical-scenario coverage, usability, and exclusion reason; their `1.0`
+records migrate conservatively and do not become usable evidence automatically.
+Summary records remain at `1.0` because their observation/inference trace
+contract is unchanged. New manifests carry the optional
 `testArtifactWorkflowVersion: "1.0"` capability marker. Under that marker,
 prototype catalogs and every session entry, record, and summary must link an
 immutable tested-version descriptor. Older `1.0` session documents without the
@@ -64,20 +68,26 @@ claims.
   family. They never interpret a legacy or unknown version as current.
 - A supported legacy version fails with a migration command; an unknown,
   missing, or wrongly typed version lists the versions the engine understands.
-- Artifact `1.0` and state `1.0`/`2.0` are the supported legacy versions. Artifact
-  migration to `2.0` changes only `schemaVersion`. State migration also makes
-  the formerly implicit one-human-plus-AI method explicit: it classifies the
+- State `1.0`, `2.0`, and `3.0` and artifact `1.0` and `2.0` are supported
+  legacy versions. Artifact migration to `3.0` adds material-finding and
+  outcome-assessment containers and renames `Confidence` sections to `Evidence
+  strength`. State migration to `4.0` makes terminal classification, skip audit
+  records, and independent session counts explicit. For schema `1.0`, it also
+  makes the formerly implicit one-human-plus-AI method explicit: it classifies the
   legacy run as `adaptive-design-sprint` and `live`, creates canonical fidelity
   records, records any already-selected route in `routeHistory`, translates
   route exclusions into `notApplicableSteps`, and records
-  a compatibility note for human review. Existing user content, decisions,
+  a compatibility note for human review, and introduces independently named
+  customer-session counts. Existing user content, decisions,
   timestamps, and completed workflow history remain unchanged. Migration also creates an
   empty assignment manifest when one is absent, allowing pre-manifest
   workspaces to resume with explicit provenance for new assignments. Migration-derived
   timestamps reuse the source state's `updatedAt`, and object keys are
   serialized in canonical sorted order, so repeated migration inputs produce
   identical JSON.
-- State migration from `2.0` adds `terminalState` and `skipRecords`. It derives
+- State migration from `2.0` adds `terminalState`, `skipRecords`, and independent
+  session counts. Migration from `3.0` adds the independent counts while retaining
+  its terminal audit records. Terminal migration derives
   terminal classification from the recorded mode, route, sessions, and process
   status. Existing skip actors were not recorded, so migration says
   `pre-3.0 actor unavailable` instead of inventing an identity; it reuses the
@@ -87,7 +97,10 @@ claims.
   those records with a conservative legacy label and a digest of the prior
   record; it does not invent considered evidence. New decisions always use the
   attested shape.
-- The assignment manifest, packaged artifact, role, and method-profile registries,
+- Session-manifest and customer-session 1.0 records migrate conservatively:
+  existing completions remain completed but are not usable until participant
+  fit, protocol fidelity, and critical-scenario coverage are reassessed. The
+  assignment manifest, packaged artifact, role, and method-profile registries,
   public usage-evidence records, redacted usage records, pricing snapshots, and
   generated usage reports currently have no legacy line. Their loaders reject
   any version other than `1.0`.
@@ -136,7 +149,7 @@ python3 <skill-dir>/scripts/sprint_workspace.py migrate \
 ```
 
 The default backup is
-`<sprint-directory>.backup-before-schema-2.0`. Use `--backup <directory>` to
+`<sprint-directory>.backup-before-schema-4.0`. Use `--backup <directory>` to
 choose another location. A backup must be outside the workspace and must not
 already exist; the command never overwrites one.
 
