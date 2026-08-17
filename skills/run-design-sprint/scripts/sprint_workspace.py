@@ -41,6 +41,7 @@ FIDELITY_SCHEMA_VERSION = "1.0"
 ASSIGNMENT_MANIFEST_SCHEMA_VERSION = "1.0"
 ROLE_PACKET_VERSION = "1.0"
 SESSION_SCHEMA_VERSION = "1.0"
+TEST_ARTIFACT_WORKFLOW_VERSION = "1.0"
 PORTABLE_FILE_MODE = 0o644
 CUSTOMER_TESTING_DIR = "customer-testing"
 SESSION_MANIFEST_FILENAME = "session-manifest.json"
@@ -125,6 +126,16 @@ SCHEMA_FAMILIES = {
         },
         "migratable": set(),
     },
+    "tested-version": {
+        "label": "immutable tested prototype version",
+        "current": TEST_ARTIFACT_WORKFLOW_VERSION,
+        "schemas": {
+            TEST_ARTIFACT_WORKFLOW_VERSION: (
+                SCHEMAS_DIR / "tested-version-v1.schema.json"
+            )
+        },
+        "migratable": set(),
+    },
 }
 SCHEMA_VALIDATOR = SchemaValidator()
 
@@ -169,6 +180,32 @@ FIDELITY_ASSESSMENTS = {
     "partial",
     "self-test-rehearsal",
     "not-applicable",
+}
+PROTOTYPE_BRIEF_ID = "10-prototype-brief"
+ARTIFACT_LADDER = (
+    "copy-concept",
+    "concierge",
+    "clickable",
+    "coded-facade",
+    "live-mvp",
+    "limited-pilot",
+)
+PROTOTYPE_APPROVAL_BOUNDARIES = {
+    "experiment-boundary": "experimentBoundary",
+    "tool-choice": "toolChoice",
+    "external-account": "externalAccount",
+    "cost": "cost",
+    "data-exposure": "dataExposure",
+    "public-deployment": "publicDeployment",
+}
+SENSITIVE_BUILD_ASSET_PARTS = {
+    ".env",
+    "account-evidence",
+    "participant-data",
+    "private-evidence",
+    "raw-evidence",
+    "recordings",
+    "transcripts",
 }
 
 STEPS = [
@@ -706,6 +743,53 @@ def source_descriptor(workspace: Path, value: str, label: str) -> dict[str, Any]
     }
 
 
+def file_source_descriptor(
+    workspace: Path, value: str, label: str, *, reject_sensitive: bool = False
+) -> dict[str, Any]:
+    """Describe an explicitly selected workspace file without assuming it is text."""
+
+    path = workspace_relative_file(workspace, value, label)
+    relative = path.relative_to(workspace).as_posix()
+    if reject_sensitive:
+        lowered_parts = {part.lower() for part in Path(relative).parts}
+        name = path.name.lower()
+        if (
+            lowered_parts & SENSITIVE_BUILD_ASSET_PARTS
+            or name.startswith(".env")
+            or path.suffix.lower() in {".key", ".pem", ".p12", ".pfx"}
+        ):
+            raise SprintError(
+                f"{label} appears to contain secrets or private source material and "
+                f"cannot enter an AI build packet: {relative}"
+            )
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise SprintError(f"Could not read {label}: {relative}") from error
+    return {
+        "path": relative,
+        "sha256": sha256_bytes(payload),
+        "bytes": len(payload),
+    }
+
+
+def validate_file_descriptor(
+    workspace: Path, descriptor: dict[str, Any], label: str
+) -> str | None:
+    try:
+        current = file_source_descriptor(
+            workspace, str(descriptor.get("path", "")), label
+        )
+    except SprintError as error:
+        return str(error)
+    if current != descriptor:
+        return (
+            f"{label} changed after it was recorded: {descriptor.get('path')}. "
+            "Create a new trial or tested version instead of overwriting immutable evidence."
+        )
+    return None
+
+
 def descriptor_text(
     workspace: Path, descriptor: dict[str, Any], label: str
 ) -> str:
@@ -815,6 +899,12 @@ def load_session_summary(path: Path) -> dict[str, Any]:
     summary = read_json(path)
     require_valid_schema(summary, "session-summary", path)
     return summary
+
+
+def load_tested_version(path: Path) -> dict[str, Any]:
+    record = read_json(path)
+    require_valid_schema(record, "tested-version", path)
+    return record
 
 
 def load_state(workspace: Path) -> dict[str, Any]:
@@ -1370,6 +1460,8 @@ def class_for_status(status: str) -> str:
         "accepted": "status--complete",
         "rejected": "status--risk",
         "blocked": "status--risk",
+        "passed": "status--complete",
+        "failed": "status--risk",
         "observed": "status--observed",
         "assumption": "status--assumption",
         "inference": "status--inference",
@@ -1496,6 +1588,194 @@ def render_section(section: dict[str, Any], index: int) -> str:
         f"{body}"
         "</section>"
     )
+
+
+def render_prototype_brief(brief: dict[str, Any]) -> str:
+    selection = brief["selection"]
+    customer = brief["customer"]
+    experience = brief["experience"]
+    tool = brief["toolSelection"]
+    deployment = brief["deploymentPlan"]
+    approvals = brief["approvals"]
+    sections: list[str] = []
+    sections.append(
+        render_section(
+            {
+                "title": "Smallest valid test artifact",
+                "eyebrow": "Test-artifact ladder",
+                "type": "key-value",
+                "items": [
+                    {"label": "Selected level", "value": display_label(brief["artifactLevel"])},
+                    {"label": "Target customer", "value": customer["target"]},
+                    {"label": "Entry context", "value": customer["entryContext"]},
+                    {"label": "Hypothesis", "value": selection["hypothesis"]},
+                    {"label": "Selection rationale", "value": selection["rationale"]},
+                    {
+                        "label": "Why no larger artifact",
+                        "value": selection["whyHigherFidelityIsUnnecessary"],
+                    },
+                ],
+            },
+            101,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Task, journey, and critical scenes",
+                "eyebrow": "Four to six test moments",
+                "type": "table",
+                "caption": "Critical scenes mapped to sprint questions",
+                "columns": ["Scene", "Sprint question", "What happens"],
+                "rows": [
+                    [f"{item['id']}: {item['title']}", item["sprintQuestion"], item["description"]]
+                    for item in experience["criticalScenes"]
+                ],
+            },
+            102,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Observable signals",
+                "eyebrow": "Predefined interpretation boundary",
+                "type": "table",
+                "caption": "Success, ambiguity, and failure signals",
+                "columns": ["Signal class", "Observable evidence"],
+                "rows": [
+                    [display_label(label), "; ".join(brief["signals"][label])]
+                    for label in ("success", "ambiguity", "failure")
+                ],
+            },
+            103,
+        )
+    )
+    reality = brief["realityBoundary"]
+    sections.append(
+        render_section(
+            {
+                "title": "Reality and scope boundary",
+                "eyebrow": "Clearly label every simulation",
+                "type": "table",
+                "caption": "What is real, simulated, manual, delayed, or omitted",
+                "columns": ["Boundary", "Approved treatment"],
+                "rows": [
+                    [display_label(key), "; ".join(reality[key]) or "None"]
+                    for key in ("mustBeReal", "simulated", "manuallyOperated", "delayed", "omitted")
+                ],
+            },
+            104,
+        )
+    )
+    capability_names = [
+        display_label(key)
+        for key, value in brief["capabilities"].items()
+        if key != "notes" and value is True
+    ]
+    sections.append(
+        render_section(
+            {
+                "title": "Content, environment, and safety",
+                "eyebrow": "Test conditions",
+                "type": "key-value",
+                "items": [
+                    {"label": "Required content", "value": "; ".join(brief["content"]["required"])},
+                    {"label": "Real capabilities", "value": "; ".join(capability_names) or "None"},
+                    {"label": "Devices", "value": "; ".join(brief["environment"]["devices"])},
+                    {"label": "Browsers", "value": "; ".join(brief["environment"]["browsers"])},
+                    {"label": "Languages", "value": "; ".join(brief["environment"]["languages"])},
+                    {"label": "Accessibility", "value": "; ".join(brief["environment"]["accessibility"])},
+                    {"label": "Data class", "value": display_label(brief["safety"]["dataClassification"])},
+                    {"label": "Evidence capture", "value": "; ".join(brief["evidenceCapture"]["methods"])},
+                ],
+            },
+            105,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Provider-neutral tool selection",
+                "eyebrow": "Needs and constraints, not a universal ranking",
+                "type": "key-value",
+                "items": [
+                    {"label": "Route", "value": display_label(tool["route"])},
+                    {"label": "Category", "value": display_label(tool["category"])},
+                    {"label": "Selected tool", "value": tool["selectedTool"]},
+                    {"label": "Rationale", "value": tool["rationale"]},
+                    {"label": "Estimated cost", "value": tool["estimatedCost"]},
+                    {"label": "Export / self-host", "value": tool["exportSelfHosting"]["strategy"]},
+                ],
+            },
+            106,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Approval boundaries",
+                "eyebrow": "Human-owned decisions",
+                "type": "table",
+                "caption": "Experiment, tool, account, cost, data, and deployment approvals",
+                "columns": ["Boundary", "Status", "Decider", "Rationale"],
+                "rows": [
+                    [display_label(boundary), display_label(item["status"]), item["deciderLabel"] or "Pending", item["rationale"] or "Pending"]
+                    for boundary, item in approvals.items()
+                ],
+            },
+            107,
+        )
+    )
+    sections.append(
+        render_section(
+            {
+                "title": "Deployment, cleanup, and rollback",
+                "eyebrow": "A URL is not validation",
+                "type": "key-value",
+                "items": [
+                    {"label": "Target", "value": deployment["target"]},
+                    {"label": "Access", "value": display_label(deployment["accessModel"])},
+                    {"label": "Planned URL", "value": deployment["url"] or "No URL planned"},
+                    {"label": "Expiry", "value": deployment["expiresAt"] or "No automatic expiry"},
+                    {"label": "Cleanup", "value": deployment["cleanupPlan"]},
+                    {"label": "Rollback", "value": deployment["rollbackPlan"]},
+                ],
+            },
+            108,
+        )
+    )
+    operation_rows: list[str] = []
+    for packet in brief["buildPackets"]:
+        operation_rows.append(
+            '<li><strong>Build packet:</strong> '
+            f'<a href="../{escape(packet["path"])}">{escape(packet["path"])}</a> '
+            f'· {escape(packet["sha256"][:12])}</li>'
+        )
+    for trial in brief["trialRuns"]:
+        operation_rows.append(
+            f'<li><strong>Trial {escape(trial["id"])}:</strong> '
+            f'<span class="status {class_for_status(trial["status"])}">{escape(display_label(trial["status"]))}</span> '
+            f'· moderated by {escape(trial["moderator"])}</li>'
+        )
+    for version in brief["versions"]:
+        url = safe_url(str(version.get("deploymentUrl") or ""))
+        url_link = f' · <a href="{url}">deployment</a>' if url else ""
+        operation_rows.append(
+            f'<li><strong>Tested version {escape(version["version"])}:</strong> '
+            f'<a href="../{escape(version["prototypePath"])}">artifact</a> · '
+            f'<a href="../{escape(version["recordPath"])}">immutable record</a>'
+            f'{url_link}</li>'
+        )
+    sections.append(
+        '<section class="section" aria-labelledby="prototype-operations">'
+        '<p class="eyebrow">Build and test history</p>'
+        '<h2 id="prototype-operations">Packets, trials, and immutable versions</h2>'
+        f'<ul>{"".join(operation_rows) if operation_rows else "<li>No build packet, trial, or frozen version yet.</li>"}</ul>'
+        '<div class="callout"><strong>Readiness boundary:</strong> A live URL and a passed trial do not establish customer validation or production readiness.</div>'
+        '</section>'
+    )
+    return "\n".join(sections)
 
 
 def render_evidence(values: Any) -> str:
@@ -1690,6 +1970,136 @@ def evidence_claim_errors(data: dict[str, Any], state: dict[str, Any]) -> list[s
     return errors
 
 
+def approved_prototype_brief_snapshot(brief: dict[str, Any]) -> dict[str, Any]:
+    """Return the approved build boundary without later operational history."""
+
+    snapshot = copy.deepcopy(brief)
+    snapshot["buildPackets"] = []
+    snapshot["trialRuns"] = []
+    snapshot["versions"] = []
+    snapshot["currentVersion"] = None
+    return snapshot
+
+
+def prototype_brief_digest(brief: dict[str, Any]) -> str:
+    return sha256_bytes(json_text(approved_prototype_brief_snapshot(brief)).encode("utf-8"))
+
+
+def prototype_brief_errors(
+    brief: dict[str, Any], *, require_approved: bool
+) -> list[str]:
+    errors: list[str] = []
+    level = str(brief.get("artifactLevel", ""))
+    scenes = brief.get("experience", {}).get("criticalScenes", [])
+    scene_ids = [item.get("id") for item in scenes if isinstance(item, dict)]
+    if len(scene_ids) != len(set(scene_ids)):
+        errors.append("$.prototypeBrief.experience.criticalScenes: scene IDs must be unique")
+
+    capabilities = brief.get("capabilities", {})
+    real_capabilities = sorted(
+        key
+        for key, value in capabilities.items()
+        if key != "notes" and value is True
+    )
+    if real_capabilities and level in ARTIFACT_LADDER[:4]:
+        errors.append(
+            "$.prototypeBrief.artifactLevel: real capabilities require live-mvp or limited-pilot; "
+            f"found {level} with {', '.join(real_capabilities)}"
+        )
+
+    tool = brief.get("toolSelection", {})
+    if tool.get("route") == "no-external-tool":
+        if tool.get("requiresExternalAccount"):
+            errors.append(
+                "$.prototypeBrief.toolSelection: a no-external-tool route cannot require an external account"
+            )
+        if tool.get("category") not in {"none", "native-repository"}:
+            errors.append(
+                "$.prototypeBrief.toolSelection.category: a no-external-tool route must use none or native-repository"
+            )
+
+    deployment = brief.get("deploymentPlan", {})
+    if deployment.get("public") != (deployment.get("accessModel") == "public"):
+        errors.append(
+            "$.prototypeBrief.deploymentPlan: public must agree with accessModel"
+        )
+    if deployment.get("public") and not deployment.get("url"):
+        errors.append(
+            "$.prototypeBrief.deploymentPlan.url: a planned public deployment requires an approved URL"
+        )
+
+    trial_ids = [
+        item.get("id") for item in brief.get("trialRuns", []) if isinstance(item, dict)
+    ]
+    if len(trial_ids) != len(set(trial_ids)):
+        errors.append("$.prototypeBrief.trialRuns: trial-run IDs must be unique")
+    version_ids = [
+        item.get("version") for item in brief.get("versions", []) if isinstance(item, dict)
+    ]
+    if len(version_ids) != len(set(version_ids)):
+        errors.append("$.prototypeBrief.versions: tested-version IDs must be unique")
+    current = brief.get("currentVersion")
+    if current is not None and current not in version_ids:
+        errors.append(
+            "$.prototypeBrief.currentVersion: current version is absent from the immutable version catalog"
+        )
+
+    if require_approved:
+        if any(
+            value.strip().lower() == "not established yet."
+            for value in text_values(approved_prototype_brief_snapshot(brief))
+            if isinstance(value, str)
+        ):
+            errors.append(
+                "$.prototypeBrief: an approved brief cannot contain draft placeholders"
+            )
+        approvals = brief.get("approvals", {})
+        for boundary, key in PROTOTYPE_APPROVAL_BOUNDARIES.items():
+            approval = approvals.get(key, {})
+            status = approval.get("status")
+            if status == "pending":
+                errors.append(
+                    f"$.prototypeBrief.approvals.{key}: {boundary} requires a human decision"
+                )
+                continue
+            if not str(approval.get("deciderLabel", "")).strip():
+                errors.append(
+                    f"$.prototypeBrief.approvals.{key}.deciderLabel: approval requires a human-safe Decider label"
+                )
+            if not str(approval.get("rationale", "")).strip():
+                errors.append(
+                    f"$.prototypeBrief.approvals.{key}.rationale: approval requires a rationale"
+                )
+            if not approval.get("decidedAt"):
+                errors.append(
+                    f"$.prototypeBrief.approvals.{key}.decidedAt: approval requires a timestamp"
+                )
+        for key in ("experimentBoundary", "toolChoice"):
+            if approvals.get(key, {}).get("status") != "approved":
+                errors.append(
+                    f"$.prototypeBrief.approvals.{key}: this boundary must be explicitly approved"
+                )
+        if tool.get("requiresExternalAccount") and approvals.get(
+            "externalAccount", {}
+        ).get("status") != "approved":
+            errors.append(
+                "$.prototypeBrief.approvals.externalAccount: an external account cannot be connected without explicit approval"
+            )
+        if deployment.get("public") and approvals.get(
+            "publicDeployment", {}
+        ).get("status") != "approved":
+            errors.append(
+                "$.prototypeBrief.approvals.publicDeployment: public deployment requires explicit approval"
+            )
+        if brief.get("evidenceCapture", {}).get("analytics", {}).get("enabled") and approvals.get(
+            "dataExposure", {}
+        ).get("status") != "approved":
+            errors.append(
+                "$.prototypeBrief.approvals.dataExposure: analytics cannot be enabled without explicit approval"
+            )
+    return errors
+
+
 def artifact_data_errors(
     data: dict[str, Any], specs: dict[str, dict[str, Any]]
 ) -> list[str]:
@@ -1702,6 +2112,16 @@ def artifact_data_errors(
     if artifact_id not in specs:
         errors.append(f"$.id: unknown artifact id {artifact_id!r}")
         return errors
+    if artifact_id == PROTOTYPE_BRIEF_ID:
+        brief = data.get("prototypeBrief")
+        if isinstance(brief, dict):
+            errors.extend(
+                prototype_brief_errors(
+                    brief,
+                    require_approved=data.get("status")
+                    in {"ready-for-decision", "complete"},
+                )
+            )
     sections = data.get("sections")
     assert isinstance(sections, list)
     section_indexes: dict[str, int] = {}
@@ -1835,6 +2255,12 @@ def render_artifact(
         for index, section in enumerate(sections, start=1)
         if isinstance(section, dict)
     )
+    if artifact_id == PROTOTYPE_BRIEF_ID:
+        primary_content += "\n" + render_prototype_brief(data["prototypeBrief"])
+    prototype_data_path = workspace / "artifact-data" / f"{PROTOTYPE_BRIEF_ID}.json"
+    prototype_brief = None
+    if artifact_id == "13-outcome" and prototype_data_path.exists():
+        prototype_brief = load_artifact_data(prototype_data_path).get("prototypeBrief")
     template = (HTML_KIT_DIR / "artifact-template.html").read_text(encoding="utf-8")
     status = str(data.get("status", "draft"))
     rendered = replace_tokens(
@@ -1859,6 +2285,11 @@ def render_artifact(
             "METHOD_FIDELITY_HTML": (
                 render_method_fidelity_section(state)
                 if artifact_id == "13-outcome"
+                else ""
+            ),
+            "PROTOTYPE_TRACEABILITY_HTML": (
+                render_prototype_traceability(prototype_brief, prefix="../")
+                if isinstance(prototype_brief, dict)
                 else ""
             ),
         },
@@ -1934,6 +2365,49 @@ def render_artifact_links(artifacts: list[dict[str, Any]]) -> str:
             "</li>"
         )
     return "\n".join(output)
+
+
+def render_prototype_traceability(
+    brief: dict[str, Any] | None, *, prefix: str = ""
+) -> str:
+    if not isinstance(brief, dict):
+        return (
+            '<p>No approved prototype/MVP brief or immutable tested version has been recorded.</p>'
+        )
+    versions = brief.get("versions", [])
+    current = brief.get("currentVersion")
+    current_record = next(
+        (
+            item
+            for item in versions
+            if isinstance(item, dict) and item.get("version") == current
+        ),
+        None,
+    )
+    brief_href = f"{prefix}artifacts/10-prototype-brief.html" if prefix else "artifacts/10-prototype-brief.html"
+    links = [f'<li><a href="{escape(brief_href)}">Approved prototype / MVP brief</a></li>']
+    if current_record is not None:
+        artifact_path = f"{prefix}{current_record['prototypePath']}"
+        record_path = f"{prefix}{current_record['recordPath']}"
+        links.extend(
+            [
+                f'<li><a href="{escape(artifact_path)}">Tested artifact {escape(current)}</a></li>',
+                f'<li><a href="{escape(record_path)}">Immutable deployment and version record</a></li>',
+            ]
+        )
+        url = safe_url(str(current_record.get("deploymentUrl") or ""))
+        if url:
+            links.append(f'<li><a href="{url}">Versioned deployment URL</a></li>')
+    else:
+        links.append("<li>No tested version is frozen yet.</li>")
+    return (
+        '<section class="section" aria-labelledby="test-artifact-traceability">'
+        '<p class="eyebrow">Version-bound evidence</p>'
+        '<h2 id="test-artifact-traceability">Test artifact traceability</h2>'
+        f'<ul>{"".join(links)}</ul>'
+        '<div class="callout"><strong>Readiness boundary:</strong> A live URL does not establish customer validation or production readiness.</div>'
+        '</section>'
+    )
 
 
 def short_digest(value: Any) -> str:
@@ -2014,7 +2488,10 @@ def render_decisions(decisions: Any) -> str:
 
 
 def render_dashboard(
-    state: dict[str, Any], artifacts: list[dict[str, Any]], manifest: dict[str, Any]
+    state: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+    manifest: dict[str, Any],
+    prototype_brief: dict[str, Any] | None,
 ) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
     skipped = set(state.get("skippedSteps", []))
@@ -2076,6 +2553,9 @@ def render_dashboard(
             "CURRENT_FIDELITY_GUIDANCE": render_current_fidelity_guidance(state),
             "ARTIFACT_COUNT": len(artifacts),
             "ARTIFACT_LINKS": render_artifact_links(artifacts),
+            "TEST_ARTIFACT_TRACEABILITY": render_prototype_traceability(
+                prototype_brief
+            ),
             "ASSIGNMENT_COUNT": len(manifest.get("assignments", [])),
             "ASSIGNMENT_SUMMARY": render_assignment_provenance(manifest),
             "DECISION_SUMMARY": render_decisions(state.get("decisions", [])),
@@ -2162,8 +2642,16 @@ def build_render_plan(workspace: Path) -> RenderPlan:
         generated_files[output_path] = rendered
         registrations.append(registration)
     registrations.sort(key=lambda item: item["id"])
+    prototype_brief = next(
+        (
+            data.get("prototypeBrief")
+            for _path, data in artifact_documents
+            if data.get("id") == PROTOTYPE_BRIEF_ID
+        ),
+        None,
+    )
     generated_files[workspace / "index.html"] = render_dashboard(
-        state, registrations, manifest
+        state, registrations, manifest, prototype_brief
     )
 
     normalized_state = dict(state)
@@ -2217,11 +2705,144 @@ def empty_section(title: str) -> dict[str, Any]:
     }
 
 
+def pending_prototype_approval() -> dict[str, Any]:
+    return {
+        "status": "pending",
+        "deciderLabel": "",
+        "rationale": "",
+        "decidedAt": None,
+    }
+
+
+def initial_prototype_brief() -> dict[str, Any]:
+    placeholder = "Not established yet."
+    return {
+        "schemaVersion": TEST_ARTIFACT_WORKFLOW_VERSION,
+        "artifactLevel": "clickable",
+        "selection": {
+            "sprintQuestions": [placeholder],
+            "hypothesis": placeholder,
+            "rationale": placeholder,
+            "whyHigherFidelityIsUnnecessary": placeholder,
+        },
+        "customer": {"target": placeholder, "entryContext": placeholder},
+        "experience": {
+            "task": placeholder,
+            "journey": [placeholder],
+            "criticalScenes": [
+                {
+                    "id": f"SCENE-{index}",
+                    "title": placeholder,
+                    "sprintQuestion": placeholder,
+                    "description": placeholder,
+                }
+                for index in range(1, 5)
+            ],
+        },
+        "signals": {
+            "success": [placeholder],
+            "ambiguity": [placeholder],
+            "failure": [placeholder],
+        },
+        "realityBoundary": {
+            "mustBeReal": [placeholder],
+            "simulated": [],
+            "manuallyOperated": [],
+            "delayed": [],
+            "omitted": [],
+        },
+        "content": {
+            "required": [placeholder],
+            "sampleData": [placeholder],
+            "states": {"empty": [], "loading": [], "error": []},
+        },
+        "environment": {
+            "devices": [placeholder],
+            "browsers": [placeholder],
+            "languages": [placeholder],
+            "accessibility": [placeholder],
+            "conditions": [],
+        },
+        "capabilities": {
+            "realData": False,
+            "authentication": False,
+            "payments": False,
+            "integrations": False,
+            "notifications": False,
+            "dataPersistence": False,
+            "backgroundJobs": False,
+            "repeatedUse": False,
+            "notes": [],
+        },
+        "safety": {
+            "privacy": [placeholder],
+            "consent": [placeholder],
+            "security": [placeholder],
+            "regulatory": [],
+            "dataClassification": "synthetic-only",
+        },
+        "evidenceCapture": {
+            "methods": [placeholder],
+            "analytics": {
+                "enabled": False,
+                "rationale": "No analytics will be enabled without explicit human approval.",
+            },
+        },
+        "build": {
+            "timeboxMinutes": 1,
+            "owner": placeholder,
+            "budgetCeiling": placeholder,
+            "approvalPoints": [placeholder],
+        },
+        "toolSelection": {
+            "route": "interaction-design",
+            "category": "interaction-design",
+            "selectedTool": placeholder,
+            "rationale": placeholder,
+            "constraints": [placeholder],
+            "criteria": {
+                "timeToTestableArtifact": placeholder,
+                "fidelity": placeholder,
+                "realCapabilities": placeholder,
+                "stackCompatibility": placeholder,
+                "exportability": placeholder,
+                "collaborationVersionControl": placeholder,
+                "privacyDataProcessing": placeholder,
+                "accessibilityDeviceSupport": placeholder,
+                "costApproval": placeholder,
+                "maintainability": placeholder,
+            },
+            "supportingTools": [],
+            "requiresExternalAccount": False,
+            "estimatedCost": placeholder,
+            "exportSelfHosting": {"available": False, "strategy": placeholder},
+        },
+        "deploymentPlan": {
+            "required": False,
+            "target": "Private local file",
+            "accessModel": "private-local",
+            "public": False,
+            "url": None,
+            "expiresAt": None,
+            "cleanupPlan": placeholder,
+            "rollbackPlan": placeholder,
+        },
+        "approvals": {
+            key: pending_prototype_approval()
+            for key in PROTOTYPE_APPROVAL_BOUNDARIES.values()
+        },
+        "buildPackets": [],
+        "trialRuns": [],
+        "versions": [],
+        "currentVersion": None,
+    }
+
+
 def new_artifact_data(
     artifact_id: str, spec: dict[str, Any], timestamp: str | None = None
 ) -> dict[str, Any]:
     now = timestamp or utc_now()
-    return {
+    data = {
         "schemaVersion": ARTIFACT_SCHEMA_VERSION,
         "id": artifact_id,
         "status": "draft",
@@ -2232,6 +2853,19 @@ def new_artifact_data(
         "unknowns": [],
         "nextActions": ["Replace draft entries with evidence-backed content."],
     }
+    if artifact_id == PROTOTYPE_BRIEF_ID:
+        data["prototypeBrief"] = initial_prototype_brief()
+        data["sections"] = [
+            {
+                "title": "Structured prototype/MVP brief",
+                "eyebrow": "Canonical machine-readable record",
+                "type": "paragraphs",
+                "paragraphs": [
+                    "The typed brief below is the approved source for build, trial, deployment, and tested-version records."
+                ],
+            }
+        ]
+    return data
 
 
 def initial_brief_data(
@@ -2288,6 +2922,7 @@ def initial_session_manifest(
     return {
         "schemaVersion": SESSION_SCHEMA_VERSION,
         "recordType": "customer-session-manifest",
+        "testArtifactWorkflowVersion": TEST_ARTIFACT_WORKFLOW_VERSION,
         "workspaceSlug": workspace_slug,
         "currentVersions": {"prototype": None, "questions": None},
         "versionCatalog": {"prototypes": [], "questions": []},
@@ -3293,8 +3928,22 @@ def command_complete_step(args: argparse.Namespace) -> None:
         )
     if step_id == "02-qualify" and state.get("route") == "undecided":
         raise SprintError("Set the sprint route before completing 02-qualify")
-    if step_id == "10-prototype" and not (workspace / "prototype" / "index.html").exists():
-        raise SprintError("prototype/index.html must exist before completing 10-prototype")
+    if step_id == "10-prototype":
+        _brief_path, brief_data, brief = load_prototype_brief_artifact(workspace)
+        if brief_data.get("status") != "complete":
+            raise SprintError(
+                "The approved structured prototype/MVP brief must remain complete"
+            )
+        if not brief.get("currentVersion"):
+            raise SprintError(
+                "Freeze a trial-passed immutable tested version before completing 10-prototype"
+            )
+        record_errors = prototype_record_errors(workspace, brief_data)
+        if record_errors:
+            raise SprintError(
+                "Prototype build, trial, or version records are invalid:\n"
+                + "\n".join(f"- {item}" for item in record_errors)
+            )
     if step_id == "11-customer-sessions":
         if state.get("executionMode") != "live":
             raise SprintError(
@@ -3547,8 +4196,26 @@ def resolve_decision_input(
     if requested_kind == "prototype":
         if reference != "prototype":
             raise SprintError("Prototype provenance reference must be prototype")
-        path = workspace / "prototype" / "index.html"
-        return provenance_record("prototype", reference, file_digest(path))
+        _brief_path, _brief_data, brief = load_prototype_brief_artifact(workspace)
+        current = brief.get("currentVersion")
+        summary = next(
+            (
+                item
+                for item in brief.get("versions", [])
+                if item.get("version") == current
+            ),
+            None,
+        )
+        if summary is None:
+            raise SprintError(
+                "Prototype provenance requires a frozen immutable tested version"
+            )
+        path = workspace_relative_file(
+            workspace, summary["recordPath"], "Immutable tested-version record"
+        )
+        return provenance_record(
+            "prototype", f"prototype:{current}", file_digest(path)
+        )
     if requested_kind == "route":
         if reference != state.get("route"):
             raise SprintError(
@@ -3755,6 +4422,435 @@ def command_gate(args: argparse.Namespace) -> None:
     print(f"Recorded {gate_id}: {decision_text}")
 
 
+def command_prototype_recommend(args: argparse.Namespace) -> None:
+    """Recommend the lowest ladder rung and provider-neutral route from test needs."""
+
+    if args.real_service_required:
+        level = "limited-pilot"
+        rationale = "The hypothesis depends on a limited real service, not a simulated interaction."
+    elif args.real_behavior_required:
+        level = "live-mvp"
+        rationale = "The hypothesis depends on real behavior, persistence, transactions, integrations, or repeated use."
+    elif args.code_fidelity_required:
+        level = "coded-facade"
+        rationale = "Realistic coded behavior is required, while operational capabilities may remain controlled or mocked."
+    elif args.interaction_required:
+        level = "clickable"
+        rationale = "A clickable flow can produce authentic interaction evidence without operational product code."
+    elif args.manual_service:
+        level = "concierge"
+        rationale = "A manually operated service test can answer the question before software is built."
+    else:
+        level = "copy-concept"
+        rationale = "Copy or a concept stimulus is sufficient to answer the current sprint question."
+
+    if args.existing_product and level in {"live-mvp", "limited-pilot"}:
+        route = "existing-product-slice"
+        category = "existing-application-stack"
+        tool_reason = "Use a feature-flagged or access-limited slice in the existing stack."
+    elif args.no_external_tools:
+        if level in {"live-mvp", "limited-pilot"}:
+            raise SprintError(
+                "A new live behavior or real-service test cannot use the no-external-tool route unless --existing-product is supplied"
+            )
+        if level == "clickable":
+            level = "coded-facade"
+            rationale += " With external interaction tools unavailable, use a small native coded facade."
+        route = "no-external-tool"
+        category = "native-repository" if level == "coded-facade" else "none"
+        tool_reason = "Use repository-native files or manual materials without an external service."
+    elif level == "clickable":
+        route = "interaction-design"
+        category = "interaction-design"
+        tool_reason = "Use an interaction-design category; provider examples are optional guidance."
+    elif level == "coded-facade":
+        route = "portable-coded-facade"
+        category = "native-repository"
+        tool_reason = "Use portable repository-native HTML, CSS, and JavaScript."
+    elif level in {"live-mvp", "limited-pilot"}:
+        route = "live-service-pilot" if level == "limited-pilot" else "ai-assisted-app-builder"
+        category = "ai-app-builder"
+        tool_reason = "Select a coded builder or stack only after account, cost, data, and deployment approval."
+    else:
+        route = "no-external-tool"
+        category = "none"
+        tool_reason = "No external product-building tool is required."
+
+    print(
+        json.dumps(
+            {
+                "artifactLevel": level,
+                "toolRoute": route,
+                "toolCategory": category,
+                "rationale": rationale,
+                "toolRationale": tool_reason,
+                "approvalBoundaries": list(PROTOTYPE_APPROVAL_BOUNDARIES),
+                "readinessBoundary": (
+                    "A live URL does not establish customer validation or production readiness."
+                ),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+def load_prototype_brief_artifact(
+    workspace: Path,
+) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    path = workspace / "artifact-data" / f"{PROTOTYPE_BRIEF_ID}.json"
+    if not path.exists():
+        raise SprintError(
+            "Create and complete 10-prototype-brief before building a test artifact"
+        )
+    data = load_artifact_data(path)
+    brief = data.get("prototypeBrief")
+    if not isinstance(brief, dict):
+        raise SprintError("The prototype/MVP artifact is missing its structured brief")
+    return path, data, brief
+
+
+def command_prototype_approve(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, specs, _artifacts = load_workspace_documents(workspace)
+    path, data, brief = load_prototype_brief_artifact(workspace)
+    key = PROTOTYPE_APPROVAL_BOUNDARIES[args.boundary]
+    now = utc_now()
+    brief["approvals"][key] = {
+        "status": args.status,
+        "deciderLabel": args.decider.strip(),
+        "rationale": args.rationale.strip(),
+        "decidedAt": now,
+    }
+    if not args.decider.strip() or not args.rationale.strip():
+        raise SprintError("Prototype approvals require a Decider label and rationale")
+    if args.status == "declined":
+        data["status"] = "blocked"
+    elif data.get("status") == "blocked":
+        data["status"] = "in-review"
+    data["updatedAt"] = now
+    errors = artifact_data_errors(data, specs)
+    if errors:
+        raise SprintError("Prototype approval is invalid: " + "; ".join(errors))
+    save_artifact_data(path, data)
+    save_state(workspace, state, timestamp=now)
+    render_workspace(workspace)
+    print(f"Recorded prototype boundary {args.boundary}: {args.status}")
+
+
+def command_prototype_build_packet(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, specs, _artifacts = load_workspace_documents(workspace)
+    path, data, brief = load_prototype_brief_artifact(workspace)
+    if data.get("status") != "complete":
+        raise SprintError("The structured prototype/MVP brief must be complete and approved before generating a build packet")
+    errors = prototype_brief_errors(brief, require_approved=True)
+    if errors:
+        raise SprintError("The approved prototype/MVP brief is invalid: " + "; ".join(errors))
+    assets = [
+        file_source_descriptor(
+            workspace, value, f"Approved build asset {index}", reject_sensitive=True
+        )
+        for index, value in enumerate(args.asset, 1)
+    ]
+    snapshot = approved_prototype_brief_snapshot(brief)
+    snapshot_text = json_text(snapshot)
+    brief_sha = sha256_bytes(snapshot_text.encode("utf-8"))
+    asset_blocks = []
+    for descriptor in assets:
+        asset_path = workspace_relative_file(
+            workspace, descriptor["path"], "Approved build asset"
+        )
+        try:
+            asset_text = asset_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            asset_text = "[Binary asset: use only the explicitly approved file at the recorded path.]"
+        asset_blocks.append(
+            f"## Approved asset — `{descriptor['path']}`\n\n"
+            f"SHA-256: `{descriptor['sha256']}`  \nBytes: `{descriptor['bytes']}`\n\n"
+            f"<approved-asset path=\"{descriptor['path']}\">\n{asset_text.rstrip()}\n</approved-asset>"
+        )
+    packet = f"""# Approved AI build packet
+
+This packet is the complete build boundary. Do not load sprint history, private transcripts, secrets, production customer data, account material, or any file not listed below. Do not connect accounts, incur cost, enable analytics, change production, or deploy publicly unless the matching human approval is recorded in the approved brief.
+
+Build only the smallest approved artifact and stop at the recorded timebox. Clearly label mocked and manually operated behavior. Generated output still requires accessibility, flow, content, security, and data-exposure review.
+
+## Approved structured brief
+
+SHA-256: `{brief_sha}`
+
+```json
+{snapshot_text.rstrip()}
+```
+
+{chr(10).join(asset_blocks) if asset_blocks else "## Approved assets\n\nNo additional assets were approved."}
+
+## Stop condition
+
+Return the bounded artifact, changed-file list, review notes, and unresolved issues when the approved scenes work or the timebox expires. Do not expand scope.
+"""
+    output_value = args.output or f"working/10-prototype/build-packet-{brief_sha[:12]}.md"
+    output_path, output_relative = resolved_workspace_file(
+        workspace, output_value, below="working/10-prototype"
+    )
+    if output_path.exists():
+        raise SprintError(f"Build packet path already exists; packets are immutable: {output_relative}")
+    now = utc_now()
+    brief["buildPackets"].append(
+        {
+            "path": output_relative,
+            "sha256": sha256_text(packet),
+            "briefSha256": brief_sha,
+            "assets": assets,
+            "generatedAt": now,
+        }
+    )
+    data["updatedAt"] = now
+    errors = artifact_data_errors(data, specs)
+    if errors:
+        raise SprintError("Build packet record is invalid: " + "; ".join(errors))
+    write_text(output_path, packet)
+    save_artifact_data(path, data)
+    save_state(workspace, state, timestamp=now)
+    render_workspace(workspace)
+    print(f"Wrote approved AI build packet: {output_path}")
+
+
+def command_prototype_trial(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, specs, _artifacts = load_workspace_documents(workspace)
+    path, data, brief = load_prototype_brief_artifact(workspace)
+    if data.get("status") != "complete" or not brief["buildPackets"]:
+        raise SprintError("A complete approved brief and immutable build packet are required before the moderated trial")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", args.trial_id) is None:
+        raise SprintError("--trial-id has an invalid identifier")
+    if any(item["id"] == args.trial_id for item in brief["trialRuns"]):
+        raise SprintError(f"Trial-run ID already exists: {args.trial_id}")
+    test_plan_path = workspace / "artifact-data" / "10-test-plan.json"
+    test_plan = load_artifact_data(test_plan_path)
+    if test_plan.get("status") != "complete":
+        raise SprintError("The actual customer test plan and interview guide must be complete before the trial")
+    script_path = workspace_relative_file(
+        workspace, args.interview_script, "Trial interview script"
+    )
+    if script_path != test_plan_path.resolve():
+        raise SprintError("The moderated trial must use artifact-data/10-test-plan.json as the actual interview script")
+    script_text = script_path.read_text(encoding="utf-8")
+    script_payload = script_text.encode("utf-8")
+    script_snapshot_path = (
+        workspace
+        / "working"
+        / "10-prototype"
+        / "trials"
+        / args.trial_id
+        / "interview-script.json"
+    )
+    if script_snapshot_path.exists():
+        raise SprintError(
+            f"Immutable trial script snapshot already exists: {script_snapshot_path}"
+        )
+    script_descriptor = {
+        "path": script_snapshot_path.relative_to(workspace).as_posix(),
+        "sha256": sha256_bytes(script_payload),
+        "bytes": len(script_payload),
+    }
+    tested = file_source_descriptor(workspace, args.prototype, "Trial prototype")
+    prototype_parts = Path(tested["path"]).parts
+    if not prototype_parts or prototype_parts[0] != "prototype":
+        raise SprintError("The trial prototype must be stored below prototype/")
+    findings = [item.strip() for item in args.finding if item.strip()]
+    if not findings:
+        raise SprintError("A moderated trial requires at least one recorded finding")
+    now = utc_now()
+    brief["trialRuns"].append(
+        {
+            "id": args.trial_id,
+            "status": args.status,
+            "moderator": args.moderator.strip(),
+            "interviewScript": script_descriptor,
+            "testedArtifact": tested,
+            "findings": findings,
+            "issues": [item.strip() for item in args.issue if item.strip()],
+            "ranAt": now,
+        }
+    )
+    data["updatedAt"] = now
+    errors = artifact_data_errors(data, specs)
+    if errors:
+        raise SprintError("Trial-run record is invalid: " + "; ".join(errors))
+    write_text(script_snapshot_path, script_text)
+    save_artifact_data(path, data)
+    save_state(workspace, state, timestamp=now)
+    render_workspace(workspace)
+    print(f"Recorded moderated trial {args.trial_id}: {args.status}")
+
+
+def command_prototype_freeze(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, specs, _artifacts = load_workspace_documents(workspace)
+    path, data, brief = load_prototype_brief_artifact(workspace)
+    if data.get("status") != "complete":
+        raise SprintError("The approved structured brief must be complete before freezing a tested version")
+    version = args.version.strip()
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", version) is None:
+        raise SprintError("--version has an invalid version identifier")
+    if any(item["version"] == version for item in brief["versions"]):
+        raise SprintError(f"Tested version already exists and is immutable: {version}")
+    trial = next((item for item in brief["trialRuns"] if item["id"] == args.trial_run), None)
+    if trial is None or trial.get("status") != "passed":
+        raise SprintError("A passed moderated trial is required before freezing a tested version")
+    prototype = file_source_descriptor(workspace, args.prototype, "Tested prototype")
+    context = file_source_descriptor(workspace, args.prototype_context, "Tested prototype context")
+    for descriptor, label in ((prototype, "prototype"), (context, "context")):
+        parts = Path(descriptor["path"]).parts
+        if len(parts) < 3 or parts[0] != "prototype" or parts[1] != version:
+            raise SprintError(
+                f"The tested {label} must use the immutable version directory prototype/{version}/"
+            )
+    if prototype != trial["testedArtifact"]:
+        raise SprintError("The artifact changed after the passed trial; run a new moderated trial")
+    linked: dict[str, Any] = {}
+    linked_outputs: dict[Path, str] = {}
+    for artifact_id, key in (
+        ("08-experiment", "experiment"),
+        ("09-storyboard", "storyboard"),
+        ("10-test-plan", "testPlan"),
+    ):
+        artifact_path = workspace / "artifact-data" / f"{artifact_id}.json"
+        artifact = load_artifact_data(artifact_path)
+        if artifact.get("status") != "complete":
+            raise SprintError(f"{artifact_id} must be complete before a tested version is frozen")
+        artifact_text = artifact_path.read_text(encoding="utf-8")
+        artifact_payload = artifact_text.encode("utf-8")
+        snapshot_path = (
+            workspace / "prototype" / version / "sources" / f"{artifact_id}.json"
+        )
+        if snapshot_path.exists():
+            raise SprintError(
+                f"Immutable tested-version source already exists: {snapshot_path}"
+            )
+        linked_outputs[snapshot_path] = artifact_text
+        linked[key] = {
+            "path": snapshot_path.relative_to(workspace).as_posix(),
+            "sha256": sha256_bytes(artifact_payload),
+            "bytes": len(artifact_payload),
+        }
+    if trial["interviewScript"]["sha256"] != linked["testPlan"]["sha256"]:
+        raise SprintError(
+            "The customer test plan changed after the moderated trial; run a new trial with the actual current script"
+        )
+    packet_summary = brief["buildPackets"][-1]
+    packet = file_source_descriptor(
+        workspace, packet_summary["path"], "Approved AI build packet"
+    )
+    is_public = args.access_model == "public"
+    if (
+        args.access_model != "private-local"
+        and brief["approvals"]["externalAccount"]["status"] != "approved"
+    ):
+        raise SprintError(
+            "A hosted deployment record requires explicit human approval for any external account"
+        )
+    if is_public and brief["approvals"]["publicDeployment"]["status"] != "approved":
+        raise SprintError("A public deployment cannot be recorded without explicit human approval")
+    if is_public and not args.url:
+        raise SprintError("A public deployment record requires --url")
+    if args.url and safe_url(args.url) is None:
+        raise SprintError("--url must be an absolute http or https URL")
+    now = utc_now()
+    snapshot = approved_prototype_brief_snapshot(brief)
+    brief_sha = sha256_bytes(json_text(snapshot).encode("utf-8"))
+    if packet_summary["briefSha256"] != brief_sha:
+        raise SprintError(
+            "The approved brief changed after the latest AI build packet; generate a new bounded packet and rebuild"
+        )
+    record = {
+        "schemaVersion": TEST_ARTIFACT_WORKFLOW_VERSION,
+        "recordType": "tested-prototype-version",
+        "version": version,
+        "artifactLevel": brief["artifactLevel"],
+        "prototypeArtifact": prototype,
+        "prototypeContext": context,
+        "approvedBrief": {"sha256": brief_sha, "snapshot": snapshot},
+        "buildPacket": packet,
+        "trialRun": copy.deepcopy(trial),
+        "linkedArtifacts": linked,
+        "deployment": {
+            "target": args.deployment_target.strip(),
+            "accessModel": args.access_model,
+            "public": is_public,
+            "url": args.url,
+            "expiresAt": args.expires_at,
+            "cleanupPlan": args.cleanup_plan.strip(),
+            "rollbackPlan": args.rollback_plan.strip(),
+            "recordedAt": now,
+        },
+        "claims": {
+            "customerValidated": False,
+            "productionReady": False,
+            "statement": "A live URL and a passed trial do not establish customer validation or production readiness.",
+        },
+        "frozenAt": now,
+    }
+    record_path = workspace / "prototype" / version / "tested-version.json"
+    if record_path.exists():
+        raise SprintError(f"Immutable tested-version record already exists: {record_path}")
+    require_valid_schema(record, "tested-version", record_path)
+    record_text = json_text(record)
+    summary = {
+        "version": version,
+        "recordPath": record_path.relative_to(workspace).as_posix(),
+        "recordSha256": sha256_bytes(record_text.encode("utf-8")),
+        "prototypePath": prototype["path"],
+        "trialRunId": trial["id"],
+        "deploymentUrl": args.url,
+        "frozenAt": now,
+    }
+    brief["versions"].append(summary)
+    brief["versions"].sort(key=lambda item: item["version"])
+    brief["currentVersion"] = version
+    data["updatedAt"] = now
+    errors = artifact_data_errors(data, specs)
+    if errors:
+        raise SprintError("Tested-version record is invalid: " + "; ".join(errors))
+    write_texts_atomically({**linked_outputs, record_path: record_text})
+    save_artifact_data(path, data)
+    save_state(workspace, state, timestamp=now)
+    render_workspace(workspace)
+    print(f"Frozen immutable tested version: {version}")
+    print(f"Version record: {record_path}")
+
+
+def session_tested_version(
+    workspace: Path, version: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    _path, data, brief = load_prototype_brief_artifact(workspace)
+    if data.get("status") != "complete":
+        raise SprintError("Customer sessions require a complete approved prototype/MVP brief")
+    summary = next(
+        (item for item in brief["versions"] if item["version"] == version), None
+    )
+    if summary is None:
+        raise SprintError(
+            f"Prototype version {version!r} is not a frozen, trial-passed tested version"
+        )
+    record_path = workspace_relative_file(
+        workspace, summary["recordPath"], "Immutable tested-version record"
+    )
+    payload = record_path.read_bytes()
+    if sha256_bytes(payload) != summary["recordSha256"]:
+        raise SprintError(
+            f"Immutable tested-version record changed after freeze: {summary['recordPath']}"
+        )
+    record = load_tested_version(record_path)
+    if record["version"] != version:
+        raise SprintError("Tested-version summary and immutable record disagree")
+    return record, source_descriptor(
+        workspace, summary["recordPath"], "Immutable tested-version record"
+    )
+
+
 def command_session_init(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
@@ -3795,6 +4891,22 @@ def command_session_init(args: argparse.Namespace) -> None:
     prototype_context = source_descriptor(
         workspace, args.prototype_context, "Prototype context"
     )
+    tested_version: dict[str, Any] | None = None
+    if manifest.get("testArtifactWorkflowVersion") == TEST_ARTIFACT_WORKFLOW_VERSION:
+        tested_record, tested_version = session_tested_version(
+            workspace, prototype_version
+        )
+        for label, supplied, frozen in (
+            ("prototype", prototype_artifact, tested_record["prototypeArtifact"]),
+            ("prototype context", prototype_context, tested_record["prototypeContext"]),
+        ):
+            if (
+                supplied["path"] != frozen["path"]
+                or supplied["sha256"] != frozen["sha256"]
+            ):
+                raise SprintError(
+                    f"Session {label} does not match immutable tested version {prototype_version}"
+                )
     interview_guide = source_descriptor(
         workspace, args.interview_guide, "Interview guide"
     )
@@ -3803,16 +4915,19 @@ def command_session_init(args: argparse.Namespace) -> None:
         source_descriptor(workspace, value, "Required prior decision")
         for value in args.prior_decision
     ]
+    prototype_candidate = {
+        "version": prototype_version,
+        "prototypeArtifact": prototype_artifact,
+        "prototypeContext": prototype_context,
+        "recordedAt": now,
+    }
+    if tested_version is not None:
+        prototype_candidate["testedVersion"] = tested_version
     catalog_version(
         manifest,
         "prototypes",
         prototype_version,
-        {
-            "version": prototype_version,
-            "prototypeArtifact": prototype_artifact,
-            "prototypeContext": prototype_context,
-            "recordedAt": now,
-        },
+        prototype_candidate,
         activate=args.activate_versions,
     )
     catalog_version(
@@ -3913,6 +5028,8 @@ def command_session_init(args: argparse.Namespace) -> None:
         "createdAt": now,
         "updatedAt": now,
     }
+    if tested_version is not None:
+        record["artifacts"]["testedVersion"] = tested_version
     summary = {
         "schemaVersion": SESSION_SCHEMA_VERSION,
         "recordType": "customer-session-summary",
@@ -3938,6 +5055,8 @@ def command_session_init(args: argparse.Namespace) -> None:
         "createdAt": now,
         "updatedAt": now,
     }
+    if tested_version is not None:
+        summary["testedVersion"] = tested_version
     entry = {
         "sessionId": session_id,
         "participantId": participant_id,
@@ -3954,6 +5073,8 @@ def command_session_init(args: argparse.Namespace) -> None:
         "createdAt": now,
         "updatedAt": now,
     }
+    if tested_version is not None:
+        entry["testedVersion"] = tested_version
     manifest["sessions"].append(entry)
     manifest["sessions"].sort(key=lambda item: item["sessionId"])
     mark_synthesis_stale(manifest)
@@ -4016,6 +5137,12 @@ def command_session_packet(args: argparse.Namespace) -> None:
         workspace, artifacts["interviewGuide"], "Interview guide"
     )
     scorecard = descriptor_text(workspace, artifacts["scorecard"], "Scorecard")
+    tested_version_line = (
+        f"- Immutable tested-version record: `{artifacts['testedVersion']['path']}` "
+        f"(SHA-256 `{artifacts['testedVersion']['sha256']}`)"
+        if "testedVersion" in artifacts
+        else "- Immutable tested-version record: legacy session without a version record"
+    )
     prior_blocks: list[str] = []
     source_characters = len(prototype_context) + len(interview_guide) + len(scorecard)
     for index, descriptor in enumerate(artifacts["priorDecisions"], 1):
@@ -4057,6 +5184,7 @@ Use this packet as the complete operating context for one fresh chat. Do not loa
 - Prototype version: `{record['prototypeVersion']}`
 - Questions version: `{record['questionsVersion']}`
 - Prototype to open: `{artifacts['prototypeArtifact']['path']}`
+{tested_version_line}
 - Canonical session record: `{record_path.relative_to(workspace).as_posix()}`
 - Structured summary to update: `{summary_path.relative_to(workspace).as_posix()}`
 
@@ -6295,6 +7423,10 @@ def customer_testing_record_errors(
         return errors
     if manifest["workspaceSlug"] != state.get("slug"):
         errors.append("Session manifest workspaceSlug does not match sprint state")
+    requires_tested_version = (
+        manifest.get("testArtifactWorkflowVersion")
+        == TEST_ARTIFACT_WORKFLOW_VERSION
+    )
 
     prototype_catalog = manifest["versionCatalog"]["prototypes"]
     questions_catalog = manifest["versionCatalog"]["questions"]
@@ -6310,7 +7442,15 @@ def customer_testing_record_errors(
     if current["questions"] is not None and current["questions"] not in questions_versions:
         errors.append("Current questions version is absent from the version catalog")
     for label, catalog_entries, descriptor_keys in (
-        ("prototype", prototype_catalog, ("prototypeArtifact", "prototypeContext")),
+        (
+            "prototype",
+            prototype_catalog,
+            (
+                "prototypeArtifact",
+                "prototypeContext",
+                *(("testedVersion",) if requires_tested_version else ()),
+            ),
+        ),
         ("questions", questions_catalog, ("interviewGuide", "scorecard")),
     ):
         for catalog_entry in catalog_entries:
@@ -6348,6 +7488,10 @@ def customer_testing_record_errors(
     session_packet_texts: dict[str, str] = {}
     for entry in entries:
         session_id = entry["sessionId"]
+        if requires_tested_version and "testedVersion" not in entry:
+            errors.append(
+                f"Session {session_id} does not link an immutable tested version"
+            )
         expected_directory = session_directory(workspace, session_id)
         expected_record = (expected_directory / "session.json").relative_to(workspace).as_posix()
         expected_summary = (expected_directory / "summary.json").relative_to(workspace).as_posix()
@@ -6381,6 +7525,16 @@ def customer_testing_record_errors(
                 errors.append(f"Session {session_id} manifest {key} does not match its record")
         if record["artifacts"]["summaryPath"] != entry["summaryPath"]:
             errors.append(f"Session {session_id} record points to a different summary")
+        if requires_tested_version:
+            tested_descriptor = entry.get("testedVersion")
+            if record["artifacts"].get("testedVersion") != tested_descriptor:
+                errors.append(
+                    f"Session {session_id} record does not link the manifest tested version"
+                )
+            if summary.get("testedVersion") != tested_descriptor:
+                errors.append(
+                    f"Session {session_id} summary does not link the manifest tested version"
+                )
         errors.extend(
             f"Session {session_id}: {item}"
             for item in session_summary_errors(
@@ -6393,11 +7547,41 @@ def customer_testing_record_errors(
             catalog_entry = next(
                 item for item in prototype_catalog if item["version"] == entry["prototypeVersion"]
             )
-            for key in ("prototypeArtifact", "prototypeContext"):
+            keys = ["prototypeArtifact", "prototypeContext"]
+            if requires_tested_version:
+                keys.append("testedVersion")
+            for key in keys:
                 if record["artifacts"][key] != catalog_entry[key]:
                     errors.append(
                         f"Session {session_id} {key} does not match its prototype version"
                     )
+            if requires_tested_version:
+                try:
+                    tested_path = workspace_relative_file(
+                        workspace,
+                        catalog_entry["testedVersion"]["path"],
+                        f"Session {session_id} immutable tested-version record",
+                    )
+                    tested_record = load_tested_version(tested_path)
+                    if tested_record["version"] != entry["prototypeVersion"]:
+                        errors.append(
+                            f"Session {session_id} tested-version record uses a different version ID"
+                        )
+                    for record_key, catalog_key in (
+                        ("prototypeArtifact", "prototypeArtifact"),
+                        ("prototypeContext", "prototypeContext"),
+                    ):
+                        frozen = tested_record[record_key]
+                        catalog_descriptor = catalog_entry[catalog_key]
+                        if (
+                            frozen["path"] != catalog_descriptor["path"]
+                            or frozen["sha256"] != catalog_descriptor["sha256"]
+                        ):
+                            errors.append(
+                                f"Session {session_id} {record_key} is not the artifact frozen in its tested-version record"
+                            )
+                except SprintError as error:
+                    errors.append(str(error))
         if entry["questionsVersion"] not in questions_versions:
             errors.append(f"Session {session_id} uses an unknown questions version")
         else:
@@ -6677,6 +7861,103 @@ def synthesis_artifact_trace_errors(
     return errors
 
 
+def prototype_record_errors(
+    workspace: Path, data: dict[str, Any]
+) -> list[str]:
+    if data.get("id") != PROTOTYPE_BRIEF_ID:
+        return []
+    brief = data.get("prototypeBrief")
+    if not isinstance(brief, dict):
+        return ["Structured prototype/MVP brief is missing"]
+    errors: list[str] = []
+    for packet in brief.get("buildPackets", []):
+        try:
+            path = workspace_relative_file(
+                workspace, packet["path"], "Immutable AI build packet"
+            )
+            if sha256_bytes(path.read_bytes()) != packet["sha256"]:
+                errors.append(
+                    f"AI build packet changed after recording: {packet['path']}"
+                )
+        except SprintError as error:
+            errors.append(str(error))
+        for asset in packet.get("assets", []):
+            descriptor_error = validate_file_descriptor(
+                workspace, asset, f"Approved build asset {asset.get('path')}"
+            )
+            if descriptor_error:
+                errors.append(descriptor_error)
+    for trial in brief.get("trialRuns", []):
+        for key in ("interviewScript", "testedArtifact"):
+            descriptor_error = validate_file_descriptor(
+                workspace,
+                trial[key],
+                f"Trial {trial['id']} {key}",
+            )
+            if descriptor_error:
+                errors.append(descriptor_error)
+    for summary in brief.get("versions", []):
+        try:
+            record_path = workspace_relative_file(
+                workspace,
+                summary["recordPath"],
+                f"Tested version {summary['version']}",
+            )
+            payload = record_path.read_bytes()
+            if sha256_bytes(payload) != summary["recordSha256"]:
+                errors.append(
+                    f"Tested version {summary['version']} immutable record changed after freeze"
+                )
+                continue
+            record = load_tested_version(record_path)
+        except SprintError as error:
+            errors.append(str(error))
+            continue
+        if record["version"] != summary["version"]:
+            errors.append(
+                f"Tested version summary {summary['version']} points to a different version record"
+            )
+        if record["prototypeArtifact"]["path"] != summary["prototypePath"]:
+            errors.append(
+                f"Tested version {summary['version']} summary points to a different prototype"
+            )
+        if record["trialRun"]["id"] != summary["trialRunId"]:
+            errors.append(
+                f"Tested version {summary['version']} summary points to a different trial"
+            )
+        if record["deployment"]["url"] != summary["deploymentUrl"]:
+            errors.append(
+                f"Tested version {summary['version']} summary points to a different deployment URL"
+            )
+        if record["frozenAt"] != summary["frozenAt"]:
+            errors.append(
+                f"Tested version {summary['version']} summary has a different freeze timestamp"
+            )
+        snapshot_digest = sha256_bytes(
+            json_text(record["approvedBrief"]["snapshot"]).encode("utf-8")
+        )
+        if snapshot_digest != record["approvedBrief"]["sha256"]:
+            errors.append(
+                f"Tested version {summary['version']} approved-brief digest is invalid"
+            )
+        for key, descriptor in (
+            ("prototypeArtifact", record["prototypeArtifact"]),
+            ("prototypeContext", record["prototypeContext"]),
+            ("buildPacket", record["buildPacket"]),
+            ("trial interview script", record["trialRun"]["interviewScript"]),
+            ("trial tested artifact", record["trialRun"]["testedArtifact"]),
+            *record["linkedArtifacts"].items(),
+        ):
+            descriptor_error = validate_file_descriptor(
+                workspace,
+                descriptor,
+                f"Tested version {summary['version']} {key}",
+            )
+            if descriptor_error:
+                errors.append(descriptor_error)
+    return errors
+
+
 def workspace_errors(workspace: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -6758,6 +8039,10 @@ def workspace_errors(workspace: Path) -> list[str]:
         errors.extend(f"{data_path}: {item}" for item in trace_errors)
         if trace_errors:
             workspace_json_is_valid = False
+        prototype_errors = prototype_record_errors(workspace, data)
+        errors.extend(f"{data_path}: {item}" for item in prototype_errors)
+        if prototype_errors:
+            workspace_json_is_valid = False
         artifact_id = data["id"]
         artifact_documents[artifact_id] = data
         if artifact_id in specs:
@@ -6770,11 +8055,16 @@ def workspace_errors(workspace: Path) -> list[str]:
         errors.extend(
             artifact_workflow_errors(state, specs, artifact_documents)
         )
-    if state_is_valid and "10-prototype" in state["completedSteps"] and not (workspace / "prototype" / "index.html").exists():
-        errors.append("Completed prototype step is missing prototype/index.html")
+    if state_is_valid and "10-prototype" in state["completedSteps"]:
+        brief_data = artifact_documents.get(PROTOTYPE_BRIEF_ID, {})
+        brief = brief_data.get("prototypeBrief", {})
+        current_version = brief.get("currentVersion") if isinstance(brief, dict) else None
+        if not current_version:
+            errors.append(
+                "Completed prototype step is missing a frozen, trial-passed tested version"
+            )
     html_files = [workspace / "index.html", *sorted((workspace / "artifacts").glob("*.html"))]
-    if (workspace / "prototype" / "index.html").exists():
-        html_files.append(workspace / "prototype" / "index.html")
+    html_files.extend(sorted((workspace / "prototype").glob("**/*.html")))
     for html_path in html_files:
         if not html_path.exists():
             errors.append(f"Missing HTML file: {html_path}")
@@ -7216,6 +8506,80 @@ def build_parser() -> argparse.ArgumentParser:
     gate_parser.add_argument("--rationale")
     gate_parser.add_argument("--reservations")
     gate_parser.set_defaults(handler=command_gate)
+
+    recommendation_parser = subparsers.add_parser(
+        "prototype-recommend",
+        help="Recommend the smallest test artifact and provider-neutral tool route",
+    )
+    recommendation_parser.add_argument("--interaction-required", action="store_true")
+    recommendation_parser.add_argument("--manual-service", action="store_true")
+    recommendation_parser.add_argument("--code-fidelity-required", action="store_true")
+    recommendation_parser.add_argument("--real-behavior-required", action="store_true")
+    recommendation_parser.add_argument("--real-service-required", action="store_true")
+    recommendation_parser.add_argument("--existing-product", action="store_true")
+    recommendation_parser.add_argument("--no-external-tools", action="store_true")
+    recommendation_parser.set_defaults(handler=command_prototype_recommend)
+
+    prototype_approval_parser = subparsers.add_parser(
+        "prototype-approve",
+        help="Record a human prototype boundary approval without taking the external action",
+    )
+    prototype_approval_parser.add_argument("--workspace", required=True)
+    prototype_approval_parser.add_argument(
+        "--boundary",
+        required=True,
+        choices=sorted(PROTOTYPE_APPROVAL_BOUNDARIES),
+    )
+    prototype_approval_parser.add_argument(
+        "--status", required=True, choices=["approved", "not-required", "declined"]
+    )
+    prototype_approval_parser.add_argument("--decider", default="human Decider")
+    prototype_approval_parser.add_argument("--rationale", required=True)
+    prototype_approval_parser.set_defaults(handler=command_prototype_approve)
+
+    build_packet_parser = subparsers.add_parser(
+        "prototype-build-packet",
+        help="Generate an immutable AI build packet from only the approved brief and assets",
+    )
+    build_packet_parser.add_argument("--workspace", required=True)
+    build_packet_parser.add_argument("--asset", action="append", default=[])
+    build_packet_parser.add_argument("--output")
+    build_packet_parser.set_defaults(handler=command_prototype_build_packet)
+
+    trial_parser = subparsers.add_parser(
+        "prototype-trial",
+        help="Record a moderated trial using the actual customer interview script",
+    )
+    trial_parser.add_argument("--workspace", required=True)
+    trial_parser.add_argument("--trial-id", required=True)
+    trial_parser.add_argument("--status", required=True, choices=["passed", "failed"])
+    trial_parser.add_argument("--moderator", required=True)
+    trial_parser.add_argument("--prototype", required=True)
+    trial_parser.add_argument("--interview-script", required=True)
+    trial_parser.add_argument("--finding", action="append", default=[])
+    trial_parser.add_argument("--issue", action="append", default=[])
+    trial_parser.set_defaults(handler=command_prototype_trial)
+
+    freeze_parser = subparsers.add_parser(
+        "prototype-freeze",
+        help="Freeze a trial-passed prototype/MVP and its deployment record",
+    )
+    freeze_parser.add_argument("--workspace", required=True)
+    freeze_parser.add_argument("--version", required=True)
+    freeze_parser.add_argument("--trial-run", required=True)
+    freeze_parser.add_argument("--prototype", required=True)
+    freeze_parser.add_argument("--prototype-context", required=True)
+    freeze_parser.add_argument("--deployment-target", required=True)
+    freeze_parser.add_argument(
+        "--access-model",
+        required=True,
+        choices=["private-local", "private-preview", "invite-only", "public"],
+    )
+    freeze_parser.add_argument("--url")
+    freeze_parser.add_argument("--expires-at")
+    freeze_parser.add_argument("--cleanup-plan", required=True)
+    freeze_parser.add_argument("--rollback-plan", required=True)
+    freeze_parser.set_defaults(handler=command_prototype_freeze)
 
     session_init_parser = subparsers.add_parser(
         "session-init",

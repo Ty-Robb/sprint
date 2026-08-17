@@ -93,6 +93,264 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.write_json(path, data)
         self.run_cli("render", "--workspace", str(self.workspace))
 
+    def complete_prototype_brief(
+        self,
+        *,
+        artifact_level: str = "coded-facade",
+        tool_route: str = "no-external-tool",
+        tool_category: str = "native-repository",
+        selected_tool: str = "Repository-native HTML, CSS, and JavaScript",
+        requires_external_account: bool = False,
+        public: bool = False,
+    ) -> None:
+        path = "artifact-data/10-prototype-brief.json"
+        if not (self.workspace / path).exists():
+            self.run_cli(
+                "new-artifact",
+                "--workspace",
+                str(self.workspace),
+                "--id",
+                "10-prototype-brief",
+            )
+        data = self.read_json(path)
+        now = data["updatedAt"]
+        brief = data["prototypeBrief"]
+        brief.update(
+            {
+                "artifactLevel": artifact_level,
+                "selection": {
+                    "sprintQuestions": ["Can the participant complete the target decision without help?"],
+                    "hypothesis": "A qualified participant can understand and complete the target flow.",
+                    "rationale": "This is the lowest-cost artifact that preserves the behavior required by the test.",
+                    "whyHigherFidelityIsUnnecessary": "Operational systems are outside the approved sprint questions.",
+                },
+                "customer": {
+                    "target": "Qualified solo founders",
+                    "entryContext": "Arriving from the approved onboarding entry point",
+                },
+                "experience": {
+                    "task": "Complete the primary onboarding decision.",
+                    "journey": ["Enter", "Review", "Choose", "Confirm"],
+                    "criticalScenes": [
+                        {
+                            "id": f"SCENE-{index}",
+                            "title": title,
+                            "sprintQuestion": "Can the participant complete the target decision without help?",
+                            "description": description,
+                        }
+                        for index, (title, description) in enumerate(
+                            (
+                                ("Entry", "Participant arrives with realistic context."),
+                                ("Review", "Participant interprets the available choices."),
+                                ("Decision", "Participant chooses the primary route."),
+                                ("Confirmation", "Participant understands the result."),
+                            ),
+                            start=1,
+                        )
+                    ],
+                },
+                "signals": {
+                    "success": ["Completes the target task without explanation"],
+                    "ambiguity": ["Completes only after a neutral prompt"],
+                    "failure": ["Cannot identify the primary action"],
+                },
+                "realityBoundary": {
+                    "mustBeReal": ["Task wording and decision sequence"],
+                    "simulated": ["Persistence and downstream processing"],
+                    "manuallyOperated": [],
+                    "delayed": [],
+                    "omitted": ["Account creation and payment"],
+                },
+                "content": {
+                    "required": ["Neutral task copy and realistic choice labels"],
+                    "sampleData": ["Synthetic founder workspace data"],
+                    "states": {
+                        "empty": ["No prior choices"],
+                        "loading": ["Short loading state"],
+                        "error": ["Recoverable synthetic error"],
+                    },
+                },
+                "environment": {
+                    "devices": ["Laptop"],
+                    "browsers": ["Current Chromium or Safari"],
+                    "languages": ["English"],
+                    "accessibility": ["Keyboard operation and visible focus"],
+                    "conditions": ["Moderated remote session"],
+                },
+                "capabilities": {
+                    "realData": artifact_level in {"live-mvp", "limited-pilot"},
+                    "authentication": False,
+                    "payments": False,
+                    "integrations": False,
+                    "notifications": False,
+                    "dataPersistence": artifact_level in {"live-mvp", "limited-pilot"},
+                    "backgroundJobs": False,
+                    "repeatedUse": False,
+                    "notes": ["All non-required capabilities remain simulated."],
+                },
+                "safety": {
+                    "privacy": ["Use synthetic operational data"],
+                    "consent": ["Confirm participant consent before the session"],
+                    "security": ["Do not include secrets or production access"],
+                    "regulatory": [],
+                    "dataClassification": "synthetic-only",
+                },
+                "evidenceCapture": {
+                    "methods": ["Moderator notes and structured task outcomes"],
+                    "analytics": {
+                        "enabled": False,
+                        "rationale": "Moderated observation is sufficient and analytics are not approved.",
+                    },
+                },
+                "build": {
+                    "timeboxMinutes": 240,
+                    "owner": "Prototype Builder",
+                    "budgetCeiling": "Zero incremental spend",
+                    "approvalPoints": [
+                        "Experiment boundary",
+                        "Tool and account choice",
+                        "Cost, data exposure, and deployment",
+                    ],
+                },
+                "toolSelection": {
+                    "route": tool_route,
+                    "category": tool_category,
+                    "selectedTool": selected_tool,
+                    "rationale": "The selected category meets the fidelity need with the least operational exposure.",
+                    "constraints": ["No account connection, spend, real customer data, or public deploy"],
+                    "criteria": {
+                        "timeToTestableArtifact": "Fits the four-hour build timebox",
+                        "fidelity": "Supports the approved scenes",
+                        "realCapabilities": "Only explicitly listed capabilities are real",
+                        "stackCompatibility": "Uses portable files or the approved existing stack",
+                        "exportability": "Files remain exportable",
+                        "collaborationVersionControl": "Versioned through immutable workspace records",
+                        "privacyDataProcessing": "Synthetic data only",
+                        "accessibilityDeviceSupport": "Keyboard and target browser support required",
+                        "costApproval": "No incremental spend without another approval",
+                        "maintainability": "Discardable unless a later product decision adopts it",
+                    },
+                    "supportingTools": [],
+                    "requiresExternalAccount": requires_external_account,
+                    "estimatedCost": "Zero incremental spend",
+                    "exportSelfHosting": {
+                        "available": True,
+                        "strategy": "Retain portable source files in the private repository.",
+                    },
+                },
+                "deploymentPlan": {
+                    "required": False,
+                    "target": "Private local versioned files",
+                    "accessModel": "public" if public else "private-local",
+                    "public": public,
+                    "url": "https://example.test/prototype" if public else None,
+                    "expiresAt": None,
+                    "cleanupPlan": "Remove any temporary preview after synthesis.",
+                    "rollbackPlan": "Return sessions to the prior immutable version.",
+                },
+            }
+        )
+        for key in brief["approvals"]:
+            requires_approval = key in {"experimentBoundary", "toolChoice"}
+            if key == "externalAccount" and requires_external_account:
+                requires_approval = True
+            if key == "publicDeployment" and public:
+                requires_approval = True
+            brief["approvals"][key] = {
+                "status": "approved" if requires_approval else "not-required",
+                "deciderLabel": "Fixture Decider",
+                "rationale": "Explicitly decided for this synthetic test fixture.",
+                "decidedAt": now,
+            }
+        data["status"] = "complete"
+        data["summary"] = ["The smallest valid artifact and its boundaries are approved."]
+        data["nextActions"] = ["Generate the bounded build packet."]
+        self.write_json(path, data)
+        self.run_cli("render", "--workspace", str(self.workspace))
+
+    def prepare_tested_prototype_version(self) -> None:
+        for artifact_id in ("08-experiment", "09-storyboard", "10-test-plan"):
+            path = self.workspace / "artifact-data" / f"{artifact_id}.json"
+            if not path.exists():
+                self.run_cli(
+                    "new-artifact",
+                    "--workspace",
+                    str(self.workspace),
+                    "--id",
+                    artifact_id,
+                )
+            if self.read_json(f"artifact-data/{artifact_id}.json")["status"] != "complete":
+                self.complete_artifact(artifact_id)
+        if not (self.workspace / "artifact-data" / "10-prototype-brief.json").exists():
+            self.complete_prototype_brief()
+        brief_data = self.read_json("artifact-data/10-prototype-brief.json")
+        if brief_data["status"] != "complete":
+            self.complete_prototype_brief()
+            brief_data = self.read_json("artifact-data/10-prototype-brief.json")
+        version_directory = self.workspace / "prototype" / "proto-v1"
+        version_directory.mkdir(parents=True, exist_ok=True)
+        prototype = version_directory / "index.html"
+        if not prototype.exists():
+            prototype.write_text(
+                "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prototype</title></head><body><main><h1>Prototype</h1></main></body></html>\n",
+                encoding="utf-8",
+            )
+        context = version_directory / "context.md"
+        if not context.exists():
+            context.write_text(
+                "Test the onboarding decision flow. Mocked actions do not persist.\n",
+                encoding="utf-8",
+            )
+        brief = brief_data["prototypeBrief"]
+        if not brief["buildPackets"]:
+            self.run_cli(
+                "prototype-build-packet",
+                "--workspace",
+                str(self.workspace),
+            )
+            brief = self.read_json("artifact-data/10-prototype-brief.json")["prototypeBrief"]
+        if not brief["trialRuns"]:
+            self.run_cli(
+                "prototype-trial",
+                "--workspace",
+                str(self.workspace),
+                "--trial-id",
+                "trial-v1",
+                "--status",
+                "passed",
+                "--moderator",
+                "Fixture moderator",
+                "--prototype",
+                "prototype/proto-v1/index.html",
+                "--interview-script",
+                "artifact-data/10-test-plan.json",
+                "--finding",
+                "The full interview script and target task ran without explanation.",
+            )
+            brief = self.read_json("artifact-data/10-prototype-brief.json")["prototypeBrief"]
+        if not brief["versions"]:
+            self.run_cli(
+                "prototype-freeze",
+                "--workspace",
+                str(self.workspace),
+                "--version",
+                "proto-v1",
+                "--trial-run",
+                "trial-v1",
+                "--prototype",
+                "prototype/proto-v1/index.html",
+                "--prototype-context",
+                "prototype/proto-v1/context.md",
+                "--deployment-target",
+                "Private local versioned files",
+                "--access-model",
+                "private-local",
+                "--cleanup-plan",
+                "Remove temporary files after synthesis.",
+                "--rollback-plan",
+                "Use the prior immutable version record.",
+            )
+
     def complete_intake(self) -> None:
         self.complete_artifact("01-sprint-brief")
         self.run_cli(
@@ -277,13 +535,7 @@ class SprintWorkspaceTests(unittest.TestCase):
         return assignment_ids
 
     def prepare_customer_session_inputs(self) -> None:
-        prototype = self.workspace / "prototype" / "index.html"
-        prototype.parent.mkdir(parents=True, exist_ok=True)
-        if not prototype.exists():
-            prototype.write_text(
-                "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prototype</title></head><body><main><h1>Prototype</h1></main></body></html>\n",
-                encoding="utf-8",
-            )
+        self.prepare_tested_prototype_version()
         shared = self.workspace / "working" / "11-customer-sessions" / "shared"
         shared.mkdir(parents=True, exist_ok=True)
         (shared / "prototype-context.md").write_text(
@@ -335,9 +587,9 @@ class SprintWorkspaceTests(unittest.TestCase):
             "--questions-version",
             "questions-v1",
             "--prototype",
-            "prototype/index.html",
+            "prototype/proto-v1/index.html",
             "--prototype-context",
-            "working/11-customer-sessions/shared/prototype-context.md",
+            "prototype/proto-v1/context.md",
             "--interview-guide",
             "working/11-customer-sessions/shared/interview-guide.md",
             "--scorecard",
@@ -447,6 +699,274 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(manifest["currentVersions"]["prototype"], None)
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
+
+    def test_test_artifact_recommendations_cover_required_routes(self) -> None:
+        scenarios = {
+            "clickable": (
+                ("--interaction-required",),
+                ("clickable", "interaction-design"),
+            ),
+            "coded": (
+                ("--code-fidelity-required",),
+                ("coded-facade", "portable-coded-facade"),
+            ),
+            "live-mvp": (
+                ("--real-behavior-required",),
+                ("live-mvp", "ai-assisted-app-builder"),
+            ),
+            "existing-product": (
+                ("--real-behavior-required", "--existing-product"),
+                ("live-mvp", "existing-product-slice"),
+            ),
+            "no-external-tool": (
+                ("--interaction-required", "--no-external-tools"),
+                ("coded-facade", "no-external-tool"),
+            ),
+        }
+        for label, (arguments, expected) in scenarios.items():
+            with self.subTest(label=label):
+                result = self.run_cli("prototype-recommend", *arguments)
+                recommendation = json.loads(result.stdout)
+                self.assertEqual(
+                    (recommendation["artifactLevel"], recommendation["toolRoute"]),
+                    expected,
+                )
+                self.assertIn("live URL", recommendation["readinessBoundary"])
+                self.assertEqual(len(recommendation["approvalBoundaries"]), 6)
+
+    def test_prototype_lifecycle_requires_approvals_trial_and_immutable_session_links(self) -> None:
+        self.initialise()
+        self.complete_prototype_brief()
+        brief_path = "artifact-data/10-prototype-brief.json"
+        data = self.read_json(brief_path)
+        data["status"] = "in-review"
+        for approval in data["prototypeBrief"]["approvals"].values():
+            approval.update(
+                {
+                    "status": "pending",
+                    "deciderLabel": "",
+                    "rationale": "",
+                    "decidedAt": None,
+                }
+            )
+        self.write_json(brief_path, data)
+        self.run_cli("render", "--workspace", str(self.workspace))
+
+        blocked = self.run_cli(
+            "artifact-status",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "10-prototype-brief",
+            "--status",
+            "complete",
+            check=False,
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("requires a human decision", blocked.stderr)
+        for boundary in WORKSPACE_MODULE.PROTOTYPE_APPROVAL_BOUNDARIES:
+            status = (
+                "approved"
+                if boundary in {"experiment-boundary", "tool-choice"}
+                else "not-required"
+            )
+            self.run_cli(
+                "prototype-approve",
+                "--workspace",
+                str(self.workspace),
+                "--boundary",
+                boundary,
+                "--status",
+                status,
+                "--decider",
+                "Fixture Decider",
+                "--rationale",
+                f"Explicit {boundary} decision for the synthetic fixture.",
+            )
+        self.run_cli(
+            "artifact-status",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "10-prototype-brief",
+            "--status",
+            "complete",
+        )
+        public_data = self.read_json(brief_path)
+        public_data["prototypeBrief"]["deploymentPlan"].update(
+            {
+                "required": True,
+                "target": "Public preview",
+                "accessModel": "public",
+                "public": True,
+                "url": "https://example.test/public-preview",
+            }
+        )
+        self.write_json(brief_path, public_data)
+        unapproved_public = self.run_cli(
+            "render", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(unapproved_public.returncode, 2)
+        self.assertIn("public deployment requires explicit approval", unapproved_public.stderr)
+        public_data["prototypeBrief"]["deploymentPlan"].update(
+            {
+                "required": False,
+                "target": "Private local versioned files",
+                "accessModel": "private-local",
+                "public": False,
+                "url": None,
+            }
+        )
+        self.write_json(brief_path, public_data)
+        self.run_cli("render", "--workspace", str(self.workspace))
+
+        for artifact_id in ("08-experiment", "09-storyboard", "10-test-plan"):
+            self.run_cli(
+                "new-artifact",
+                "--workspace",
+                str(self.workspace),
+                "--id",
+                artifact_id,
+            )
+            self.complete_artifact(artifact_id)
+        forbidden = self.workspace / "raw-evidence" / "secret.txt"
+        forbidden.parent.mkdir(parents=True)
+        forbidden.write_text("synthetic secret marker\n", encoding="utf-8")
+        rejected_asset = self.run_cli(
+            "prototype-build-packet",
+            "--workspace",
+            str(self.workspace),
+            "--asset",
+            "raw-evidence/secret.txt",
+            check=False,
+        )
+        self.assertEqual(rejected_asset.returncode, 2)
+        self.assertIn("cannot enter an AI build packet", rejected_asset.stderr)
+        self.run_cli(
+            "prototype-build-packet", "--workspace", str(self.workspace)
+        )
+        version_dir = self.workspace / "prototype" / "proto-v1"
+        version_dir.mkdir(parents=True)
+        (version_dir / "index.html").write_text(
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Test</title></head><body><main><h1>Test</h1></main></body></html>\n",
+            encoding="utf-8",
+        )
+        (version_dir / "context.md").write_text(
+            "The target task is real; persistence is simulated.\n",
+            encoding="utf-8",
+        )
+        self.run_cli(
+            "prototype-trial",
+            "--workspace",
+            str(self.workspace),
+            "--trial-id",
+            "failed-trial",
+            "--status",
+            "failed",
+            "--moderator",
+            "Fixture moderator",
+            "--prototype",
+            "prototype/proto-v1/index.html",
+            "--interview-script",
+            "artifact-data/10-test-plan.json",
+            "--finding",
+            "The moderator had to explain the primary task.",
+        )
+        refused_freeze = self.run_cli(
+            "prototype-freeze",
+            "--workspace",
+            str(self.workspace),
+            "--version",
+            "proto-v1",
+            "--trial-run",
+            "failed-trial",
+            "--prototype",
+            "prototype/proto-v1/index.html",
+            "--prototype-context",
+            "prototype/proto-v1/context.md",
+            "--deployment-target",
+            "Private local files",
+            "--access-model",
+            "private-local",
+            "--cleanup-plan",
+            "Remove after synthesis.",
+            "--rollback-plan",
+            "Use the previous immutable version.",
+            check=False,
+        )
+        self.assertEqual(refused_freeze.returncode, 2)
+        self.assertIn("passed moderated trial", refused_freeze.stderr)
+        self.run_cli(
+            "prototype-trial",
+            "--workspace",
+            str(self.workspace),
+            "--trial-id",
+            "passed-trial",
+            "--status",
+            "passed",
+            "--moderator",
+            "Fixture moderator",
+            "--prototype",
+            "prototype/proto-v1/index.html",
+            "--interview-script",
+            "artifact-data/10-test-plan.json",
+            "--finding",
+            "The complete interview script ran without explaining the concept.",
+        )
+        self.run_cli(
+            "prototype-freeze",
+            "--workspace",
+            str(self.workspace),
+            "--version",
+            "proto-v1",
+            "--trial-run",
+            "passed-trial",
+            "--prototype",
+            "prototype/proto-v1/index.html",
+            "--prototype-context",
+            "prototype/proto-v1/context.md",
+            "--deployment-target",
+            "Private local files",
+            "--access-model",
+            "private-local",
+            "--cleanup-plan",
+            "Remove after synthesis.",
+            "--rollback-plan",
+            "Use the previous immutable version.",
+        )
+
+        self.set_customer_plan(1)
+        self.initialise_customer_session("S01", "P01")
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        entry = manifest["sessions"][0]
+        record = self.read_json(entry["recordPath"])
+        summary = self.read_json(entry["summaryPath"])
+        self.assertEqual(entry["testedVersion"], record["artifacts"]["testedVersion"])
+        self.assertEqual(entry["testedVersion"], summary["testedVersion"])
+        tested = self.read_json(entry["testedVersion"]["path"])
+        self.assertEqual(
+            set(tested["linkedArtifacts"]), {"experiment", "storyboard", "testPlan"}
+        )
+        self.assertIs(tested["claims"]["customerValidated"], False)
+        self.assertIs(tested["claims"]["productionReady"], False)
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        brief_html = (
+            self.workspace / "artifacts" / "10-prototype-brief.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Immutable deployment and version record", dashboard)
+        self.assertIn("Provider-neutral tool selection", brief_html)
+        self.assertIn("A live URL", brief_html)
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+        (version_dir / "index.html").write_text(
+            "<!DOCTYPE html><html lang=\"en\"><body>silently changed</body></html>\n",
+            encoding="utf-8",
+        )
+        drifted = self.run_cli(
+            "validate", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(drifted.returncode, 1, drifted.stderr)
+        self.assertIn("changed after it was recorded", drifted.stderr)
 
     def test_published_schemas_accept_representative_valid_fixtures(self) -> None:
         (self.workspace / "artifact-data").mkdir(parents=True)
@@ -3205,6 +3725,7 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
             self.complete_artifact(artifact_id)
+        self.complete_prototype_brief()
         self.complete_required_assignments("09-experiment")
         self.run_cli(
             "complete-step",
@@ -3214,10 +3735,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "09-experiment",
         )
 
-        (self.workspace / "prototype" / "index.html").write_text(
-            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prototype</title></head><body><main><h1>Prototype</h1></main></body></html>\n",
-            encoding="utf-8",
-        )
+        self.prepare_tested_prototype_version()
         self.complete_required_assignments("10-prototype")
         self.run_cli(
             "complete-step",
@@ -3238,7 +3756,7 @@ class SprintWorkspaceTests(unittest.TestCase):
             "The prototype covers the approved experiment scenes.",
         )
 
-        for artifact_id in ("10-test-plan", "11-customer-evidence"):
+        for artifact_id in ("11-customer-evidence",):
             self.run_cli(
                 "new-artifact",
                 "--workspace",
@@ -3246,7 +3764,6 @@ class SprintWorkspaceTests(unittest.TestCase):
                 "--id",
                 artifact_id,
             )
-        self.complete_artifact("10-test-plan")
         self.set_customer_plan(2, "Solo founders")
         self.initialise_customer_session("S01", "P01")
         self.complete_customer_session(
@@ -3325,6 +3842,8 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         self.assertIn("Method-fidelity summary", outcome)
         self.assertIn("Method: Adaptive Design Sprint", outcome)
+        self.assertIn("Immutable deployment and version record", outcome)
+        self.assertIn("A live URL", outcome)
 
     def test_no_sprint_route_closes_without_customer_claims(self) -> None:
         self.initialise("Ship an already approved copy change")

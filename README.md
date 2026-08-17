@@ -42,6 +42,7 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 - A living HTML dashboard showing process completion separately from method fidelity, evidence, human decision attestations, privacy-safe specialist provenance, and next action
 - HTML sprint artifacts, from the brief and evidence ledger through the outcome report
 - Independent solution directions, a decision record, and a testable prototype
+- A test-artifact ladder and typed prototype/MVP brief with provider-neutral tool selection, explicit approvals, bounded build packets, moderated trials, and immutable deployment/version records
 - A real-customer test plan and traceable synthesis
 - A final proceed, iterate, pivot, investigate, or stop decision
 
@@ -62,7 +63,7 @@ artifact-data/      Canonical structured artifact content
 artifacts/          Disposable generated HTML documents
 assets/sprint.css   Disposable generated stylesheet
 working/            Private isolated specialist packet and result files
-prototype/          Versioned human-authored customer-test prototypes
+prototype/          Versioned test artifacts and immutable tested-version records
 customer-testing/   Canonical manifest, isolated sessions, and bounded packets
 ```
 
