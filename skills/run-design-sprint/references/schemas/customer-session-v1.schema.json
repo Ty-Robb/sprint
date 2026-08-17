@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/customer-session-v1.schema.json",
+  "title": "Isolated customer-session record 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "sessionId",
+    "participantId",
+    "sessionDate",
+    "runMode",
+    "status",
+    "prototypeVersion",
+    "questionsVersion",
+    "artifacts",
+    "packet",
+    "checkpoint",
+    "consent",
+    "redaction",
+    "rawEvidence",
+    "limitations",
+    "usage",
+    "reopenHistory",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "customer-session"},
+    "sessionId": {"$ref": "#/$defs/sessionIdentifier"},
+    "participantId": {"$ref": "#/$defs/participantIdentifier"},
+    "sessionDate": {"type": "string", "format": "date"},
+    "runMode": {"enum": ["human-run", "agent-assisted"]},
+    "status": {"enum": ["initialized", "packet-generated", "in-progress", "complete", "reopened", "blocked", "withdrawn"]},
+    "prototypeVersion": {"$ref": "#/$defs/version"},
+    "questionsVersion": {"$ref": "#/$defs/version"},
+    "artifacts": {
+      "type": "object",
+      "required": ["prototypeArtifact", "prototypeContext", "interviewGuide", "scorecard", "priorDecisions", "summaryPath"],
+      "properties": {
+        "prototypeArtifact": {"$ref": "#/$defs/sourceDescriptor"},
+        "prototypeContext": {"$ref": "#/$defs/sourceDescriptor"},
+        "interviewGuide": {"$ref": "#/$defs/sourceDescriptor"},
+        "scorecard": {"$ref": "#/$defs/sourceDescriptor"},
+        "priorDecisions": {"type": "array", "items": {"$ref": "#/$defs/sourceDescriptor"}},
+        "summaryPath": {"$ref": "#/$defs/relativePath"}
+      },
+      "additionalProperties": false
+    },
+    "packet": {
+      "type": "object",
+      "required": ["path", "generatedAt", "sourceCharacters", "characters", "sha256", "budgetStatus", "freshChatRequired"],
+      "properties": {
+        "path": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/relativePath"}]},
+        "generatedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "sourceCharacters": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "characters": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "sha256": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+        "budgetStatus": {"enum": ["not-generated", "within-budget", "approaching-limit"]},
+        "freshChatRequired": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": ["phase", "nextAction", "completedPhases", "lastPersistedAt"],
+      "properties": {
+        "phase": {"type": "string", "minLength": 1},
+        "nextAction": {"type": "string", "minLength": 1},
+        "completedPhases": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "lastPersistedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "consent": {
+      "type": "object",
+      "required": ["status", "recordedAt", "scope", "reference"],
+      "properties": {
+        "status": {"enum": ["pending", "granted", "declined", "withdrawn"]},
+        "recordedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "scope": {"type": "string"},
+        "reference": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["status", "reviewedAt", "removedCategories"],
+      "properties": {
+        "status": {"enum": ["not-reviewed", "in-progress", "complete", "not-required"]},
+        "reviewedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "removedCategories": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "rawEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "reference", "redactionStatus"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "kind": {"enum": ["notes", "transcript", "audio", "video", "screen-capture", "other"]},
+          "reference": {"type": "string", "minLength": 1},
+          "redactionStatus": {"enum": ["not-reviewed", "in-progress", "complete", "not-required"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "usage": {
+      "type": "object",
+      "required": ["measurementContext", "available", "measurements", "unavailableReason"],
+      "properties": {
+        "measurementContext": {"const": "customer-session"},
+        "available": {"type": "boolean"},
+        "measurements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value", "unit", "source"],
+            "properties": {
+              "name": {"enum": ["inputTokens", "outputTokens", "totalTokens", "requests", "durationSeconds"]},
+              "value": {"type": "number", "minimum": 0},
+              "unit": {"enum": ["tokens", "requests", "seconds"]},
+              "source": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "unavailableReason": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "reopenHistory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "reopenedAt"],
+        "properties": {
+          "reason": {"type": "string", "minLength": 1},
+          "reopenedAt": {"$ref": "#/$defs/timestamp"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "completedAt": {"$ref": "#/$defs/timestamp"},
+    "createdAt": {"$ref": "#/$defs/timestamp"},
+    "updatedAt": {"$ref": "#/$defs/timestamp"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "version": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "sessionIdentifier": {"type": "string", "minLength": 3, "maxLength": 32, "pattern": "^S[0-9][A-Z0-9-]*$"},
+    "participantIdentifier": {"type": "string", "minLength": 3, "maxLength": 32, "pattern": "^P[0-9][A-Z0-9-]*$"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^[^/]"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sourceDescriptor": {
+      "type": "object",
+      "required": ["path", "sha256", "characters"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "characters": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  }
+}

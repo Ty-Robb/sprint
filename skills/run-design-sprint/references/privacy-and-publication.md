@@ -45,8 +45,9 @@ A practical private layout is:
 │   └── design-sprint-<slug>/       Generated workspace; private by default
 ├── source-evidence/
 │   └── <slug>/
-│       ├── transcripts/           Raw session material
-│       ├── recordings/            Audio, video, and screen captures
+│       ├── S01/
+│       │   ├── transcripts/       Raw material isolated to one session
+│       │   └── recordings/        Audio, video, and screen captures
 │       └── account-evidence/      Usage, plan, billing, and dashboard sources
 ├── identities/
 │   └── <slug>/participant-map     Names and contact details, separately restricted
@@ -57,6 +58,12 @@ A practical private layout is:
 Do not initialise a real sprint under this public repository. Its root `.gitignore` covers common workspace and evidence directory names, and generated workspaces contain fallback ignore rules, but ignore rules are not a privacy control: already tracked files, renamed folders, screenshots, and custom paths can still be committed.
 
 Use least-privilege access and apply the shortest practical retention period to raw evidence. Keep participant contact data separate from the working evidence so an anonymised participant ID cannot be casually reversed.
+
+The workspace's `customer-testing/sessions/<session-id>/session.json` may keep
+opaque references into that session's source-evidence directory. It must not
+copy the raw evidence. Generated participant and synthesis packets are still
+private: bounded context and anonymization reduce accidental exposure but do
+not make a packet publishable.
 
 ## Safe public fixtures and examples
 

@@ -185,6 +185,157 @@ class SprintWorkspaceTests(unittest.TestCase):
             assignment_ids.append(assignment_id)
         return assignment_ids
 
+
+    def prepare_customer_session_inputs(self) -> None:
+        prototype = self.workspace / "prototype" / "index.html"
+        prototype.parent.mkdir(parents=True, exist_ok=True)
+        if not prototype.exists():
+            prototype.write_text(
+                "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Prototype</title></head><body><main><h1>Prototype</h1></main></body></html>\n",
+                encoding="utf-8",
+            )
+        shared = self.workspace / "working" / "11-customer-sessions" / "shared"
+        shared.mkdir(parents=True, exist_ok=True)
+        (shared / "prototype-context.md").write_text(
+            "Test the onboarding decision flow. Mocked actions do not persist.\n",
+            encoding="utf-8",
+        )
+        (shared / "interview-guide.md").write_text(
+            "Ask for recent context, present TASK-1, then use neutral follow-up prompts.\n",
+            encoding="utf-8",
+        )
+        (shared / "scorecard.md").write_text(
+            "Q1: Can the participant complete TASK-1 without help?\n",
+            encoding="utf-8",
+        )
+
+    def set_customer_plan(self, planned: int, target: str = "Qualified participants") -> None:
+        self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "scheduled",
+            "--target",
+            target,
+            "--planned",
+            str(planned),
+        )
+
+    def initialise_customer_session(
+        self,
+        session_id: str,
+        participant_id: str,
+        *,
+        session_date: str = "2026-08-17",
+    ) -> None:
+        self.prepare_customer_session_inputs()
+        self.run_cli(
+            "session-init",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            session_id,
+            "--participant-id",
+            participant_id,
+            "--session-date",
+            session_date,
+            "--prototype-version",
+            "proto-v1",
+            "--questions-version",
+            "questions-v1",
+            "--prototype",
+            "prototype/index.html",
+            "--prototype-context",
+            "working/11-customer-sessions/shared/prototype-context.md",
+            "--interview-guide",
+            "working/11-customer-sessions/shared/interview-guide.md",
+            "--scorecard",
+            "working/11-customer-sessions/shared/scorecard.md",
+            "--consent-status",
+            "granted",
+            "--consent-scope",
+            "Notes and anonymized research summary",
+            "--consent-reference",
+            f"consent-register:{session_id}",
+            "--redaction-status",
+            "complete",
+        )
+
+    def populate_customer_summary(self, session_id: str, observation: str) -> None:
+        path = f"customer-testing/sessions/{session_id}/summary.json"
+        summary = self.read_json(path)
+        summary["qualificationSummary"] = "Matches the approved behavioural criteria."
+        summary["sourceReferences"] = [
+            {
+                "id": "SRC1",
+                "kind": "notes",
+                "reference": f"private://{session_id}/moderator-notes#N1",
+                "redactionStatus": "complete",
+            }
+        ]
+        summary["observations"] = [
+            {
+                "id": "OBS1",
+                "label": "Observed",
+                "text": observation,
+                "sourceReferenceIds": ["SRC1"],
+            }
+        ]
+        summary["inferences"] = [
+            {
+                "id": "INF1",
+                "label": "Inference",
+                "text": "The first decision point may need clearer framing.",
+                "observationIds": ["OBS1"],
+            }
+        ]
+        summary["quoteReferences"] = [
+            {"id": "QUOTE1", "sourceReferenceId": "SRC1", "locator": "N1"}
+        ]
+        summary["taskOutcomes"] = [
+            {
+                "taskId": "TASK-1",
+                "outcome": "partial",
+                "observationIds": ["OBS1"],
+                "notes": "Needed one neutral prompt.",
+            }
+        ]
+        summary["questionEvidence"] = [
+            {
+                "questionId": "Q1",
+                "assessment": "mixed",
+                "observationIds": ["OBS1"],
+                "notes": "The core route was found, with hesitation.",
+            }
+        ]
+        summary["surprises"] = ["The participant first inspected the secondary action."]
+        summary["moderatorDeviations"] = []
+        summary["limitations"] = ["One directional session; no prevalence claim."]
+        summary["uncertainties"] = ["Whether repeated use removes the hesitation."]
+        self.write_json(path, summary)
+
+    def complete_customer_session(self, session_id: str, observation: str) -> None:
+        record = self.read_json(f"customer-testing/sessions/{session_id}/session.json")
+        if record["packet"]["path"] is None:
+            self.run_cli(
+                "session-packet",
+                "--workspace",
+                str(self.workspace),
+                "--session-id",
+                session_id,
+            )
+        self.populate_customer_summary(session_id, observation)
+        self.run_cli(
+            "session-complete",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            session_id,
+            "--usage-unavailable-reason",
+            "The test runtime did not expose token or request measurements.",
+        )
+
     def test_init_renders_valid_escaped_workspace(self) -> None:
         challenge = "Help <parents> avoid <script>alert('x')</script>"
         self.initialise(challenge)
@@ -200,6 +351,10 @@ class SprintWorkspaceTests(unittest.TestCase):
         workspace_ignore = (self.workspace / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("**/transcripts/", workspace_ignore)
         self.assertIn("**/account-evidence/", workspace_ignore)
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        self.assertEqual(manifest["recordType"], "customer-session-manifest")
+        self.assertEqual(manifest["sessions"], [])
+        self.assertEqual(manifest["currentVersions"]["prototype"], None)
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
 
@@ -921,19 +1076,9 @@ class SprintWorkspaceTests(unittest.TestCase):
 
     def test_directional_evidence_cannot_claim_statistical_validation(self) -> None:
         self.initialise()
-        self.run_cli(
-            "customer",
-            "--workspace",
-            str(self.workspace),
-            "--status",
-            "partial",
-            "--target",
-            "Founders",
-            "--planned",
-            "2",
-            "--completed",
-            "1",
-        )
+        self.set_customer_plan(2, "Founders")
+        self.initialise_customer_session("S01", "P01")
+        self.complete_customer_session("S01", "The participant paused before TASK-1.")
         data = self.read_json("artifact-data/01-sprint-brief.json")
         data["evidence"].append(
             {
@@ -1650,18 +1795,10 @@ class SprintWorkspaceTests(unittest.TestCase):
         blocked = self.read_json("sprint-state.json")
         self.assertEqual(blocked["status"], "waiting-for-customers")
 
-        self.run_cli(
-            "customer",
-            "--workspace",
-            str(self.workspace),
-            "--status",
-            "complete",
-            "--target",
-            "Homeschooling parents",
-            "--planned",
-            "1",
-            "--completed",
-            "1",
+        self.set_customer_plan(1, "Homeschooling parents")
+        self.initialise_customer_session("S01", "P01")
+        self.complete_customer_session(
+            "S01", "The participant completed TASK-1 after a short pause."
         )
         self.complete_artifact("11-customer-evidence")
         self.run_cli(
@@ -1673,6 +1810,305 @@ class SprintWorkspaceTests(unittest.TestCase):
         )
         completed = self.read_json("sprint-state.json")
         self.assertEqual(completed["currentStep"], "12-synthesis")
+
+    def test_per_session_packets_are_isolated_versioned_and_bounded(self) -> None:
+        self.initialise()
+        self.set_customer_plan(2)
+        self.initialise_customer_session("S01", "P01")
+        self.run_cli(
+            "session-packet",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+        )
+        raw_path = (
+            self.workspace
+            / "customer-testing"
+            / "sessions"
+            / "S01"
+            / "raw"
+            / "transcript.txt"
+        )
+        raw_path.parent.mkdir(parents=True)
+        raw_path.write_text("S01-RAW-TRANSCRIPT-MARKER\n" * 5000, encoding="utf-8")
+
+        self.initialise_customer_session("S02", "P02")
+        self.run_cli(
+            "session-packet",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S02",
+        )
+        packet_one = (
+            self.workspace / "customer-testing" / "sessions" / "S01" / "handoff.md"
+        ).read_text(encoding="utf-8")
+        packet_two = (
+            self.workspace / "customer-testing" / "sessions" / "S02" / "handoff.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("complete operating context for one fresh chat", packet_two)
+        self.assertNotIn("S01-RAW-TRANSCRIPT-MARKER", packet_two)
+        self.assertNotIn("customer-testing/sessions/S01", packet_two)
+        self.assertLess(abs(len(packet_one) - len(packet_two)), 20)
+
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        self.assertEqual(len(manifest["versionCatalog"]["prototypes"]), 1)
+        self.assertEqual(len(manifest["versionCatalog"]["questions"]), 1)
+        for entry in manifest["sessions"]:
+            record = self.read_json(entry["recordPath"])
+            self.assertLessEqual(
+                record["packet"]["characters"],
+                manifest["contextBudget"]["perSessionMaximum"],
+            )
+            self.assertTrue(record["packet"]["freshChatRequired"])
+        scorecard = (
+            self.workspace
+            / "working"
+            / "11-customer-sessions"
+            / "shared"
+            / "scorecard.md"
+        )
+        original_scorecard = scorecard.read_text(encoding="utf-8")
+        scorecard.write_text("Q1 changed without a version bump.\n", encoding="utf-8")
+        drifted = self.run_cli(
+            "session-packet",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S02",
+            check=False,
+        )
+        self.assertEqual(drifted.returncode, 2)
+        self.assertIn("changed after its version was recorded", drifted.stderr)
+        scorecard.write_text(original_scorecard, encoding="utf-8")
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+    def test_completion_reopen_and_resume_use_persisted_structured_state(self) -> None:
+        self.initialise()
+        self.set_customer_plan(1)
+        self.initialise_customer_session("S01", "P01")
+        direct_count = self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "complete",
+            "--target",
+            "Qualified participants",
+            "--planned",
+            "1",
+            "--completed",
+            "1",
+            check=False,
+        )
+        self.assertEqual(direct_count.returncode, 2)
+        self.assertIn("derived from the canonical session manifest", direct_count.stderr)
+        self.run_cli(
+            "session-packet",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+        )
+        self.run_cli(
+            "session-checkpoint",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+            "--status",
+            "in-progress",
+            "--phase",
+            "follow-up",
+            "--completed-phase",
+            "prototype-tasks",
+            "--next-action",
+            "Finish follow-up and persist the summary.",
+        )
+        self.populate_customer_summary(
+            "S01", "The participant paused, then completed TASK-1 without instruction."
+        )
+        self.run_cli(
+            "session-complete",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+            "--usage-input-tokens",
+            "1200",
+            "--usage-output-tokens",
+            "450",
+            "--usage-total-tokens",
+            "1650",
+            "--usage-requests",
+            "3",
+            "--usage-source",
+            "runtime response metadata",
+        )
+        state = self.read_json("sprint-state.json")
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        record = self.read_json("customer-testing/sessions/S01/session.json")
+        self.assertEqual(state["customerTesting"]["sessionsCompleted"], 1)
+        self.assertTrue(manifest["sessions"][0]["counted"])
+        self.assertTrue(record["usage"]["available"])
+        self.assertEqual(record["usage"]["measurementContext"], "customer-session")
+
+        duplicate = self.run_cli(
+            "session-complete",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+            check=False,
+        )
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("counted once", duplicate.stderr)
+        self.assertEqual(
+            self.read_json("sprint-state.json")["customerTesting"]["sessionsCompleted"],
+            1,
+        )
+
+        self.run_cli(
+            "session-reopen",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+            "--reason",
+            "Clarify the task-outcome classification.",
+        )
+        self.assertEqual(
+            self.read_json("sprint-state.json")["customerTesting"]["sessionsCompleted"],
+            0,
+        )
+        self.run_cli(
+            "session-packet",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+        )
+        resume_packet = (
+            self.workspace / "customer-testing" / "sessions" / "S01" / "handoff.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Persisted resume checkpoint", resume_packet)
+        self.assertIn("completed TASK-1", resume_packet)
+        self.assertNotIn("private://S01/moderator-notes", resume_packet)
+        self.assertIn("This replaces conversation replay", resume_packet)
+
+    def test_synthesis_packet_excludes_raw_evidence_and_preserves_trace_ids(self) -> None:
+        self.initialise()
+        self.set_customer_plan(2)
+        for session_id, participant_id, observation in (
+            ("S01", "P01", "The participant found TASK-1 without help."),
+            ("S02", "P02", "The participant needed a neutral prompt on TASK-1."),
+        ):
+            self.initialise_customer_session(session_id, participant_id)
+            raw_path = (
+                self.workspace
+                / "customer-testing"
+                / "sessions"
+                / session_id
+                / "raw"
+                / "transcript.txt"
+            )
+            raw_path.parent.mkdir(parents=True)
+            raw_path.write_text(
+                f"RAW-{session_id}-SECRET-CONTENT\n" * 3000, encoding="utf-8"
+            )
+            self.complete_customer_session(session_id, observation)
+
+        self.run_cli("synthesis-packet", "--workspace", str(self.workspace))
+        packet = (
+            self.workspace
+            / "customer-testing"
+            / "synthesis"
+            / "synthesis-packet.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"traceId": "S01/OBS1"', packet)
+        self.assertIn("The participant found TASK-1", packet)
+        self.assertIn("The participant needed a neutral prompt", packet)
+        self.assertNotIn("RAW-S01-SECRET-CONTENT", packet)
+        self.assertNotIn("RAW-S02-SECRET-CONTENT", packet)
+        self.assertNotIn("private://S01", packet)
+        self.assertNotIn("private://S02", packet)
+        manifest = self.read_json("customer-testing/session-manifest.json")
+        self.assertFalse(manifest["synthesis"]["rawEvidenceIncluded"])
+        self.assertEqual(manifest["synthesis"]["sessionIds"], ["S01", "S02"])
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "12-synthesis",
+        )
+        self.complete_artifact("12-synthesis")
+        synthesis_artifact = self.read_json("artifact-data/12-synthesis.json")
+        synthesis_artifact["evidence"] = [
+            {
+                "status": "Inference",
+                "claim": "Both participants completed the task.",
+                "source": "S01/OBS1; S02/NOT-A-REAL-TRACE",
+            }
+        ]
+        self.write_json("artifact-data/12-synthesis.json", synthesis_artifact)
+        self.run_cli("render", "--workspace", str(self.workspace))
+        untraceable = self.run_cli(
+            "validate", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(untraceable.returncode, 1)
+        self.assertIn("unknown trace IDs: S02/NOT-A-REAL-TRACE", untraceable.stderr)
+        synthesis_artifact["evidence"][0]["source"] = "S01/OBS1; S02/OBS1"
+        self.write_json("artifact-data/12-synthesis.json", synthesis_artifact)
+        self.run_cli("render", "--workspace", str(self.workspace))
+        self.run_cli("validate", "--workspace", str(self.workspace))
+
+        summary = self.read_json("customer-testing/sessions/S02/summary.json")
+        summary["taskOutcomes"][0]["observationIds"] = ["MISSING"]
+        self.write_json("customer-testing/sessions/S02/summary.json", summary)
+        invalid = self.run_cli(
+            "validate", "--workspace", str(self.workspace), check=False
+        )
+        self.assertEqual(invalid.returncode, 1)
+        self.assertIn("unknown observation MISSING", invalid.stderr)
+        self.assertIn("Synthesis packet is stale for session S02", invalid.stderr)
+
+    def test_packet_generation_refuses_to_exceed_declared_context_budget(self) -> None:
+        self.run_cli(
+            "init",
+            "--title",
+            "Budgeted Sprint",
+            "--challenge",
+            "Test bounded handoffs",
+            "--session-context-maximum",
+            "1000",
+            "--output",
+            str(self.workspace),
+        )
+        self.set_customer_plan(1)
+        self.initialise_customer_session("S01", "P01")
+        result = self.run_cli(
+            "session-packet",
+            "--workspace",
+            str(self.workspace),
+            "--session-id",
+            "S01",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("would use", result.stderr)
+        self.assertFalse(
+            (
+                self.workspace
+                / "customer-testing"
+                / "sessions"
+                / "S01"
+                / "handoff.md"
+            ).exists()
+        )
+        record = self.read_json("customer-testing/sessions/S01/session.json")
+        self.assertEqual(record["packet"]["budgetStatus"], "not-generated")
 
     def test_foundation_route_runs_end_to_end(self) -> None:
         self.initialise("Help solo founders test a product idea with an AI team")
@@ -1807,18 +2243,14 @@ class SprintWorkspaceTests(unittest.TestCase):
                 artifact_id,
             )
         self.complete_artifact("10-test-plan")
-        self.run_cli(
-            "customer",
-            "--workspace",
-            str(self.workspace),
-            "--status",
-            "complete",
-            "--target",
-            "Solo founders",
-            "--planned",
-            "2",
-            "--completed",
-            "2",
+        self.set_customer_plan(2, "Solo founders")
+        self.initialise_customer_session("S01", "P01")
+        self.complete_customer_session(
+            "S01", "The participant found the primary action without help."
+        )
+        self.initialise_customer_session("S02", "P02")
+        self.complete_customer_session(
+            "S02", "The participant hesitated at the confirmation step."
         )
         self.complete_artifact("11-customer-evidence")
         self.complete_required_assignments("11-customer-sessions")
@@ -1834,6 +2266,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             ("12-synthesis", "12-synthesis"),
             ("13-outcome", "13-outcome"),
         ):
+            if step_id == "12-synthesis":
+                self.run_cli(
+                    "synthesis-packet", "--workspace", str(self.workspace)
+                )
             self.run_cli(
                 "new-artifact",
                 "--workspace",
@@ -1843,6 +2279,17 @@ class SprintWorkspaceTests(unittest.TestCase):
             )
             self.complete_artifact(artifact_id)
             self.complete_required_assignments(step_id)
+            if step_id == "12-synthesis":
+                synthesis = self.read_json("artifact-data/12-synthesis.json")
+                synthesis["evidence"] = [
+                    {
+                        "status": "Inference",
+                        "claim": "TASK-1 was understandable but hesitation varied by session.",
+                        "source": "S01/OBS1; S02/OBS1; S01/Q1; S02/Q1",
+                    }
+                ]
+                self.write_json("artifact-data/12-synthesis.json", synthesis)
+                self.run_cli("render", "--workspace", str(self.workspace))
             self.run_cli(
                 "complete-step",
                 "--workspace",

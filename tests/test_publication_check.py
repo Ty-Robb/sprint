@@ -53,9 +53,13 @@ class PublicationCheckTests(unittest.TestCase):
     def test_generated_workspace_and_private_evidence_paths_are_flagged(self) -> None:
         workspace = self.write("design-sprint-demo/sprint-state.json", "{}")
         transcript = self.write("transcripts/session.txt", "Synthetic-looking text")
-        messages = self.messages(workspace, transcript)
+        session = self.write("customer-testing/sessions/S01/summary.json", "{}")
+        manifest = self.write("customer-testing/session-manifest.json", "{}")
+        messages = self.messages(workspace, transcript, session, manifest)
         self.assertTrue(any("generated sprint" in message for message in messages))
         self.assertIn("private-evidence directory must not be published", messages)
+        self.assertIn("private customer-session material must not be published", messages)
+        self.assertIn("generated customer-session manifest must remain private", messages)
 
     def test_identifiers_emails_and_secrets_are_flagged(self) -> None:
         identifier_key = "account" + "_id"

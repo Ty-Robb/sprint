@@ -15,6 +15,9 @@ dependency-free and reports instance locations as JSONPath, for example
 | Artifact specifications | `references/artifact-specs.json` | `1.0` | Current only |
 | Role contracts | `references/role-contracts.json` | `1.0` | Current only |
 | Method profiles | `references/method-profiles.json` | `1.0` | Current only |
+| Session manifest | `customer-testing/session-manifest.json` | `1.0` | Current only |
+| Customer session | `customer-testing/sessions/*/session.json` | `1.0` | Current only |
+| Session summary | `customer-testing/sessions/*/summary.json` | `1.0` | Current only |
 | Public usage evidence | `*.usage-evidence.json` publication records | `1.0` | Current only |
 
 The state schema includes its separate method-profile, execution-mode, and
@@ -28,10 +31,13 @@ and completed gate records' explicit decision reference. The assignment schema
 requires packet/input and result digests, assignee/run identity, timestamps,
 lifecycle status, required outputs, and independence metadata.
 
-There is no standalone customer-session JSON format or session-import command
-in the current engine. Customer-testing counts remain a nested state record.
-Any future persisted session family must receive its own versioned schema and
-be validated before an import writes a file or changes those counts.
+The session manifest is the canonical membership and counting record. Each
+manifest entry resolves to one isolated strict session record and one strict
+anonymized summary. Runtime validation reconciles version hashes, participant
+and session IDs, statuses, source pointers, packet hashes, synthesis inputs,
+and the aggregate count in workspace state. These three families deliberately
+start at `1.0` independently of workspace-state schema `2.0`; they have no
+legacy version or migration path.
 
 ## Compatibility policy
 
@@ -65,13 +71,16 @@ be validated before an import writes a file or changes those counts.
   `NaN` and `Infinity` are rejected before schema evaluation.
 
 Schema validation runs when state, assignment manifests, artifact specifications,
-role contracts, or artifact data are loaded; immediately before canonical
-mutations are persisted; before gate logic; before any artifact or dashboard
-rendering; and as part of whole-workspace validation. Cross-record assignment
-validation additionally enforces immutable digests, freshness, required memo
-sections, uniqueness, lifecycle linkage, and independent-run boundaries. The
-publication checker validates usage records before evaluating them for release.
-Completion and customer-evidence checks remain separate cross-record rules.
+role contracts, artifact data, customer-session manifests, session records, or summaries are loaded;
+immediately before mutations are persisted; before gate logic; before any
+artifact or dashboard rendering; and as part of whole-workspace validation.
+The publication checker validates usage records before evaluating them for
+release. Cross-record assignment validation additionally enforces immutable
+digests, freshness, required memo sections, uniqueness, lifecycle linkage, and
+independent-run boundaries. Cross-record session checks additionally enforce isolation, unique
+counting, immutable version bindings, trace pointers, packet budgets, and stale
+synthesis detection. Route-history and skip-policy invariants are intentionally
+not changed here.
 
 ## Migrating a workspace
 

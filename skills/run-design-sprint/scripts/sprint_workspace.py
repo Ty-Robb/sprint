@@ -40,7 +40,13 @@ ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION
 FIDELITY_SCHEMA_VERSION = "1.0"
 ASSIGNMENT_MANIFEST_SCHEMA_VERSION = "1.0"
 ROLE_PACKET_VERSION = "1.0"
+SESSION_SCHEMA_VERSION = "1.0"
 PORTABLE_FILE_MODE = 0o644
+CUSTOMER_TESTING_DIR = "customer-testing"
+SESSION_MANIFEST_FILENAME = "session-manifest.json"
+DEFAULT_SESSION_CONTEXT_MAXIMUM = 24000
+DEFAULT_SYNTHESIS_CONTEXT_MAXIMUM = 48000
+DEFAULT_CONTEXT_WARNING_PERCENT = 80
 
 SCHEMA_FAMILIES = {
     "workspace-state": {
@@ -92,6 +98,30 @@ SCHEMA_FAMILIES = {
             ASSIGNMENT_MANIFEST_SCHEMA_VERSION: (
                 SCHEMAS_DIR / "assignment-manifest-v1.schema.json"
             )
+        },
+        "migratable": set(),
+    },
+    "session-manifest": {
+        "label": "customer-session manifest",
+        "current": SESSION_SCHEMA_VERSION,
+        "schemas": {
+            SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "session-manifest-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+    "customer-session": {
+        "label": "customer-session record",
+        "current": SESSION_SCHEMA_VERSION,
+        "schemas": {
+            SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "customer-session-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+    "session-summary": {
+        "label": "customer-session summary",
+        "current": SESSION_SCHEMA_VERSION,
+        "schemas": {
+            SESSION_SCHEMA_VERSION: SCHEMAS_DIR / "session-summary-v1.schema.json"
         },
         "migratable": set(),
     },
@@ -235,6 +265,7 @@ WORKSPACE_GITIGNORE = """# This generated workspace is private by default.
 **/raw-evidence/
 **/recordings/
 **/transcripts/
+customer-testing/sessions/*/raw/
 **/usage-evidence/private/
 .env
 .env.*
@@ -388,6 +419,14 @@ def json_text(data: dict[str, Any]) -> str:
         )
     except (TypeError, ValueError) as error:
         raise SprintError(f"Cannot serialize canonical JSON: {error}") from error
+
+
+def sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def sha256_text(value: str) -> str:
+    return sha256_bytes(value.encode("utf-8"))
 
 
 def portable_permissions_supported() -> bool:
@@ -565,6 +604,53 @@ def workspace_path(value: str) -> Path:
     return Path(value).expanduser().resolve()
 
 
+def workspace_relative_file(workspace: Path, value: str, label: str) -> Path:
+    candidate = (workspace / value).resolve()
+    try:
+        candidate.relative_to(workspace)
+    except ValueError as error:
+        raise SprintError(f"{label} escapes the sprint workspace: {value}") from error
+    if not candidate.is_file():
+        raise SprintError(f"{label} does not exist or is not a file: {value}")
+    return candidate
+
+
+def source_descriptor(workspace: Path, value: str, label: str) -> dict[str, Any]:
+    path = workspace_relative_file(workspace, value, label)
+    try:
+        payload = path.read_bytes()
+        text = payload.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise SprintError(f"{label} must be a readable UTF-8 text file: {value}") from error
+    return {
+        "path": path.relative_to(workspace).as_posix(),
+        "sha256": sha256_bytes(payload),
+        "characters": len(text),
+    }
+
+
+def descriptor_text(
+    workspace: Path, descriptor: dict[str, Any], label: str
+) -> str:
+    path_value = str(descriptor.get("path", ""))
+    path = workspace_relative_file(workspace, path_value, label)
+    try:
+        payload = path.read_bytes()
+        text = payload.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise SprintError(
+            f"{label} must remain a readable UTF-8 text file: {path_value}"
+        ) from error
+    if sha256_bytes(payload) != descriptor.get("sha256"):
+        raise SprintError(
+            f"{label} changed after its version was recorded: {path_value}. "
+            "Record a new prototype/questions version before generating another packet."
+        )
+    if len(text) != descriptor.get("characters"):
+        raise SprintError(f"{label} character count no longer matches: {path_value}")
+    return text
+
+
 def state_path(workspace: Path) -> Path:
     return workspace / STATE_FILENAME
 
@@ -625,6 +711,33 @@ def resolved_workspace_file(
             message = f"Path escapes the sprint workspace: {value}"
         raise SprintError(message) from error
     return candidate, relative
+
+
+def manifest_path(workspace: Path) -> Path:
+    return workspace / CUSTOMER_TESTING_DIR / SESSION_MANIFEST_FILENAME
+
+
+def session_directory(workspace: Path, session_id: str) -> Path:
+    return workspace / CUSTOMER_TESTING_DIR / "sessions" / session_id
+
+
+def load_session_manifest(workspace: Path) -> dict[str, Any]:
+    path = manifest_path(workspace)
+    manifest = read_json(path)
+    require_valid_schema(manifest, "session-manifest", path)
+    return manifest
+
+
+def load_session_record(path: Path) -> dict[str, Any]:
+    record = read_json(path)
+    require_valid_schema(record, "customer-session", path)
+    return record
+
+
+def load_session_summary(path: Path) -> dict[str, Any]:
+    summary = read_json(path)
+    require_valid_schema(summary, "session-summary", path)
+    return summary
 
 
 def load_state(workspace: Path) -> dict[str, Any]:
@@ -1927,6 +2040,317 @@ def initial_brief_data(
     return data
 
 
+def initial_session_manifest(
+    workspace_slug: str,
+    timestamp: str,
+    per_session_maximum: int = DEFAULT_SESSION_CONTEXT_MAXIMUM,
+    synthesis_maximum: int = DEFAULT_SYNTHESIS_CONTEXT_MAXIMUM,
+    warning_percent: int = DEFAULT_CONTEXT_WARNING_PERCENT,
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": SESSION_SCHEMA_VERSION,
+        "recordType": "customer-session-manifest",
+        "workspaceSlug": workspace_slug,
+        "currentVersions": {"prototype": None, "questions": None},
+        "versionCatalog": {"prototypes": [], "questions": []},
+        "contextBudget": {
+            "unit": "characters",
+            "perSessionMaximum": per_session_maximum,
+            "synthesisMaximum": synthesis_maximum,
+            "warningPercent": warning_percent,
+        },
+        "sessions": [],
+        "synthesis": {
+            "status": "not-generated",
+            "packetPath": None,
+            "generatedAt": None,
+            "questionsVersion": None,
+            "sessionIds": [],
+            "summaryHashes": [],
+            "packetSha256": None,
+            "characters": None,
+            "budgetStatus": "not-generated",
+            "rawEvidenceIncluded": False,
+        },
+        "createdAt": timestamp,
+        "updatedAt": timestamp,
+    }
+
+
+def require_session_identifier(value: str, label: str) -> str:
+    normalized = value.strip().upper()
+    prefix = "S" if "session" in label.lower() else "P"
+    if re.fullmatch(rf"{prefix}[0-9][A-Z0-9-]{{0,30}}", normalized) is None:
+        raise SprintError(
+            f"{label} must be a 3-32 character anonymized code starting with "
+            f"{prefix} and a digit"
+        )
+    return normalized
+
+
+def budget_status(characters: int, maximum: int, warning_percent: int) -> str:
+    if characters > maximum:
+        raise SprintError(
+            f"Generated packet would use {characters}/{maximum} characters. "
+            "Reduce the declared inputs; do not carry prior chats or raw transcripts forward."
+        )
+    if characters * 100 >= maximum * warning_percent:
+        return "approaching-limit"
+    return "within-budget"
+
+
+def mark_synthesis_stale(manifest: dict[str, Any]) -> None:
+    synthesis = manifest.get("synthesis", {})
+    if isinstance(synthesis, dict) and synthesis.get("status") == "packet-generated":
+        synthesis["status"] = "stale"
+
+
+def find_session_entry(
+    manifest: dict[str, Any], session_id: str
+) -> dict[str, Any]:
+    entry = next(
+        (
+            item
+            for item in manifest.get("sessions", [])
+            if isinstance(item, dict) and item.get("sessionId") == session_id
+        ),
+        None,
+    )
+    if entry is None:
+        raise SprintError(f"Session is not registered in the manifest: {session_id}")
+    return entry
+
+
+def load_session_bundle(
+    workspace: Path, session_id: str
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    Path,
+    Path,
+]:
+    manifest = load_session_manifest(workspace)
+    entry = find_session_entry(manifest, session_id)
+    record_path = workspace_relative_file(
+        workspace, str(entry["recordPath"]), "Session record"
+    )
+    summary_path = workspace_relative_file(
+        workspace, str(entry["summaryPath"]), "Session summary"
+    )
+    record = load_session_record(record_path)
+    summary = load_session_summary(summary_path)
+    return manifest, entry, record, summary, record_path, summary_path
+
+
+def sync_customer_testing_from_manifest(
+    state: dict[str, Any], manifest: dict[str, Any]
+) -> None:
+    customer = state.setdefault("customerTesting", {})
+    sessions = [
+        item for item in manifest.get("sessions", []) if isinstance(item, dict)
+    ]
+    counted = sum(item.get("counted") is True for item in sessions)
+    planned = int(customer.get("sessionsPlanned", 0))
+    if planned < len(sessions):
+        planned = len(sessions)
+    customer["sessionsPlanned"] = planned
+    customer["sessionsCompleted"] = counted
+    if counted:
+        customer["status"] = "complete" if planned and counted >= planned else "partial"
+    elif any(
+        item.get("status") in {"in-progress", "reopened", "packet-generated"}
+        for item in sessions
+    ):
+        customer["status"] = "in-progress"
+    elif any(item.get("status") == "blocked" for item in sessions):
+        customer["status"] = "blocked"
+    elif sessions:
+        customer["status"] = "scheduled"
+    if sessions and not str(customer.get("target", "")).strip():
+        customer["target"] = "Participants matching the approved recruitment criteria"
+        customer["targetRationale"] = (
+            "The session workflow was initialized before a more specific target was recorded."
+        )
+
+
+def persist_customer_documents(
+    workspace: Path,
+    state: dict[str, Any] | None,
+    manifest: dict[str, Any],
+    *,
+    record_path: Path | None = None,
+    record: dict[str, Any] | None = None,
+    summary_path: Path | None = None,
+    summary: dict[str, Any] | None = None,
+    extra_texts: dict[Path, str] | None = None,
+    timestamp: str | None = None,
+) -> None:
+    now = timestamp or utc_now()
+    manifest["updatedAt"] = now
+    require_valid_schema(
+        manifest, "session-manifest", manifest_path(workspace)
+    )
+    outputs: dict[Path, str] = {
+        manifest_path(workspace): json_text(manifest)
+    }
+    if record is not None:
+        if record_path is None:
+            raise SprintError("Internal error: a session record path is required")
+        record["updatedAt"] = now
+        require_valid_schema(record, "customer-session", record_path)
+        outputs[record_path] = json_text(record)
+    if summary is not None:
+        if summary_path is None:
+            raise SprintError("Internal error: a session summary path is required")
+        summary["updatedAt"] = now
+        require_valid_schema(summary, "session-summary", summary_path)
+        outputs[summary_path] = json_text(summary)
+    if state is not None:
+        refresh_fidelity_summary(state)
+        state["updatedAt"] = now
+        require_valid_schema(state, "workspace-state", state_path(workspace))
+        outputs[state_path(workspace)] = json_text(state)
+    outputs.update(extra_texts or {})
+    write_texts_atomically(outputs)
+
+
+def catalog_version(
+    manifest: dict[str, Any],
+    catalog_name: str,
+    version: str,
+    candidate: dict[str, Any],
+    *,
+    activate: bool,
+) -> None:
+    entries = manifest["versionCatalog"][catalog_name]
+    existing = next((item for item in entries if item["version"] == version), None)
+    if existing is not None:
+        comparable_existing = {key: value for key, value in existing.items() if key != "recordedAt"}
+        comparable_candidate = {key: value for key, value in candidate.items() if key != "recordedAt"}
+        if comparable_existing != comparable_candidate:
+            raise SprintError(
+                f"{catalog_name} version {version!r} is already bound to different content; "
+                "use a new version identifier"
+            )
+    else:
+        entries.append(candidate)
+        entries.sort(key=lambda item: item["version"])
+    current_key = "prototype" if catalog_name == "prototypes" else "questions"
+    current = manifest["currentVersions"][current_key]
+    if current is None or activate:
+        manifest["currentVersions"][current_key] = version
+    elif current != version:
+        raise SprintError(
+            f"Current {current_key} version is {current!r}; use --activate-versions "
+            f"to make {version!r} current for new sessions"
+        )
+
+
+def session_summary_errors(
+    summary: dict[str, Any], record: dict[str, Any], *, require_complete: bool
+) -> list[str]:
+    errors: list[str] = []
+    for key in (
+        "sessionId",
+        "participantId",
+        "sessionDate",
+        "prototypeVersion",
+        "questionsVersion",
+    ):
+        if summary.get(key) != record.get(key):
+            errors.append(f"Summary {key} does not match the session record")
+    serialized = json.dumps(summary, ensure_ascii=False)
+    if re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", serialized, re.I):
+        errors.append("Summary contains an email address; remove direct identifiers")
+    sources = summary.get("sourceReferences", [])
+    source_ids = [item.get("id") for item in sources if isinstance(item, dict)]
+    if len(source_ids) != len(set(source_ids)):
+        errors.append("Summary source-reference IDs must be unique")
+    observations = summary.get("observations", [])
+    observation_ids = [
+        item.get("id") for item in observations if isinstance(item, dict)
+    ]
+    if len(observation_ids) != len(set(observation_ids)):
+        errors.append("Summary observation IDs must be unique")
+    for observation in observations:
+        if not isinstance(observation, dict):
+            continue
+        for source_id in observation.get("sourceReferenceIds", []):
+            if source_id not in source_ids:
+                errors.append(
+                    f"Observation {observation.get('id')} references unknown source {source_id}"
+                )
+    for quote in summary.get("quoteReferences", []):
+        if isinstance(quote, dict) and quote.get("sourceReferenceId") not in source_ids:
+            errors.append(
+                f"Quote pointer {quote.get('id')} references an unknown source"
+            )
+    inference_ids = [
+        item.get("id")
+        for item in summary.get("inferences", [])
+        if isinstance(item, dict)
+    ]
+    quote_ids = [
+        item.get("id")
+        for item in summary.get("quoteReferences", [])
+        if isinstance(item, dict)
+    ]
+    question_ids = [
+        item.get("questionId")
+        for item in summary.get("questionEvidence", [])
+        if isinstance(item, dict)
+    ]
+    trace_ids = [*observation_ids, *inference_ids, *quote_ids, *question_ids]
+    if len(trace_ids) != len(set(trace_ids)):
+        errors.append("Summary synthesis trace IDs must be unique")
+    task_ids = [
+        item.get("taskId")
+        for item in summary.get("taskOutcomes", [])
+        if isinstance(item, dict)
+    ]
+    if len(task_ids) != len(set(task_ids)):
+        errors.append("Summary task IDs must be unique")
+    for collection_name in ("taskOutcomes", "questionEvidence"):
+        for item in summary.get(collection_name, []):
+            if not isinstance(item, dict):
+                continue
+            for observation_id in item.get("observationIds", []):
+                if observation_id not in observation_ids:
+                    errors.append(
+                        f"{collection_name} entry references unknown observation {observation_id}"
+                    )
+    for inference in summary.get("inferences", []):
+        if not isinstance(inference, dict):
+            continue
+        for observation_id in inference.get("observationIds", []):
+            if observation_id not in observation_ids:
+                errors.append(
+                    f"Inference {inference.get('id')} references unknown observation {observation_id}"
+                )
+    if require_complete:
+        if not str(summary.get("qualificationSummary", "")).strip():
+            errors.append("Completed summary requires a qualification summary")
+        if not sources:
+            errors.append("Completed summary requires at least one audit source reference")
+        for source in sources:
+            if isinstance(source, dict) and source.get("redactionStatus") not in {
+                "complete",
+                "not-required",
+            }:
+                errors.append(
+                    f"Completed summary source {source.get('id')} requires redaction review"
+                )
+        if not observations:
+            errors.append("Completed summary requires at least one Observed item")
+        if not summary.get("taskOutcomes"):
+            errors.append("Completed summary requires task outcomes")
+        if not summary.get("questionEvidence"):
+            errors.append("Completed summary requires question-by-question evidence")
+    return errors
+
+
 def command_init(args: argparse.Namespace) -> None:
     title = args.title.strip()
     challenge = args.challenge.strip()
@@ -1944,6 +2368,12 @@ def command_init(args: argparse.Namespace) -> None:
     )
     if combination_errors:
         raise SprintError("; ".join(combination_errors))
+    if args.session_context_maximum < 1000:
+        raise SprintError("--session-context-maximum must be at least 1000 characters")
+    if args.synthesis_context_maximum < 1000:
+        raise SprintError("--synthesis-context-maximum must be at least 1000 characters")
+    if not 1 <= args.context_warning_percent <= 99:
+        raise SprintError("--context-warning-percent must be between 1 and 99")
     fidelity = build_fidelity(method_profile, execution_mode)
     contract = load_method_contract()
     session_target = 0
@@ -1960,8 +2390,16 @@ def command_init(args: argparse.Namespace) -> None:
         if any(output.iterdir()):
             raise SprintError(f"Output directory is not empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
-    for directory in ("artifact-data", "artifacts", "assets", "prototype", "working"):
-        (output / directory).mkdir(exist_ok=True)
+    for directory in (
+        "artifact-data",
+        "artifacts",
+        "assets",
+        "prototype",
+        "working",
+        f"{CUSTOMER_TESTING_DIR}/sessions",
+        f"{CUSTOMER_TESTING_DIR}/synthesis",
+    ):
+        (output / directory).mkdir(parents=True, exist_ok=True)
     write_text(output / ".gitignore", WORKSPACE_GITIGNORE)
     state = {
         "schemaVersion": STATE_SCHEMA_VERSION,
@@ -2029,6 +2467,17 @@ def command_init(args: argparse.Namespace) -> None:
         output / "artifact-data" / "01-sprint-brief.json",
         initial_brief_data(challenge, now),
     )
+    manifest = initial_session_manifest(
+        state["slug"],
+        now,
+        args.session_context_maximum,
+        args.synthesis_context_maximum,
+        args.context_warning_percent,
+    )
+    require_valid_schema(
+        manifest, "session-manifest", manifest_path(output)
+    )
+    write_json(manifest_path(output), manifest)
     render_workspace(output)
     print(f"Created sprint workspace: {output}")
     print(f"Dashboard: {output / 'index.html'}")
@@ -2423,7 +2872,7 @@ def artifact_status(workspace: Path, artifact_id: str) -> str | None:
 def command_complete_step(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
-    manifest = load_assignment_manifest(workspace)
+    assignment_manifest = load_assignment_manifest(workspace)
     step_id = args.step
     if step_id not in STEP_INDEX:
         raise SprintError(f"Unknown step: {step_id}")
@@ -2443,7 +2892,26 @@ def command_complete_step(args: argparse.Namespace) -> None:
                 "Non-live execution modes cannot complete real-customer sessions; skip the step with an explicit reason and fidelity impact"
             )
         customer = state.get("customerTesting", {})
-        if int(customer.get("sessionsCompleted", 0)) < 1:
+        try:
+            session_manifest = load_session_manifest(workspace)
+        except SprintError as error:
+            raise SprintError(
+                "A canonical customer-session manifest is required before completing testing"
+            ) from error
+        record_errors = customer_testing_record_errors(workspace, state)
+        if record_errors:
+            raise SprintError(
+                "Customer-session records are not valid:\n"
+                + "\n".join(f"- {item}" for item in record_errors)
+            )
+        canonical_completed = sum(
+            item["counted"] for item in session_manifest["sessions"]
+        )
+        if canonical_completed != int(customer.get("sessionsCompleted", 0)):
+            raise SprintError(
+                "Customer-session count does not match the canonical manifest"
+            )
+        if canonical_completed < 1:
             state["status"] = "waiting-for-customers"
             state["nextAction"] = {
                 "title": "Run real-customer sessions",
@@ -2453,6 +2921,28 @@ def command_complete_step(args: argparse.Namespace) -> None:
             save_state(workspace, state)
             render_workspace(workspace)
             raise SprintError("At least one real customer session is required")
+    if step_id == "12-synthesis":
+        session_manifest = load_session_manifest(workspace)
+        if session_manifest["synthesis"]["status"] != "packet-generated":
+            raise SprintError(
+                "Generate a current bounded synthesis packet before completing synthesis"
+            )
+        record_errors = customer_testing_record_errors(workspace, state)
+        if record_errors:
+            raise SprintError(
+                "Synthesis inputs are not current and traceable:\n"
+                + "\n".join(f"- {item}" for item in record_errors)
+            )
+        synthesis_data_path = workspace / "artifact-data" / "12-synthesis.json"
+        if synthesis_data_path.exists():
+            trace_errors = synthesis_artifact_trace_errors(
+                workspace, load_artifact_data(synthesis_data_path)
+            )
+            if trace_errors:
+                raise SprintError(
+                    "Synthesis claims are not traceable:\n"
+                    + "\n".join(f"- {item}" for item in trace_errors)
+                )
     for artifact_id in required_artifacts_for_step(step_id):
         status = artifact_status(workspace, artifact_id)
         allowed = {"ready-for-decision", "complete"} if step_id in GATE_BY_STEP else {"complete"}
@@ -2460,7 +2950,7 @@ def command_complete_step(args: argparse.Namespace) -> None:
             raise SprintError(
                 f"Artifact {artifact_id} must have status {' or '.join(sorted(allowed))}; found {status or 'missing'}"
             )
-    assignment_errors = required_assignment_errors(manifest, step_id)
+    assignment_errors = required_assignment_errors(assignment_manifest, step_id)
     if assignment_errors:
         raise SprintError(
             f"Required specialist results are incomplete for {step_id}: "
@@ -2804,6 +3294,773 @@ def command_gate(args: argparse.Namespace) -> None:
     print(f"Recorded {gate_id}: {args.decision.strip()}")
 
 
+def command_session_init(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    if state.get("executionMode") != "live":
+        raise SprintError("Customer sessions may only be initialized in live mode")
+    now = utc_now()
+    if manifest_path(workspace).exists():
+        manifest = load_session_manifest(workspace)
+    else:
+        if int(state.get("customerTesting", {}).get("sessionsCompleted", 0)):
+            raise SprintError(
+                "Cannot bootstrap a manifest around aggregate completed sessions; "
+                "reconstruct and validate the isolated records first"
+            )
+        manifest = initial_session_manifest(str(state["slug"]), now)
+    session_id = require_session_identifier(args.session_id, "--session-id")
+    participant_id = require_session_identifier(
+        args.participant_id, "--participant-id"
+    )
+    if any(item.get("sessionId") == session_id for item in manifest["sessions"]):
+        raise SprintError(f"Session already exists: {session_id}")
+    prototype_version = args.prototype_version.strip()
+    questions_version = args.questions_version.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", prototype_version):
+        raise SprintError("--prototype-version has an invalid version identifier")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", questions_version):
+        raise SprintError("--questions-version has an invalid version identifier")
+    try:
+        datetime.fromisoformat(args.session_date)
+    except ValueError as error:
+        raise SprintError("--session-date must be an ISO date (YYYY-MM-DD)") from error
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.session_date):
+        raise SprintError("--session-date must be an ISO date (YYYY-MM-DD)")
+
+    prototype_artifact = source_descriptor(
+        workspace, args.prototype, "Prototype artifact"
+    )
+    prototype_context = source_descriptor(
+        workspace, args.prototype_context, "Prototype context"
+    )
+    interview_guide = source_descriptor(
+        workspace, args.interview_guide, "Interview guide"
+    )
+    scorecard = source_descriptor(workspace, args.scorecard, "Scorecard")
+    prior_decisions = [
+        source_descriptor(workspace, value, "Required prior decision")
+        for value in args.prior_decision
+    ]
+    catalog_version(
+        manifest,
+        "prototypes",
+        prototype_version,
+        {
+            "version": prototype_version,
+            "prototypeArtifact": prototype_artifact,
+            "prototypeContext": prototype_context,
+            "recordedAt": now,
+        },
+        activate=args.activate_versions,
+    )
+    catalog_version(
+        manifest,
+        "questions",
+        questions_version,
+        {
+            "version": questions_version,
+            "interviewGuide": interview_guide,
+            "scorecard": scorecard,
+            "recordedAt": now,
+        },
+        activate=args.activate_versions,
+    )
+    duplicate = next(
+        (
+            item
+            for item in manifest["sessions"]
+            if item["participantId"] == participant_id
+            and item["sessionDate"] == args.session_date
+            and item["prototypeVersion"] == prototype_version
+            and item["questionsVersion"] == questions_version
+        ),
+        None,
+    )
+    if duplicate is not None:
+        raise SprintError(
+            "The same participant/date/version combination is already registered "
+            f"as {duplicate['sessionId']}; refusing a possible double-count"
+        )
+
+    directory = session_directory(workspace, session_id)
+    if directory.exists() and any(directory.iterdir()):
+        raise SprintError(f"Session directory is not empty: {directory}")
+    record_path = directory / "session.json"
+    summary_path = directory / "summary.json"
+    record_relative = record_path.relative_to(workspace).as_posix()
+    summary_relative = summary_path.relative_to(workspace).as_posix()
+    consent_status = args.consent_status
+    consent_recorded_at = now if consent_status != "pending" else None
+    record = {
+        "schemaVersion": SESSION_SCHEMA_VERSION,
+        "recordType": "customer-session",
+        "sessionId": session_id,
+        "participantId": participant_id,
+        "sessionDate": args.session_date,
+        "runMode": args.run_mode,
+        "status": "initialized",
+        "prototypeVersion": prototype_version,
+        "questionsVersion": questions_version,
+        "artifacts": {
+            "prototypeArtifact": prototype_artifact,
+            "prototypeContext": prototype_context,
+            "interviewGuide": interview_guide,
+            "scorecard": scorecard,
+            "priorDecisions": prior_decisions,
+            "summaryPath": summary_relative,
+        },
+        "packet": {
+            "path": None,
+            "generatedAt": None,
+            "sourceCharacters": None,
+            "characters": None,
+            "sha256": None,
+            "budgetStatus": "not-generated",
+            "freshChatRequired": True,
+        },
+        "checkpoint": {
+            "phase": "ready-for-packet",
+            "nextAction": "Generate the participant handoff packet and start a fresh chat.",
+            "completedPhases": ["session-initialized"],
+            "lastPersistedAt": now,
+        },
+        "consent": {
+            "status": consent_status,
+            "recordedAt": consent_recorded_at,
+            "scope": (args.consent_scope or "").strip(),
+            "reference": (args.consent_reference or "").strip(),
+        },
+        "redaction": {
+            "status": args.redaction_status,
+            "reviewedAt": (
+                now
+                if args.redaction_status in {"complete", "not-required"}
+                else None
+            ),
+            "removedCategories": [],
+        },
+        "rawEvidence": [],
+        "limitations": [],
+        "usage": {
+            "measurementContext": "customer-session",
+            "available": False,
+            "measurements": [],
+            "unavailableReason": "The runtime has not exposed session usage measurements.",
+        },
+        "reopenHistory": [],
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    summary = {
+        "schemaVersion": SESSION_SCHEMA_VERSION,
+        "recordType": "customer-session-summary",
+        "sessionId": session_id,
+        "participantId": participant_id,
+        "sessionDate": args.session_date,
+        "prototypeVersion": prototype_version,
+        "questionsVersion": questions_version,
+        "status": "draft",
+        "anonymized": True,
+        "containsDirectIdentifiers": False,
+        "qualificationSummary": "",
+        "sourceReferences": [],
+        "observations": [],
+        "inferences": [],
+        "quoteReferences": [],
+        "taskOutcomes": [],
+        "questionEvidence": [],
+        "surprises": [],
+        "moderatorDeviations": [],
+        "limitations": [],
+        "uncertainties": [],
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    entry = {
+        "sessionId": session_id,
+        "participantId": participant_id,
+        "sessionDate": args.session_date,
+        "prototypeVersion": prototype_version,
+        "questionsVersion": questions_version,
+        "status": "initialized",
+        "recordPath": record_relative,
+        "summaryPath": summary_relative,
+        "summarySha256": None,
+        "packetPath": None,
+        "includeInSynthesis": False,
+        "counted": False,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    manifest["sessions"].append(entry)
+    manifest["sessions"].sort(key=lambda item: item["sessionId"])
+    mark_synthesis_stale(manifest)
+    sync_customer_testing_from_manifest(state, manifest)
+    persist_customer_documents(
+        workspace,
+        state,
+        manifest,
+        record_path=record_path,
+        record=record,
+        summary_path=summary_path,
+        summary=summary,
+        timestamp=now,
+    )
+    render_workspace(workspace)
+    print(f"Initialized isolated customer session: {session_id}")
+    print(f"Record: {record_path}")
+    print(f"Next: session-packet --workspace {workspace} --session-id {session_id}")
+
+
+def packet_document_block(title: str, descriptor: dict[str, Any], text: str) -> str:
+    return (
+        f"## {title}\n\n"
+        f"Source: `{descriptor['path']}`  \n"
+        f"SHA-256: `{descriptor['sha256']}`\n\n"
+        f"<declared-input name=\"{title}\">\n{text.rstrip()}\n</declared-input>\n"
+    )
+
+
+def summary_for_handoff(summary: dict[str, Any]) -> dict[str, Any]:
+    sanitized = copy.deepcopy(summary)
+    sanitized["sourceReferences"] = [
+        {
+            "id": item["id"],
+            "kind": item["kind"],
+            "redactionStatus": item["redactionStatus"],
+        }
+        for item in summary.get("sourceReferences", [])
+    ]
+    return sanitized
+
+
+def command_session_packet(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    manifest, entry, record, summary, record_path, summary_path = load_session_bundle(
+        workspace, require_session_identifier(args.session_id, "--session-id")
+    )
+    if record["status"] == "complete":
+        raise SprintError("Completed sessions must be reopened before generating a new packet")
+    if record["status"] == "withdrawn":
+        raise SprintError("A withdrawn session cannot receive another participant packet")
+    if record["consent"]["status"] in {"declined", "withdrawn"}:
+        raise SprintError("A participant who declined or withdrew consent cannot receive a session packet")
+    artifacts = record["artifacts"]
+    prototype_context = descriptor_text(
+        workspace, artifacts["prototypeContext"], "Prototype context"
+    )
+    interview_guide = descriptor_text(
+        workspace, artifacts["interviewGuide"], "Interview guide"
+    )
+    scorecard = descriptor_text(workspace, artifacts["scorecard"], "Scorecard")
+    prior_blocks: list[str] = []
+    source_characters = len(prototype_context) + len(interview_guide) + len(scorecard)
+    for index, descriptor in enumerate(artifacts["priorDecisions"], 1):
+        value = descriptor_text(workspace, descriptor, f"Prior decision {index}")
+        source_characters += len(value)
+        prior_blocks.append(packet_document_block(f"Required prior decision {index}", descriptor, value))
+
+    resume_block = ""
+    if record["status"] in {"reopened", "in-progress", "blocked", "packet-generated"} and (
+        summary.get("observations")
+        or summary.get("taskOutcomes")
+        or record["checkpoint"]["completedPhases"] != ["session-initialized"]
+    ):
+        persisted = {
+            "checkpoint": record["checkpoint"],
+            "structuredSummary": summary_for_handoff(summary),
+        }
+        resume_text = json.dumps(persisted, indent=2, ensure_ascii=False, sort_keys=True)
+        source_characters += len(resume_text)
+        resume_block = (
+            "## Persisted resume checkpoint\n\n"
+            "This replaces conversation replay. It contains no raw transcript content.\n\n"
+            f"```json\n{resume_text}\n```\n\n"
+        )
+
+    prior_text = "\n".join(prior_blocks) or (
+        "## Required prior decisions\n\nNo additional prior-decision documents were declared.\n"
+    )
+    packet = f"""# Fresh-chat customer-session handoff — {record['sessionId']}
+
+Use this packet as the complete operating context for one fresh chat. Do not load the sprint history, another participant's files, or any raw transcript. Open only the prototype path named below while running the session.
+
+## Session identity and versions
+
+- Session ID: `{record['sessionId']}`
+- Participant ID: `{record['participantId']}` (anonymized; keep the identity map elsewhere)
+- Session date: `{record['sessionDate']}`
+- Run mode: `{record['runMode']}`
+- Prototype version: `{record['prototypeVersion']}`
+- Questions version: `{record['questionsVersion']}`
+- Prototype to open: `{artifacts['prototypeArtifact']['path']}`
+- Canonical session record: `{record_path.relative_to(workspace).as_posix()}`
+- Structured summary to update: `{summary_path.relative_to(workspace).as_posix()}`
+
+## Operating instructions
+
+1. Confirm consent before recording or using agent assistance. Test the prototype, not the participant.
+2. Follow the interview guide neutrally, present one task at a time, and record behaviour before interpretation.
+3. Keep raw notes/transcripts in this session's separately protected source location. Never inspect another session.
+4. Update the structured summary with separate `Observed` and `Inference` items, moderator deviations, and audit pointers; do not copy raw transcript passages into it.
+5. Persist the checkpoint and summary before the chat ends. If context becomes crowded, stop and resume in another fresh chat from a regenerated packet.
+6. Do not change the prototype or sprint questions under these version IDs. Initialize a new version when either changes.
+
+{packet_document_block('Prototype context', artifacts['prototypeContext'], prototype_context)}
+
+{packet_document_block('Interview guide', artifacts['interviewGuide'], interview_guide)}
+
+{packet_document_block('Shared scorecard', artifacts['scorecard'], scorecard)}
+
+{prior_text}
+
+{resume_block}## Required return state
+
+- Persist a structured, anonymized summary with observations, separate inferences, source/quote pointers, task outcomes, question evidence, moderator deviations, surprises, limitations, and uncertainties.
+- Persist the checkpoint phase, completed phases, and next action.
+- Record consent/redaction status and runtime usage when the runtime exposes it; otherwise preserve the unavailable reason.
+- End without synthesizing across participants. Cross-session synthesis happens only in its separate packet.
+"""
+    budget = manifest["contextBudget"]
+    packet_status = budget_status(
+        len(packet), budget["perSessionMaximum"], budget["warningPercent"]
+    )
+    now = utc_now()
+    packet_path = session_directory(workspace, record["sessionId"]) / "handoff.md"
+    packet_relative = packet_path.relative_to(workspace).as_posix()
+    record["packet"] = {
+        "path": packet_relative,
+        "generatedAt": now,
+        "sourceCharacters": source_characters,
+        "characters": len(packet),
+        "sha256": sha256_text(packet),
+        "budgetStatus": packet_status,
+        "freshChatRequired": True,
+    }
+    record["status"] = "packet-generated"
+    record["checkpoint"]["phase"] = "ready-to-run"
+    record["checkpoint"]["nextAction"] = "Start a fresh chat using only handoff.md."
+    record["checkpoint"]["lastPersistedAt"] = now
+    entry["status"] = "packet-generated"
+    entry["packetPath"] = packet_relative
+    entry["updatedAt"] = now
+    persist_customer_documents(
+        workspace,
+        None,
+        manifest,
+        record_path=record_path,
+        record=record,
+        summary_path=summary_path,
+        summary=summary,
+        extra_texts={packet_path: packet},
+        timestamp=now,
+    )
+    print(
+        f"Wrote fresh-chat packet: {packet_path} "
+        f"({len(packet)}/{budget['perSessionMaximum']} characters)"
+    )
+    if packet_status == "approaching-limit":
+        print("Warning: participant packet is approaching its context budget")
+    print("Fresh chat required: yes")
+
+
+def command_session_checkpoint(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest, entry, record, summary, record_path, summary_path = load_session_bundle(
+        workspace, require_session_identifier(args.session_id, "--session-id")
+    )
+    if record["status"] == "complete":
+        raise SprintError("Reopen a completed session before changing its checkpoint")
+    now = utc_now()
+    record["status"] = args.status
+    record["checkpoint"]["phase"] = args.phase.strip()
+    record["checkpoint"]["nextAction"] = args.next_action.strip()
+    for phase in args.completed_phase:
+        value = phase.strip()
+        if value and value not in record["checkpoint"]["completedPhases"]:
+            record["checkpoint"]["completedPhases"].append(value)
+    record["checkpoint"]["lastPersistedAt"] = now
+    entry["status"] = args.status
+    entry["updatedAt"] = now
+    if args.status == "withdrawn":
+        entry["counted"] = False
+        entry["includeInSynthesis"] = False
+        mark_synthesis_stale(manifest)
+    sync_customer_testing_from_manifest(state, manifest)
+    persist_customer_documents(
+        workspace,
+        state,
+        manifest,
+        record_path=record_path,
+        record=record,
+        summary_path=summary_path,
+        summary=summary,
+        timestamp=now,
+    )
+    render_workspace(workspace)
+    print(f"Persisted checkpoint for {record['sessionId']}: {args.status}")
+
+
+def usage_measurements_from_args(args: argparse.Namespace) -> list[dict[str, Any]]:
+    definitions = (
+        ("inputTokens", args.usage_input_tokens, "tokens"),
+        ("outputTokens", args.usage_output_tokens, "tokens"),
+        ("totalTokens", args.usage_total_tokens, "tokens"),
+        ("requests", args.usage_requests, "requests"),
+        ("durationSeconds", args.usage_duration_seconds, "seconds"),
+    )
+    measurements: list[dict[str, Any]] = []
+    if any(value is not None for _name, value, _unit in definitions) and not args.usage_source.strip():
+        raise SprintError("--usage-source cannot be empty when usage is recorded")
+    for name, value, unit in definitions:
+        if value is None:
+            continue
+        if value < 0:
+            raise SprintError(f"Usage measurement {name} cannot be negative")
+        measurements.append(
+            {
+                "name": name,
+                "value": value,
+                "unit": unit,
+                "source": args.usage_source.strip(),
+            }
+        )
+    values = {item["name"]: item["value"] for item in measurements}
+    if all(name in values for name in ("inputTokens", "outputTokens", "totalTokens")):
+        if values["inputTokens"] + values["outputTokens"] != values["totalTokens"]:
+            raise SprintError("totalTokens must equal inputTokens plus outputTokens")
+    return measurements
+
+
+def command_session_complete(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest, entry, record, summary, record_path, summary_path = load_session_bundle(
+        workspace, require_session_identifier(args.session_id, "--session-id")
+    )
+    if record["status"] == "complete" or entry["counted"]:
+        raise SprintError(
+            f"Session {record['sessionId']} is already complete and counted once"
+        )
+    if record["packet"]["path"] is None:
+        raise SprintError("Generate the participant packet before completing the session")
+    now = utc_now()
+    if args.consent_status:
+        record["consent"]["status"] = args.consent_status
+        record["consent"]["recordedAt"] = now
+    if args.consent_scope is not None:
+        record["consent"]["scope"] = args.consent_scope.strip()
+    if args.consent_reference is not None:
+        record["consent"]["reference"] = args.consent_reference.strip()
+    if record["consent"]["status"] != "granted":
+        raise SprintError("A counted completed session requires granted consent")
+    if not record["consent"]["scope"].strip():
+        raise SprintError("A counted completed session requires the consent scope")
+    if not record["consent"]["reference"].strip():
+        raise SprintError(
+            "A counted completed session requires an opaque consent-record reference"
+        )
+    if args.redaction_status:
+        record["redaction"]["status"] = args.redaction_status
+        record["redaction"]["reviewedAt"] = now
+    for value in args.removed_category:
+        normalized = value.strip()
+        if normalized and normalized not in record["redaction"]["removedCategories"]:
+            record["redaction"]["removedCategories"].append(normalized)
+    if record["redaction"]["status"] not in {"complete", "not-required"}:
+        raise SprintError(
+            "A completed session requires redaction status complete or not-required"
+        )
+    for value in args.limitation:
+        normalized = value.strip()
+        if normalized and normalized not in record["limitations"]:
+            record["limitations"].append(normalized)
+        if normalized and normalized not in summary["limitations"]:
+            summary["limitations"].append(normalized)
+    summary_errors = session_summary_errors(summary, record, require_complete=True)
+    if summary_errors:
+        raise SprintError(
+            "Session summary is not completion-ready:\n"
+            + "\n".join(f"- {item}" for item in summary_errors)
+        )
+    measurements = usage_measurements_from_args(args)
+    if measurements:
+        record["usage"] = {
+            "measurementContext": "customer-session",
+            "available": True,
+            "measurements": measurements,
+            "unavailableReason": "",
+        }
+    elif args.usage_unavailable_reason:
+        record["usage"] = {
+            "measurementContext": "customer-session",
+            "available": False,
+            "measurements": [],
+            "unavailableReason": args.usage_unavailable_reason.strip(),
+        }
+    record["rawEvidence"] = copy.deepcopy(summary["sourceReferences"])
+    record["status"] = "complete"
+    record["completedAt"] = now
+    record["checkpoint"] = {
+        "phase": "complete",
+        "nextAction": "Use this session's structured summary in a separate synthesis packet.",
+        "completedPhases": sorted(
+            set(
+                [
+                    *record["checkpoint"]["completedPhases"],
+                    "session-run",
+                    "summary-completed",
+                ]
+            )
+        ),
+        "lastPersistedAt": now,
+    }
+    summary["status"] = "complete"
+    summary["updatedAt"] = now
+    entry["status"] = "complete"
+    entry["counted"] = True
+    entry["includeInSynthesis"] = True
+    entry["summarySha256"] = sha256_text(json_text(summary))
+    entry["completedAt"] = now
+    entry["updatedAt"] = now
+    mark_synthesis_stale(manifest)
+    sync_customer_testing_from_manifest(state, manifest)
+    planned = state["customerTesting"]["sessionsPlanned"]
+    counted = state["customerTesting"]["sessionsCompleted"]
+    if planned and counted > planned:
+        raise SprintError(
+            "Completing this session would exceed the planned target; update the customer plan first"
+        )
+    persist_customer_documents(
+        workspace,
+        state,
+        manifest,
+        record_path=record_path,
+        record=record,
+        summary_path=summary_path,
+        summary=summary,
+        timestamp=now,
+    )
+    render_workspace(workspace)
+    print(f"Completed and counted session once: {record['sessionId']}")
+    print(f"Customer sessions: {counted}/{planned}")
+
+
+def command_session_reopen(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    manifest, entry, record, summary, record_path, summary_path = load_session_bundle(
+        workspace, require_session_identifier(args.session_id, "--session-id")
+    )
+    if record["status"] not in {"complete", "blocked", "withdrawn"}:
+        raise SprintError(
+            f"Session status is {record['status']}; only complete, blocked, or withdrawn sessions can be reopened"
+        )
+    reason = args.reason.strip()
+    if not reason:
+        raise SprintError("--reason cannot be empty")
+    now = utc_now()
+    record["status"] = "reopened"
+    record.pop("completedAt", None)
+    record["reopenHistory"].append({"reason": reason, "reopenedAt": now})
+    record["checkpoint"] = {
+        "phase": "reopened",
+        "nextAction": "Regenerate handoff.md and resume from the persisted structured state.",
+        "completedPhases": record["checkpoint"]["completedPhases"],
+        "lastPersistedAt": now,
+    }
+    summary["status"] = "draft"
+    entry["status"] = "reopened"
+    entry["counted"] = False
+    entry["includeInSynthesis"] = False
+    entry["summarySha256"] = None
+    entry.pop("completedAt", None)
+    entry["updatedAt"] = now
+    mark_synthesis_stale(manifest)
+    sync_customer_testing_from_manifest(state, manifest)
+    persist_customer_documents(
+        workspace,
+        state,
+        manifest,
+        record_path=record_path,
+        record=record,
+        summary_path=summary_path,
+        summary=summary,
+        timestamp=now,
+    )
+    render_workspace(workspace)
+    print(f"Reopened session from persisted state: {record['sessionId']}")
+    print("Regenerate its packet; no prior conversation replay is required")
+
+
+def synthesis_summary_payload(summary: dict[str, Any]) -> dict[str, Any]:
+    payload = summary_for_handoff(summary)
+    payload.pop("createdAt", None)
+    payload.pop("updatedAt", None)
+    session_id = str(summary["sessionId"])
+    for observation in payload["observations"]:
+        observation["traceId"] = f"{session_id}/{observation['id']}"
+    for inference in payload["inferences"]:
+        inference["traceId"] = f"{session_id}/{inference['id']}"
+    for question in payload["questionEvidence"]:
+        question["traceId"] = f"{session_id}/{question['questionId']}"
+    for quote in payload["quoteReferences"]:
+        quote["traceId"] = f"{session_id}/{quote['id']}"
+    return payload
+
+
+def command_synthesis_packet(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    manifest = load_session_manifest(workspace)
+    requested_ids = [
+        require_session_identifier(value, "--session-id") for value in args.session_id
+    ]
+    if len(requested_ids) != len(set(requested_ids)):
+        raise SprintError("Synthesis session IDs must be unique")
+    if requested_ids:
+        entries = [find_session_entry(manifest, value) for value in requested_ids]
+    else:
+        entries = [
+            item
+            for item in manifest["sessions"]
+            if item["counted"] and item["includeInSynthesis"]
+        ]
+    if not entries:
+        raise SprintError("No completed, counted session summaries are available")
+    for entry in entries:
+        if entry["status"] != "complete" or not entry["counted"]:
+            raise SprintError(
+                f"Session {entry['sessionId']} is not complete and countable"
+            )
+    question_versions = {entry["questionsVersion"] for entry in entries}
+    if len(question_versions) != 1:
+        raise SprintError(
+            "A synthesis packet cannot mix questions versions; generate one packet per version"
+        )
+    questions_version = next(iter(question_versions))
+    catalog = next(
+        (
+            item
+            for item in manifest["versionCatalog"]["questions"]
+            if item["version"] == questions_version
+        ),
+        None,
+    )
+    if catalog is None:
+        raise SprintError(f"Questions version is missing from the catalog: {questions_version}")
+    scorecard = descriptor_text(workspace, catalog["scorecard"], "Synthesis scorecard")
+    summary_blocks: list[str] = []
+    summary_hashes: list[dict[str, Any]] = []
+    for entry in sorted(entries, key=lambda item: item["sessionId"]):
+        summary_path = workspace_relative_file(
+            workspace, entry["summaryPath"], "Synthesis summary"
+        )
+        summary = load_session_summary(summary_path)
+        record_path = workspace_relative_file(
+            workspace, entry["recordPath"], "Synthesis session record"
+        )
+        record = load_session_record(record_path)
+        errors = session_summary_errors(summary, record, require_complete=True)
+        if summary.get("status") != "complete":
+            errors.append("Summary status is not complete")
+        if errors:
+            raise SprintError(
+                f"Session {entry['sessionId']} is not synthesis-ready:\n"
+                + "\n".join(f"- {item}" for item in errors)
+            )
+        payload = synthesis_summary_payload(summary)
+        payload["traceability"] = {
+            "sessionRecord": entry["recordPath"],
+            "summaryRecord": entry["summaryPath"],
+            "citationPrefix": entry["sessionId"],
+        }
+        summary_blocks.append(
+            f"## Session {entry['sessionId']}\n\n"
+            f"```json\n{json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True)}\n```"
+        )
+        summary_hashes.append(
+            {
+                "sessionId": entry["sessionId"],
+                "path": entry["summaryPath"],
+                "sha256": sha256_bytes(summary_path.read_bytes()),
+            }
+        )
+    session_ids = [item["sessionId"] for item in sorted(entries, key=lambda item: item["sessionId"])]
+    packet = f"""# Fresh-chat synthesis packet
+
+Use this packet as the complete input to a separate, fresh synthesis chat. It contains the shared scorecard and anonymized structured summaries only. Raw transcripts, recordings, notes, participant identity maps, prior participant chats, and unrelated sprint history are intentionally excluded.
+
+Questions version: `{questions_version}`
+Sessions: {', '.join(f'`{value}`' for value in session_ids)}
+
+## Synthesis operating contract
+
+1. Compare evidence against the unchanged scorecard. Do not infer prevalence from this directional sample.
+2. Distinguish patterns, contradictions, outliers, limitations, and unanswered questions.
+3. Every synthesized claim must cite one or more trace IDs in the form `SESSION-ID/OBSERVATION-ID` or `SESSION-ID/QUESTION-ID`.
+4. Do not create a claim when no included summary supports it. Mark interpretation as `Inference`, not `Observed`.
+5. Use source/quote pointer IDs for audit escalation; do not open raw evidence unless a human explicitly authorizes a separate audit pass.
+6. Report prototype versions per session and flag version-driven differences.
+
+## Shared scorecard
+
+Source: `{catalog['scorecard']['path']}`
+SHA-256: `{catalog['scorecard']['sha256']}`
+
+<declared-input name="Shared scorecard">
+{scorecard.rstrip()}
+</declared-input>
+
+## Structured session summaries
+
+{chr(10).join(summary_blocks)}
+
+## Required return format
+
+- Claims, each with `claimId`, label, text, and one or more session/evidence trace IDs.
+- Question-by-question findings.
+- Patterns, contradictions, and outliers.
+- Confidence bounded by the available sessions.
+- Limitations, uncertainties, and evidence gaps.
+- Prototype-version effects and recommended next action.
+"""
+    budget = manifest["contextBudget"]
+    packet_status = budget_status(
+        len(packet), budget["synthesisMaximum"], budget["warningPercent"]
+    )
+    packet_path = workspace / CUSTOMER_TESTING_DIR / "synthesis" / "synthesis-packet.md"
+    now = utc_now()
+    manifest["synthesis"] = {
+        "status": "packet-generated",
+        "packetPath": packet_path.relative_to(workspace).as_posix(),
+        "generatedAt": now,
+        "questionsVersion": questions_version,
+        "sessionIds": session_ids,
+        "summaryHashes": summary_hashes,
+        "packetSha256": sha256_text(packet),
+        "characters": len(packet),
+        "budgetStatus": packet_status,
+        "rawEvidenceIncluded": False,
+    }
+    persist_customer_documents(
+        workspace,
+        None,
+        manifest,
+        extra_texts={packet_path: packet},
+        timestamp=now,
+    )
+    print(
+        f"Wrote fresh-chat synthesis packet: {packet_path} "
+        f"({len(packet)}/{budget['synthesisMaximum']} characters)"
+    )
+    if packet_status == "approaching-limit":
+        print("Warning: synthesis packet is approaching its context budget")
+    print("Raw prior transcripts included: no")
+    print("Fresh chat required: yes")
+
+
 def command_customer(args: argparse.Namespace) -> None:
     workspace = workspace_path(args.workspace)
     state, _specs, _artifacts = load_workspace_documents(workspace)
@@ -2811,6 +4068,33 @@ def command_customer(args: argparse.Namespace) -> None:
         raise SprintError(f"Invalid customer-testing status: {args.status}")
     planned = args.planned
     completed = args.completed
+    mode = state.get("executionMode")
+    if mode != "live" and (
+        (completed or 0) > 0
+        or args.status in {"in-progress", "complete", "partial"}
+    ):
+        raise SprintError(
+            f"Execution mode {mode} cannot record live customer sessions or customer evidence"
+        )
+    if manifest_path(workspace).exists():
+        manifest = load_session_manifest(workspace)
+        canonical_completed = sum(
+            item.get("counted") is True for item in manifest["sessions"]
+        )
+        if completed is None:
+            completed = canonical_completed
+        elif completed != canonical_completed:
+            raise SprintError(
+                "--completed is derived from the canonical session manifest; "
+                f"found {canonical_completed} counted session(s), not {completed}. "
+                "Use session-complete or session-reopen."
+            )
+        if planned < len(manifest["sessions"]):
+            raise SprintError(
+                "Planned sessions cannot be lower than the number of initialized session records"
+            )
+    elif completed is None:
+        completed = 0
     if planned < 0 or completed < 0:
         raise SprintError("Session counts cannot be negative")
     if planned and completed > planned:
@@ -2820,7 +4104,6 @@ def command_customer(args: argparse.Namespace) -> None:
     target = args.target.strip()
     if planned and not target:
         raise SprintError("A planned customer session target must name the suitable audience")
-    mode = state.get("executionMode")
     if mode != "live" and (
         completed > 0 or args.status in {"in-progress", "complete", "partial"}
     ):
@@ -4011,6 +5294,398 @@ def rendered_output_errors(workspace: Path) -> list[str]:
     return errors
 
 
+def customer_testing_record_errors(
+    workspace: Path, state: dict[str, Any]
+) -> list[str]:
+    """Validate session isolation, version bindings, counts, and packet traceability."""
+
+    path = manifest_path(workspace)
+    if not path.exists():
+        completed = state.get("customerTesting", {}).get("sessionsCompleted", 0)
+        if completed:
+            return [
+                "Customer sessions are counted but customer-testing/session-manifest.json is missing"
+            ]
+        return []
+    try:
+        manifest = read_json(path)
+    except SprintError as error:
+        return [str(error)]
+    errors = formatted_schema_errors(manifest, "session-manifest", path)
+    if errors:
+        return errors
+    if manifest["workspaceSlug"] != state.get("slug"):
+        errors.append("Session manifest workspaceSlug does not match sprint state")
+
+    prototype_catalog = manifest["versionCatalog"]["prototypes"]
+    questions_catalog = manifest["versionCatalog"]["questions"]
+    prototype_versions = [item["version"] for item in prototype_catalog]
+    questions_versions = [item["version"] for item in questions_catalog]
+    if len(prototype_versions) != len(set(prototype_versions)):
+        errors.append("Prototype version catalog contains duplicate version identifiers")
+    if len(questions_versions) != len(set(questions_versions)):
+        errors.append("Questions version catalog contains duplicate version identifiers")
+    current = manifest["currentVersions"]
+    if current["prototype"] is not None and current["prototype"] not in prototype_versions:
+        errors.append("Current prototype version is absent from the version catalog")
+    if current["questions"] is not None and current["questions"] not in questions_versions:
+        errors.append("Current questions version is absent from the version catalog")
+    for label, catalog_entries, descriptor_keys in (
+        ("prototype", prototype_catalog, ("prototypeArtifact", "prototypeContext")),
+        ("questions", questions_catalog, ("interviewGuide", "scorecard")),
+    ):
+        for catalog_entry in catalog_entries:
+            for key in descriptor_keys:
+                try:
+                    descriptor_text(
+                        workspace,
+                        catalog_entry[key],
+                        f"Catalog {label} {catalog_entry['version']} {key}",
+                    )
+                except SprintError as error:
+                    errors.append(str(error))
+
+    entries = manifest["sessions"]
+    session_ids = [item["sessionId"] for item in entries]
+    if len(session_ids) != len(set(session_ids)):
+        errors.append("Session manifest contains duplicate session IDs")
+    identity_keys = [
+        (
+            item["participantId"],
+            item["sessionDate"],
+            item["prototypeVersion"],
+            item["questionsVersion"],
+        )
+        for item in entries
+    ]
+    if len(identity_keys) != len(set(identity_keys)):
+        errors.append(
+            "Session manifest contains a duplicate participant/date/version combination"
+        )
+    registered_record_paths: set[str] = set()
+    registered_summary_paths: set[str] = set()
+    raw_references: set[str] = set()
+    raw_reference_owners: dict[str, str] = {}
+    session_packet_texts: dict[str, str] = {}
+    for entry in entries:
+        session_id = entry["sessionId"]
+        expected_directory = session_directory(workspace, session_id)
+        expected_record = (expected_directory / "session.json").relative_to(workspace).as_posix()
+        expected_summary = (expected_directory / "summary.json").relative_to(workspace).as_posix()
+        if entry["recordPath"] != expected_record:
+            errors.append(f"Session {session_id} recordPath does not use its isolated directory")
+        if entry["summaryPath"] != expected_summary:
+            errors.append(f"Session {session_id} summaryPath does not use its isolated directory")
+        registered_record_paths.add(entry["recordPath"])
+        registered_summary_paths.add(entry["summaryPath"])
+        try:
+            record_path = workspace_relative_file(
+                workspace, entry["recordPath"], f"Session {session_id} record"
+            )
+            summary_path = workspace_relative_file(
+                workspace, entry["summaryPath"], f"Session {session_id} summary"
+            )
+            record = load_session_record(record_path)
+            summary = load_session_summary(summary_path)
+        except SprintError as error:
+            errors.append(str(error))
+            continue
+        for key in (
+            "sessionId",
+            "participantId",
+            "sessionDate",
+            "prototypeVersion",
+            "questionsVersion",
+            "status",
+        ):
+            if entry[key] != record[key]:
+                errors.append(f"Session {session_id} manifest {key} does not match its record")
+        if record["artifacts"]["summaryPath"] != entry["summaryPath"]:
+            errors.append(f"Session {session_id} record points to a different summary")
+        errors.extend(
+            f"Session {session_id}: {item}"
+            for item in session_summary_errors(
+                summary, record, require_complete=record["status"] == "complete"
+            )
+        )
+        if entry["prototypeVersion"] not in prototype_versions:
+            errors.append(f"Session {session_id} uses an unknown prototype version")
+        else:
+            catalog_entry = next(
+                item for item in prototype_catalog if item["version"] == entry["prototypeVersion"]
+            )
+            for key in ("prototypeArtifact", "prototypeContext"):
+                if record["artifacts"][key] != catalog_entry[key]:
+                    errors.append(
+                        f"Session {session_id} {key} does not match its prototype version"
+                    )
+        if entry["questionsVersion"] not in questions_versions:
+            errors.append(f"Session {session_id} uses an unknown questions version")
+        else:
+            catalog_entry = next(
+                item for item in questions_catalog if item["version"] == entry["questionsVersion"]
+            )
+            for key in ("interviewGuide", "scorecard"):
+                if record["artifacts"][key] != catalog_entry[key]:
+                    errors.append(
+                        f"Session {session_id} {key} does not match its questions version"
+                    )
+        for key, descriptor in record["artifacts"].items():
+            if key == "summaryPath":
+                continue
+            descriptors = descriptor if isinstance(descriptor, list) else [descriptor]
+            for index, item in enumerate(descriptors, 1):
+                try:
+                    descriptor_text(
+                        workspace, item, f"Session {session_id} {key} input {index}"
+                    )
+                except SprintError as error:
+                    errors.append(str(error))
+        counted_should_be_true = record["status"] == "complete"
+        if entry["counted"] != counted_should_be_true:
+            errors.append(
+                f"Session {session_id} counted flag must match complete status"
+            )
+        if entry["includeInSynthesis"] and not entry["counted"]:
+            errors.append(
+                f"Session {session_id} cannot enter synthesis unless it is counted"
+            )
+        if record["status"] == "complete":
+            if summary["status"] != "complete":
+                errors.append(f"Session {session_id} has a non-complete summary")
+            if record["consent"]["status"] != "granted":
+                errors.append(f"Session {session_id} is complete without granted consent")
+            if not record["consent"]["scope"].strip():
+                errors.append(f"Session {session_id} is complete without consent scope")
+            if not record["consent"]["reference"].strip():
+                errors.append(
+                    f"Session {session_id} is complete without a consent-record reference"
+                )
+            if record["redaction"]["status"] not in {"complete", "not-required"}:
+                errors.append(f"Session {session_id} is complete without redaction review")
+            if record["rawEvidence"] != summary["sourceReferences"]:
+                errors.append(
+                    f"Session {session_id} raw-evidence pointers do not match its summary audit pointers"
+                )
+            if entry["summarySha256"] != sha256_bytes(summary_path.read_bytes()):
+                errors.append(
+                    f"Session {session_id} completed summary changed without reopening"
+                )
+        elif entry["summarySha256"] is not None:
+            errors.append(
+                f"Session {session_id} has a completion summary hash while not complete"
+            )
+        usage = record["usage"]
+        if usage["available"] and not usage["measurements"]:
+            errors.append(f"Session {session_id} marks usage available without measurements")
+        if not usage["available"] and usage["measurements"]:
+            errors.append(f"Session {session_id} has measurements marked unavailable")
+        if not usage["available"] and not usage["unavailableReason"].strip():
+            errors.append(f"Session {session_id} must explain unavailable usage")
+        usage_names = [item["name"] for item in usage["measurements"]]
+        if len(usage_names) != len(set(usage_names)):
+            errors.append(f"Session {session_id} has duplicate usage measurements")
+        usage_values = {
+            item["name"]: item["value"] for item in usage["measurements"]
+        }
+        if all(
+            name in usage_values
+            for name in ("inputTokens", "outputTokens", "totalTokens")
+        ) and (
+            usage_values["inputTokens"] + usage_values["outputTokens"]
+            != usage_values["totalTokens"]
+        ):
+            errors.append(f"Session {session_id} token usage totals do not reconcile")
+        for raw_item in record["rawEvidence"]:
+            reference = raw_item.get("reference")
+            if not reference:
+                continue
+            previous_owner = raw_reference_owners.get(reference)
+            if previous_owner is not None and previous_owner != session_id:
+                errors.append(
+                    f"Raw-evidence reference is shared by sessions {previous_owner} and {session_id}"
+                )
+            raw_reference_owners[reference] = session_id
+            raw_references.add(reference)
+        packet = record["packet"]
+        if packet["path"] is not None:
+            if packet["path"] != entry["packetPath"]:
+                errors.append(f"Session {session_id} packet path differs from the manifest")
+            expected_packet = (expected_directory / "handoff.md").relative_to(workspace).as_posix()
+            if packet["path"] != expected_packet:
+                errors.append(f"Session {session_id} packet is outside its isolated directory")
+            try:
+                packet_path = workspace_relative_file(
+                    workspace, packet["path"], f"Session {session_id} packet"
+                )
+                packet_text = packet_path.read_text(encoding="utf-8")
+                if len(packet_text) != packet["characters"]:
+                    errors.append(f"Session {session_id} packet character count is stale")
+                if sha256_text(packet_text) != packet["sha256"]:
+                    errors.append(f"Session {session_id} packet hash is stale")
+                maximum = manifest["contextBudget"]["perSessionMaximum"]
+                if len(packet_text) > maximum:
+                    errors.append(f"Session {session_id} packet exceeds its context budget")
+                session_packet_texts[session_id] = packet_text
+            except (SprintError, OSError, UnicodeDecodeError) as error:
+                errors.append(str(error))
+
+    for session_id, packet_text in session_packet_texts.items():
+        for reference in raw_references:
+            if reference in packet_text:
+                errors.append(
+                    f"Session {session_id} packet exposes a raw-evidence reference"
+                )
+
+    session_root = workspace / CUSTOMER_TESTING_DIR / "sessions"
+    if session_root.exists():
+        actual_records = {
+            path.relative_to(workspace).as_posix()
+            for path in session_root.glob("*/session.json")
+        }
+        actual_summaries = {
+            path.relative_to(workspace).as_posix()
+            for path in session_root.glob("*/summary.json")
+        }
+        for orphan in sorted(actual_records - registered_record_paths):
+            errors.append(f"Unregistered customer-session record: {orphan}")
+        for orphan in sorted(actual_summaries - registered_summary_paths):
+            errors.append(f"Unregistered customer-session summary: {orphan}")
+
+    counted = sum(item["counted"] for item in entries)
+    if state.get("customerTesting", {}).get("sessionsCompleted") != counted:
+        errors.append(
+            "sprint-state customer completed count does not match the session manifest"
+        )
+    synthesis = manifest["synthesis"]
+    if (
+        "12-synthesis" in state.get("completedSteps", [])
+        and synthesis["status"] != "packet-generated"
+    ):
+        errors.append("Completed synthesis requires a current synthesis packet")
+    if synthesis["status"] == "packet-generated":
+        if not synthesis["sessionIds"]:
+            errors.append("Generated synthesis packet has no session IDs")
+        selected_entries = {
+            item["sessionId"]: item for item in entries if item["sessionId"] in synthesis["sessionIds"]
+        }
+        if set(selected_entries) != set(synthesis["sessionIds"]):
+            errors.append("Synthesis packet references an unknown session")
+        hash_session_ids = [item["sessionId"] for item in synthesis["summaryHashes"]]
+        if len(hash_session_ids) != len(set(hash_session_ids)):
+            errors.append("Synthesis packet contains duplicate summary hashes")
+        if set(hash_session_ids) != set(synthesis["sessionIds"]):
+            errors.append("Synthesis summary hashes do not match the selected sessions")
+        for item in selected_entries.values():
+            if not item["counted"] or item["status"] != "complete":
+                errors.append(
+                    f"Synthesis packet references non-complete session {item['sessionId']}"
+                )
+            if item["questionsVersion"] != synthesis["questionsVersion"]:
+                errors.append(
+                    f"Synthesis packet mixes questions versions at {item['sessionId']}"
+                )
+        for summary_hash in synthesis["summaryHashes"]:
+            selected_entry = selected_entries.get(summary_hash["sessionId"])
+            if (
+                selected_entry is not None
+                and summary_hash["path"] != selected_entry["summaryPath"]
+            ):
+                errors.append(
+                    f"Synthesis summary hash path does not match session {summary_hash['sessionId']}"
+                )
+            try:
+                summary_path = workspace_relative_file(
+                    workspace, summary_hash["path"], "Synthesis summary hash"
+                )
+                if sha256_bytes(summary_path.read_bytes()) != summary_hash["sha256"]:
+                    errors.append(
+                        f"Synthesis packet is stale for session {summary_hash['sessionId']}"
+                    )
+            except (SprintError, OSError) as error:
+                errors.append(str(error))
+        try:
+            expected_synthesis_path = (
+                workspace / CUSTOMER_TESTING_DIR / "synthesis" / "synthesis-packet.md"
+            ).relative_to(workspace).as_posix()
+            if synthesis["packetPath"] != expected_synthesis_path:
+                errors.append("Synthesis packet is outside its canonical directory")
+            packet_path = workspace_relative_file(
+                workspace, synthesis["packetPath"], "Synthesis packet"
+            )
+            packet_text = packet_path.read_text(encoding="utf-8")
+            if sha256_text(packet_text) != synthesis["packetSha256"]:
+                errors.append("Synthesis packet hash is stale")
+            if len(packet_text) != synthesis["characters"]:
+                errors.append("Synthesis packet character count is stale")
+            if len(packet_text) > manifest["contextBudget"]["synthesisMaximum"]:
+                errors.append("Synthesis packet exceeds its context budget")
+            for reference in raw_references:
+                if reference in packet_text:
+                    errors.append("Synthesis packet includes a raw-evidence reference")
+        except (SprintError, OSError, UnicodeDecodeError) as error:
+            errors.append(str(error))
+    return errors
+
+
+def synthesis_artifact_trace_errors(
+    workspace: Path, data: dict[str, Any]
+) -> list[str]:
+    if data.get("id") != "12-synthesis" or data.get("status") != "complete":
+        return []
+    try:
+        manifest = load_session_manifest(workspace)
+    except SprintError as error:
+        return [str(error)]
+    synthesis = manifest["synthesis"]
+    if synthesis["status"] != "packet-generated":
+        return ["Completed synthesis artifact requires a current synthesis packet"]
+    allowed_trace_ids: set[str] = set()
+    for session_id in synthesis["sessionIds"]:
+        entry = find_session_entry(manifest, session_id)
+        try:
+            summary_path = workspace_relative_file(
+                workspace, entry["summaryPath"], "Synthesis trace summary"
+            )
+            summary = load_session_summary(summary_path)
+        except SprintError as error:
+            return [str(error)]
+        allowed_trace_ids.update(
+            f"{session_id}/{item['id']}" for item in summary["observations"]
+        )
+        allowed_trace_ids.update(
+            f"{session_id}/{item['id']}" for item in summary["inferences"]
+        )
+        allowed_trace_ids.update(
+            f"{session_id}/{item['id']}" for item in summary["quoteReferences"]
+        )
+        allowed_trace_ids.update(
+            f"{session_id}/{item['questionId']}"
+            for item in summary["questionEvidence"]
+        )
+    evidence = data.get("evidence", [])
+    if not evidence:
+        return [
+            "Completed synthesis artifact requires a traceable evidence entry for every synthesized claim"
+        ]
+    errors: list[str] = []
+    trace_pattern = re.compile(r"\bS[0-9][A-Z0-9-]{0,30}/[A-Za-z0-9][A-Za-z0-9._-]*\b")
+    for index, item in enumerate(evidence, 1):
+        source = str(item.get("source", ""))
+        trace_ids = set(trace_pattern.findall(source))
+        if not trace_ids:
+            errors.append(
+                f"Synthesis evidence entry {index} has no session/evidence trace ID"
+            )
+            continue
+        unknown = sorted(trace_ids - allowed_trace_ids)
+        if unknown:
+            errors.append(
+                f"Synthesis evidence entry {index} has unknown trace IDs: {', '.join(unknown)}"
+            )
+    return errors
+
+
 def workspace_errors(workspace: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -4058,6 +5733,8 @@ def workspace_errors(workspace: Path) -> list[str]:
                 )
                 if step_assignment_errors:
                     workspace_json_is_valid = False
+    if state_is_valid:
+        errors.extend(customer_testing_record_errors(workspace, state))
     try:
         specs = load_artifact_specs()
     except SprintError as error:
@@ -4085,6 +5762,10 @@ def workspace_errors(workspace: Path) -> list[str]:
         evidence_errors = evidence_claim_errors(data, state)
         errors.extend(f"{data_path}: {item}" for item in evidence_errors)
         if evidence_errors:
+            workspace_json_is_valid = False
+        trace_errors = synthesis_artifact_trace_errors(workspace, data)
+        errors.extend(f"{data_path}: {item}" for item in trace_errors)
+        if trace_errors:
             workspace_json_is_valid = False
         artifact_id = data["id"]
         artifact_statuses[artifact_id] = data["status"]
@@ -4366,6 +6047,19 @@ def command_status(args: argparse.Namespace) -> None:
         f"{customer.get('status')}, {customer.get('sessionsCompleted', 0)}/"
         f"{customer.get('sessionsPlanned', 0)} sessions"
     )
+    if manifest_path(workspace).exists():
+        manifest = load_session_manifest(workspace)
+        current_versions = manifest["currentVersions"]
+        print(
+            "Customer test versions: "
+            f"prototype {current_versions['prototype'] or 'not set'}, "
+            f"questions {current_versions['questions'] or 'not set'}"
+        )
+        print(
+            "Session manifest: "
+            f"{len(manifest['sessions'])} records, "
+            f"synthesis {manifest['synthesis']['status']}"
+        )
     next_action = state.get("nextAction", {})
     if isinstance(next_action, dict):
         print(f"Next action: {next_action.get('title')}")
@@ -4392,6 +6086,24 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--selected-by", default="workspace default")
     init_parser.add_argument("--profile-reason")
     init_parser.add_argument("--mode-reason")
+    init_parser.add_argument(
+        "--session-context-maximum",
+        type=int,
+        default=DEFAULT_SESSION_CONTEXT_MAXIMUM,
+        help="Maximum generated participant-packet size in characters",
+    )
+    init_parser.add_argument(
+        "--synthesis-context-maximum",
+        type=int,
+        default=DEFAULT_SYNTHESIS_CONTEXT_MAXIMUM,
+        help="Maximum generated synthesis-packet size in characters",
+    )
+    init_parser.add_argument(
+        "--context-warning-percent",
+        type=int,
+        default=DEFAULT_CONTEXT_WARNING_PERCENT,
+        help="Warn when a generated packet reaches this budget percentage",
+    )
     init_parser.set_defaults(handler=command_init)
 
     artifact_parser = subparsers.add_parser("new-artifact", help="Create an artifact data draft")
@@ -4508,12 +6220,125 @@ def build_parser() -> argparse.ArgumentParser:
     gate_parser.add_argument("--reservations")
     gate_parser.set_defaults(handler=command_gate)
 
+    session_init_parser = subparsers.add_parser(
+        "session-init",
+        help="Initialize one isolated, versioned customer-session record",
+    )
+    session_init_parser.add_argument("--workspace", required=True)
+    session_init_parser.add_argument("--session-id", required=True)
+    session_init_parser.add_argument("--participant-id", required=True)
+    session_init_parser.add_argument(
+        "--session-date",
+        default=datetime.now(timezone.utc).date().isoformat(),
+    )
+    session_init_parser.add_argument(
+        "--run-mode",
+        choices=["human-run", "agent-assisted"],
+        default="human-run",
+    )
+    session_init_parser.add_argument("--prototype-version", required=True)
+    session_init_parser.add_argument("--questions-version", required=True)
+    session_init_parser.add_argument(
+        "--prototype", required=True, help="Prototype file to open during the test"
+    )
+    session_init_parser.add_argument(
+        "--prototype-context", required=True, help="Bounded textual prototype context"
+    )
+    session_init_parser.add_argument("--interview-guide", required=True)
+    session_init_parser.add_argument("--scorecard", required=True)
+    session_init_parser.add_argument("--prior-decision", action="append", default=[])
+    session_init_parser.add_argument(
+        "--activate-versions",
+        action="store_true",
+        help="Make the supplied prototype and questions versions current for new sessions",
+    )
+    session_init_parser.add_argument(
+        "--consent-status",
+        choices=["pending", "granted", "declined", "withdrawn"],
+        default="pending",
+    )
+    session_init_parser.add_argument("--consent-scope")
+    session_init_parser.add_argument("--consent-reference")
+    session_init_parser.add_argument(
+        "--redaction-status",
+        choices=["not-reviewed", "in-progress", "complete", "not-required"],
+        default="not-reviewed",
+    )
+    session_init_parser.set_defaults(handler=command_session_init)
+
+    session_packet_parser = subparsers.add_parser(
+        "session-packet",
+        help="Generate the one bounded fresh-chat handoff packet for a session",
+    )
+    session_packet_parser.add_argument("--workspace", required=True)
+    session_packet_parser.add_argument("--session-id", required=True)
+    session_packet_parser.set_defaults(handler=command_session_packet)
+
+    checkpoint_parser = subparsers.add_parser(
+        "session-checkpoint",
+        help="Persist a resumable customer-session checkpoint without conversation replay",
+    )
+    checkpoint_parser.add_argument("--workspace", required=True)
+    checkpoint_parser.add_argument("--session-id", required=True)
+    checkpoint_parser.add_argument(
+        "--status",
+        required=True,
+        choices=["in-progress", "blocked", "withdrawn"],
+    )
+    checkpoint_parser.add_argument("--phase", required=True)
+    checkpoint_parser.add_argument("--next-action", required=True)
+    checkpoint_parser.add_argument("--completed-phase", action="append", default=[])
+    checkpoint_parser.set_defaults(handler=command_session_checkpoint)
+
+    session_complete_parser = subparsers.add_parser(
+        "session-complete",
+        help="Validate, complete, and count one isolated customer session",
+    )
+    session_complete_parser.add_argument("--workspace", required=True)
+    session_complete_parser.add_argument("--session-id", required=True)
+    session_complete_parser.add_argument(
+        "--consent-status",
+        choices=["granted", "declined", "withdrawn"],
+    )
+    session_complete_parser.add_argument("--consent-scope")
+    session_complete_parser.add_argument("--consent-reference")
+    session_complete_parser.add_argument(
+        "--redaction-status", choices=["complete", "not-required"]
+    )
+    session_complete_parser.add_argument("--removed-category", action="append", default=[])
+    session_complete_parser.add_argument("--limitation", action="append", default=[])
+    session_complete_parser.add_argument("--usage-input-tokens", type=int)
+    session_complete_parser.add_argument("--usage-output-tokens", type=int)
+    session_complete_parser.add_argument("--usage-total-tokens", type=int)
+    session_complete_parser.add_argument("--usage-requests", type=int)
+    session_complete_parser.add_argument("--usage-duration-seconds", type=float)
+    session_complete_parser.add_argument("--usage-source", default="runtime-reported")
+    session_complete_parser.add_argument("--usage-unavailable-reason")
+    session_complete_parser.set_defaults(handler=command_session_complete)
+
+    reopen_parser = subparsers.add_parser(
+        "session-reopen",
+        help="Reopen a session from persisted state and remove its counted status",
+    )
+    reopen_parser.add_argument("--workspace", required=True)
+    reopen_parser.add_argument("--session-id", required=True)
+    reopen_parser.add_argument("--reason", required=True)
+    reopen_parser.set_defaults(handler=command_session_reopen)
+
+    synthesis_packet_parser = subparsers.add_parser(
+        "synthesis-packet",
+        help="Generate a bounded fresh-chat packet from structured summaries only",
+    )
+    synthesis_packet_parser.add_argument("--workspace", required=True)
+    synthesis_packet_parser.add_argument("--session-id", action="append", default=[])
+    synthesis_packet_parser.set_defaults(handler=command_synthesis_packet)
+
     customer_parser = subparsers.add_parser("customer", help="Update customer testing state")
     customer_parser.add_argument("--workspace", required=True)
     customer_parser.add_argument("--status", required=True, choices=sorted(CUSTOMER_STATUSES))
     customer_parser.add_argument("--target", default="")
     customer_parser.add_argument("--planned", type=int, default=0)
-    customer_parser.add_argument("--completed", type=int, default=0)
+    customer_parser.add_argument("--completed", type=int)
     customer_parser.add_argument("--rationale")
     customer_parser.set_defaults(handler=command_customer)
 
