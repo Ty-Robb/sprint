@@ -23,11 +23,26 @@ python3 <skill-dir>/scripts/sprint_workspace.py role-packet \
   --workspace <sprint-directory> \
   --role evidence-researcher \
   --task "Inventory the supplied evidence without proposing solutions." \
+  --assignee "Evidence worker" \
+  --run-id "qualify-evidence-01" \
   --input artifact-data/01-sprint-brief.json \
-  --output working/03-evidence/evidence-researcher.md
+  --output working/03-evidence/evidence-researcher.packet.md
 ```
 
-The command rejects inputs outside the sprint workspace and only writes packets below `working/`.
+The command rejects inputs outside the sprint workspace, only writes packets below `working/`, and atomically registers the packet and its input digests in `assignment-manifest.json`. Packet and result paths must be different.
+
+After the specialist writes a memo with all seven required `##` sections, register it:
+
+```bash
+python3 <skill-dir>/scripts/sprint_workspace.py role-result \
+  --workspace <sprint-directory> \
+  --assignment 03-evidence-evidence-researcher-qualify-evidence-01 \
+  --memo working/03-evidence/evidence-researcher.result.md
+```
+
+Use `assignment-status --status in-progress` when a run starts and `assignment-status --status accepted --note "<review>"` after Orchestrator review. Returned or accepted memos satisfy step requirements; assigned, in-progress, rejected, missing, stale, duplicated, or invalid memos do not.
+
+If an input changes before return, reject the stale assignment with a note and issue a new packet with a new assignment/run ID. Rejected attempts remain in the manifest as history but do not count as duplicate active step-role assignments.
 
 ## Runtime isolation model
 
@@ -40,6 +55,8 @@ For every specialist assignment:
 - prohibit canonical writes;
 - require the standard evidence-and-assumption return format;
 - stop the specialist after the deliverable.
+
+The manifest records whether the step requires independence. Qualification, risk ranking, exploration, and prototype critique use one isolated run ID per role. For those steps the engine requires all packets before the first result, rejects `working/` inputs, rejects declared peer-result inclusion, and detects references to sibling assignment IDs or memo paths.
 
 Treat these controls as behavioural containment. When the host supports isolated subagents or tool permissions, also enforce the boundary mechanically. Never claim prompt instructions provide a security sandbox.
 
@@ -67,7 +84,7 @@ During qualification, risk ranking, exploration, and prototype critique:
 
 1. Generate all role packets before sharing any recommendation.
 2. Give every specialist the same approved evidence base where relevant.
-3. Keep each response in `working/<step>/<role>.md` or an equivalent isolated result.
+3. Keep each response in `working/<step>/<role>.result.md` or an equivalent isolated result, separate from its immutable `.packet.md` file.
 4. Do not ask a specialist to react to another specialist until all independent work is complete.
 5. Preserve minority recommendations and disagreements during synthesis.
 
@@ -86,11 +103,12 @@ Specialists produce working memos only. They must not edit:
 The Sprint Orchestrator must:
 
 1. verify that every memo stayed in scope;
-2. separate evidence from inference;
-3. show material disagreements;
-4. ask the human at the applicable gate;
-5. update artifact data below `artifact-data/`;
-6. render disposable HTML views with the workspace engine.
+2. register and accept/reject the result through the assignment lifecycle;
+3. separate evidence from inference;
+4. show material disagreements;
+5. ask the human at the applicable gate;
+6. update artifact data below `artifact-data/`;
+7. render disposable HTML views with the workspace engine.
 
 ## Fallback without subagents
 

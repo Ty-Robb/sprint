@@ -97,6 +97,8 @@ Generate work packets with `sprint_workspace.py role-packet` using the exact rol
 - forbidden actions;
 - stop condition.
 
+Also provide a human-safe assignee label, a unique run ID, and a separate packet output path. The command atomically writes the immutable packet and registers its version, SHA-256 digest, input snapshots, timestamps, lifecycle state, required outputs, and independence group in `assignment-manifest.json`.
+
 Require specialists to return:
 
 1. findings;
@@ -105,8 +107,11 @@ Require specialists to return:
 4. recommendation;
 5. risks or disagreements;
 6. open questions.
+7. stop condition reached.
 
 Specialists submit working memos. The Orchestrator reconciles conflicts, asks the human at decision gates, updates canonical JSON, and renders disposable HTML views.
+
+Save each memo separately from its packet, then register it with `role-result`. The engine verifies all required sections, its content digest, freshness against packet inputs, duplicate paths/content, and declared or detectable peer-result inclusion. Use `assignment-status` to mark a run in progress or accept/reject a returned memo. A step cannot complete until every required specialist role has a valid returned or accepted memo.
 
 Keep divergent role packets and results separate below `working/<step>/` until every assigned specialist has returned.
 
@@ -120,7 +125,9 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `render --check` fails without writing when generated HTML or CSS is stale.
 - `artifact-status` changes an artifact from draft through completion.
 - `complete-step` enforces required artifacts and pauses at human gates.
-- `gate` records the human's decision and rationale.
+- `gate` records an explicit human attestation: decision, decider label, considered-input digests, timestamp, optional rationale, and reservations.
+- `set-concept` records the selected concept; changing an attested route or concept supersedes the prior gate decision and requires a new decision event.
+- `role-packet` registers bounded assignments; `role-result` and `assignment-status` validate returned memos and advance lifecycle state.
 - `customer` records the suitable audience, target, rationale, and planning status; completed counts are manifest-derived.
 - `session-init` creates one isolated, version-bound participant record and anonymized summary draft.
 - `session-packet` generates that participant's bounded fresh-chat handoff from declared inputs only.
@@ -134,6 +141,8 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 The state schema stores `methodProfile`, `executionMode`, `route`, and `fidelity` separately. Every fidelity step retains its canonical purpose, default and selected methods, participants, suggested and actual timebox, deviations, and impact statements. Route exclusions are not counted as deliberate skips. Schema 1.0 workspaces are migrated as adaptive/live with an explicit compatibility note; review that assumption when resuming old work.
 
 Update canonical artifact JSON below `artifact-data/`, including its `updatedAt`, then run `render`. Never edit `index.html`, `assets/sprint.css`, or files below `artifacts/` directly; they are disposable generated views. Rendering does not update workflow timestamps.
+
+Treat `assignment-manifest.json` and role packets as engine-owned canonical provenance. Do not hand-edit their digests or lifecycle records. The dashboard deliberately omits packet inputs, objectives, memo paths, and memo bodies; safe labels, lifecycle status, and abbreviated digests are provenance, not permission to publish the private workspace.
 
 Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
 

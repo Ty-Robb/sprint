@@ -35,11 +35,11 @@ Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
 python3 <skill-dir>/scripts/sprint_workspace.py --help
 ```
 
-The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `session-init`, `session-packet`, `session-checkpoint`, `session-complete`, `session-reopen`, `synthesis-packet`, `next-action`, `role-packet`, `render`, `render --check`, `status`, `validate`, and `migrate`.
+The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `set-concept`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `session-init`, `session-packet`, `session-checkpoint`, `session-complete`, `session-reopen`, `synthesis-packet`, `next-action`, `role-packet`, `role-result`, `assignment-status`, `render`, `render --check`, `status`, `validate`, and `migrate`.
 
 Read [json-schemas.md](json-schemas.md) when a workspace reports a legacy or unsupported schema version. Do not render or mutate legacy JSON before a protected migration.
 
-Edit canonical structured files below `artifact-data/`, update their `updatedAt`, then run `render`. Use workflow commands for canonical `sprint-state.json` changes. Do not edit disposable `index.html`, `assets/sprint.css`, or generated files below `artifacts/` manually. Rendering never advances state-transition timestamps; run `render --check` to detect drift without writing.
+Edit canonical structured files below `artifact-data/`, update their `updatedAt`, then run `render`. Use workflow commands for canonical `sprint-state.json` and `assignment-manifest.json` changes. Do not hand-edit packet or result digests, and do not edit disposable `index.html`, `assets/sprint.css`, or generated files below `artifacts/` manually. Rendering never advances state-transition timestamps; run `render --check` to detect drift without writing.
 
 Before initialising a workspace, read [privacy-and-publication.md](privacy-and-publication.md). Put the workspace below an access-controlled private root outside any public repository checkout. The workspace is private by default; anonymisation makes it safer to work with but does not make the whole bundle suitable for publication.
 
@@ -104,6 +104,12 @@ ownership; it is not a complete schema-valid record because `init` supplies all
 
 Use only these top-level statuses: `active`, `waiting-for-human`, `waiting-for-customers`, `paused`, or `complete`. Keep method profile, execution mode, and route independent. The Sprint-book profile may use the full-design-sprint route; research-first, foundation, focused, and no-sprint routes require the adaptive profile. Keep route-driven `notApplicableSteps` separate from deliberate `skippedSteps`, because skips weaken process completion and method fidelity.
 
+## Assignment manifest
+
+`assignment-manifest.json` is the canonical machine-checkable link between each immutable role packet and its assignee/run, packet and input digests, independence group, lifecycle timestamps/status, required outputs, and returned result memo. The step-role requirements follow the primary specialist roles below. Every required assignment must reach `returned` or `accepted` before its step can complete.
+
+For independence-required qualification, risk ranking, exploration, and prototype critique, create all packets before registering any result. Each role uses a distinct run ID, receives no `working/` input, and cannot include a sibling assignment result. Packet input changes make an open assignment stale; packet or memo edits invalidate their registered digests. Duplicate assignment IDs, step-role assignments, packet/result paths, independent run IDs, and result content digests fail validation.
+
 Every entry in `fidelity.steps` records canonical purpose, default method, selected method, human and AI participants, suggested and actual minutes, and deviations. Each substitution, compression, omission, or skip requires a reason, an explanation of the preserved purpose, and separate impacts on method fidelity, evidence, and decision readiness. The engine derives the method-fidelity summary from those records.
 
 Record actual delivery with the workspace engine, for example:
@@ -135,6 +141,7 @@ design-sprint-<slug>/
 ├── .gitignore                       # sensitive-source fallback rules
 ├── index.html                       # generated view
 ├── sprint-state.json                # canonical workflow state
+├── assignment-manifest.json         # canonical specialist provenance
 ├── assets/
 │   └── sprint.css                   # generated view
 ├── artifact-data/
@@ -154,7 +161,8 @@ design-sprint-<slug>/
 │   ├── 12-synthesis.html
 │   └── 13-outcome.html
 ├── working/
-│   └── <step>/<role>.md
+│   ├── <step>/<role>.packet.md       # immutable bounded assignment
+│   └── <step>/<role>.result.md       # private specialist memo
 ├── prototype/
 │   └── index.html
 └── customer-testing/
@@ -325,7 +333,9 @@ Do not bypass these gates:
 4. Prototype readiness
 5. Final outcome
 
-Record the human's exact decision, date, rationale, reservations, and overridden recommendations. A vote or AI consensus cannot replace the human decision.
+Record each gate through `gate`, with the human's exact decision, a human-safe decider identity/label, timestamp, considered artifact or assignment-result references and their content digests, optional rationale, reservations, and overridden recommendations. Each completed `humanGates` entry references the explicit active decision ID. A vote or AI consensus cannot replace the human decision.
+
+Gate 1 attests the selected route and Gate 3 attests the selected concept. If material research changes either value, use `set-route` or `set-concept`; the engine marks the earlier decision `superseded`, reopens the relevant gate, and blocks silent reuse until a new human decision is recorded. Historical decisions remain in the log.
 
 At each completed or adapted step, update the fidelity record with actual participants, actual timebox, and any deviation before advancing. An AI-assisted substitute must preserve the canonical learning purpose, not merely produce an artifact with a similar name.
 
@@ -335,6 +345,6 @@ Completing a sprint does not approve its artifacts for public release. Before pu
 
 ## Resuming and stopping
 
-On resume, read state and artifacts, verify that linked files exist, and continue from `nextAction`. For an interrupted customer session, read its canonical checkpoint and regenerate `session-packet`; do not replay the chat. Do not reopen approved gates unless new evidence materially challenges them or the human asks.
+On resume, read state, the assignment manifest, artifacts, and, when testing has begun, the customer-session manifest; verify that linked files and digests are current; then continue from `nextAction`. For an interrupted customer session, read its canonical checkpoint and regenerate `session-packet`; do not replay the chat. Do not reopen approved gates unless new evidence materially challenges them or the human asks. Use the route/concept commands for material changes so the superseded and replacement decisions remain traceable.
 
 The sprint may end early when the route is `no-sprint`, evidence disproves the premise, recruitment is impossible, a material safety issue emerges, or the human chooses `Stop`. Produce an honest outcome artifact explaining why.
