@@ -74,6 +74,14 @@ Every role required for a step must have a current returned or accepted result
 memo before the step can complete. Assignment presence does not replace route,
 artifact, customer-session, or gate readiness.
 
+On a live route, Step 3 also requires the early structured recruitment plan in
+`10-test-plan`. Its behavior-based target must match canonical customer state;
+the neutral screener, channels, outreach/reminder/scheduling/consent/backup
+material must be usable; target, screener, and consent milestones must be
+complete; and the owner, status, next action, and deadline must be explicit.
+The test-plan artifact remains a draft until tasks, interview protocol, and
+evidence capture are completed with the prototype in Step 10.
+
 An artifact may be `ready-for-decision` only for the current gated step while
 that gate is still pending. This status can open review and lets the gated step
 be marked complete, but it cannot close the gate. Every artifact owned by the

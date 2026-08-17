@@ -30,6 +30,8 @@ The ownership boundary is deliberate:
 - `working/` contains non-canonical specialist material. `prototype/` is separately
   authored test material and is not overwritten by the renderer. The typed
   `prototypeBrief` within `artifact-data/10-prototype-brief.json` is canonical;
+  the typed `recruitmentPlan` within `artifact-data/10-test-plan.json` is the
+  early recruitment source of truth;
   `prototype/<version>/tested-version.json` is an immutable canonical record,
   while `artifacts/10-prototype-brief.html` is its accessible generated view.
 
@@ -146,10 +148,14 @@ Make `index.html` the control centre, not a decorative cover. Show:
 - method fidelity as a separate assessment with adaptations and limitations;
 - descriptive evidence strength based on usable sessions, participant fit, protocol fidelity, tested versions, segment/scenario coverage, contradiction, directness, and uncertainty;
 - decision readiness for the specific proposed action, with a plain-language reason rather than a numeric score;
-- progressively disclosed current-step purpose, default and selected methods, participants, and timebox;
+- a compact current-step card with purpose, selected method/timebox, AI role,
+  human action, and definition of done, with examples, rationale, canonical
+  method, checklist, substitutes, blockers, and pause help collapsed on demand;
 - the exact next action;
 - human decisions and unresolved questions;
 - customer-testing status plus separate planned, invited, attempted, completed, qualified, excluded, and usable counts;
+- recruitment owner, status, next action, deadline, seven milestones, and a
+  stalled/due prompt without requiring a paid vendor;
 - links to every created artifact and prototype;
 - links to the approved prototype/MVP brief, current tested artifact, and
   immutable deployment/version record without implying that a live URL is

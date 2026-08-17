@@ -16,6 +16,7 @@ Read the following references before running a sprint:
 - [references/transition-model.md](references/transition-model.md) for the executable route/step matrix, skip policy, readiness rules, and terminal invariants.
 - [references/execution-modes.md](references/execution-modes.md) for mode selection, audited customer-step skips, truthful closure labels, and rehearsal-to-live restart rules.
 - [references/method-profiles.json](references/method-profiles.json) for method profiles, execution modes, canonical purposes, default methods, timeboxes, substitutions, and non-negotiable principles.
+- [references/step-guidance.json](references/step-guidance.json) for the validated compact and on-demand guidance contract for every workflow step.
 - [references/facilitation-playbook.md](references/facilitation-playbook.md) for the exact questions, exercises, and definitions of done.
 - [references/agent-roles.md](references/agent-roles.md) and [references/role-contracts.json](references/role-contracts.json) before assigning any specialist work.
 - [references/html-output.md](references/html-output.md) before creating or updating artifacts.
@@ -23,7 +24,7 @@ Read the following references before running a sprint:
 - [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
 - [references/usage-reporting.md](references/usage-reporting.md) before measuring, calculating, or publishing usage, cost, subscription, or capacity evidence.
 
-Read [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.
+Read [references/recruitment-playbook.md](references/recruitment-playbook.md) during evidence collection and [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.
 
 ## Enforce the non-negotiables
 
@@ -71,7 +72,8 @@ On a new sprint:
 4. Keep identity/contact maps, raw transcripts, recordings, account evidence, and private usage-dashboard captures in separately access-controlled source storage rather than the shareable workspace artifacts.
 5. Open the generated `index.html` path for the human.
 6. Read `sprint-state.json` and begin the current step from the facilitation playbook.
-7. Ask only for the information needed to progress.
+7. Run `guidance --workspace <sprint-directory>` and use its compact current-step card.
+8. Ask only for the information needed to progress.
 
 On an existing sprint, run `status --workspace <sprint-directory>`. If it reports
 a supported legacy schema, preview and apply `migrate` as documented in
@@ -89,6 +91,16 @@ Run one bounded step at a time. At every user-facing pause, show:
 - what will happen after the user responds.
 
 Ask one focused question when possible. Continue all safe work that does not require the human's judgment. Do not generate an entire fictional sprint in one response unless the user explicitly asks for a planning example; label such an output as a plan, not a completed sprint.
+
+Use `guidance --workspace <sprint-directory>` for the default compact card. It
+shows why the step matters, canonical purpose, selected method and timebox, AI
+role, one human action, and the definition of done without dumping examples or
+the full rationale. Offer these actions:
+`show-example`, `explain-why`, `show-canonical-method`, `show-checklist`,
+`compare-substitutes`, `i-am-blocked`, and `pause`. Run the matching
+`guidance --action <action>` only when requested or when its specific detail is
+needed to unblock the current step. Never paste the full guidance registry into
+normal conversation or specialist packets.
 
 ## Delegate through role contracts
 
@@ -137,6 +149,8 @@ Use the workspace engine instead of editing generated HTML or sprint state manua
 - `set-concept` records the selected concept; changing an attested route or concept supersedes the prior gate decision and requires a new decision event.
 - `role-packet` registers bounded assignments; `role-result` and `assignment-status` validate returned memos and advance lifecycle state.
 - `customer` records the suitable audience, target, rationale, and planning status; completed counts are manifest-derived.
+- `recruitment-status` keeps the early recruitment owner, status, next action, deadline, candidate/booking counts, and seven milestones visible; it does not send outreach, spend money, or engage a vendor.
+- `guidance` renders the compact current-step contract or one requested deeper-help action in text or JSON.
 - `session-init` creates one isolated participant record and anonymized summary draft bound to an immutable trial-passed tested-version record.
 - `session-packet` generates that participant's bounded fresh-chat handoff from declared inputs only.
 - `session-checkpoint`, `session-complete`, and `session-reopen` persist resumable state and derive counted completion from the canonical manifest.
@@ -152,7 +166,7 @@ Update canonical artifact JSON below `artifact-data/`, including its `updatedAt`
 
 Treat `assignment-manifest.json` and role packets as engine-owned canonical provenance. Do not hand-edit their digests or lifecycle records. The dashboard deliberately omits packet inputs, objectives, memo paths, and memo bodies; safe labels, lifecycle status, and abbreviated digests are provenance, not permission to publish the private workspace.
 
-Create the artifacts specified by the guided workflow only when their phase begins. Do not pre-fill later artifacts with invented outcomes.
+Create the artifacts specified by the guided workflow only when their phase begins, except for `10-test-plan`: create its structured `recruitmentPlan` during `03-evidence`, then complete the interview tasks and protocol during `10-prototype`. Do not pre-fill later outcomes with invented evidence.
 
 Do not copy a private workspace into this public skill repository. If the human wants to publish an example or a usage/cost claim, create a separate sanitized export, follow the [publication checklist](references/privacy-and-publication.md#publication-checklist), and keep the private source repository private.
 
@@ -179,6 +193,18 @@ Never:
 In live mode, if no real customer evidence is available, stop at `Ready for customer testing` when testing can still proceed. If testing is genuinely blocked or the route is `no-sprint`, Gate 5 may close only as `closed-unvalidated` with an `Investigate` or `Stop` outcome. A self-test or planning/rehearsal may close only in its explicit unvalidated terminal state, also as `Investigate` or `Stop`, after both customer sessions and customer-evidence synthesis are skipped and audited truthfully.
 
 For a live Sprint-book profile, plan five suitable one-to-one customer sessions by default. A different target is allowed only with a recorded reason and fidelity/evidence/readiness impact. In self-test and planning/rehearsal modes, auditably skip the live customer-session and customer-evidence synthesis steps, use only `Synthetic rehearsal` labels for role-play, and never complete a customer-evidence artifact.
+
+During `03-evidence` on every live route, create `10-test-plan` and tailor its
+structured recruitment plan. Define qualifying and disqualifying behavior,
+approve a neutral screener, choose from existing customers, networks,
+communities, panels, partners, or direct outreach, and prepare invitation,
+confirmation, reminder, cancellation, schedule, consent, and backup material.
+Record an owner, status, next action, deadline, and partial-recruitment path
+before completing evidence. A paid panel is an optional route, never a
+requirement, and spending always needs explicit human approval. Keep the
+original target visible after cancellations; connect any shortfall to the
+separate evidence-strength and decision-readiness assessment instead of
+silently lowering it.
 
 Keep planned, invited, attempted, completed, qualified, excluded, and usable counts separate. Report zero usable as not tested, one or two as early/limited, three or four as partial directional, five as the book target met, and more than five as extended. These are method-coverage descriptions, never statistical confidence or population validation. A completed session enters synthesis only when participant fit, protocol fidelity, critical-scenario coverage, and explicit usability support it.
 

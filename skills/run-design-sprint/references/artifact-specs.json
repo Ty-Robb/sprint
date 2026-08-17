@@ -86,7 +86,7 @@
       "filename": "10-test-plan.html",
       "title": "Customer Test Plan",
       "phase": "Validate",
-      "purpose": "Define recruitment, consent, tasks, neutral interview prompts, evidence capture, and session logistics.",
+      "purpose": "Start recruitment during evidence collection, then define consent, tasks, neutral interview prompts, evidence capture, and session logistics before testing.",
       "requiredSections": ["Recruitment criteria", "Screener", "Consent", "Tasks", "Interview guide", "Evidence capture", "Logistics"]
     },
     "11-customer-evidence": {

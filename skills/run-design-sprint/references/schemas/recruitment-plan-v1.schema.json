@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/recruitment-plan-v1.schema.json",
+  "title": "Design Sprint recruitment plan 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "paidVendorRequired",
+    "targetDefinition",
+    "screener",
+    "channels",
+    "incentive",
+    "outreach",
+    "scheduling",
+    "consent",
+    "backupPlan",
+    "tracking"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "paidVendorRequired": {"const": false},
+    "targetDefinition": {
+      "type": "object",
+      "required": [
+        "audience",
+        "qualifyingBehaviours",
+        "disqualifyingConditions",
+        "targetSessions",
+        "backupParticipants",
+        "rationale",
+        "specialConsiderations"
+      ],
+      "properties": {
+        "audience": {"$ref": "#/$defs/nonEmptyString"},
+        "qualifyingBehaviours": {"$ref": "#/$defs/stringList"},
+        "disqualifyingConditions": {"$ref": "#/$defs/stringList"},
+        "targetSessions": {"type": "integer", "minimum": 1},
+        "backupParticipants": {"type": "integer", "minimum": 0},
+        "rationale": {"$ref": "#/$defs/nonEmptyString"},
+        "specialConsiderations": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "screener": {
+      "type": "object",
+      "required": ["status", "introduction", "questions"],
+      "properties": {
+        "status": {"enum": ["draft", "approved"]},
+        "introduction": {"$ref": "#/$defs/nonEmptyString"},
+        "questions": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/screenerQuestion"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/channel"}
+    },
+    "incentive": {
+      "type": "object",
+      "required": [
+        "guidance",
+        "offer",
+        "spendingRequired",
+        "approvalStatus",
+        "approvedBy",
+        "approvalNote"
+      ],
+      "properties": {
+        "guidance": {"$ref": "#/$defs/nonEmptyString"},
+        "offer": {"$ref": "#/$defs/nonEmptyString"},
+        "spendingRequired": {"type": "boolean"},
+        "approvalStatus": {"enum": ["not-required", "pending", "approved", "declined"]},
+        "approvedBy": {"type": "string"},
+        "approvalNote": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "outreach": {
+      "type": "object",
+      "required": ["invitation", "reminder", "confirmation", "cancellation", "backupInvitation"],
+      "properties": {
+        "invitation": {"$ref": "#/$defs/nonEmptyString"},
+        "reminder": {"$ref": "#/$defs/nonEmptyString"},
+        "confirmation": {"$ref": "#/$defs/nonEmptyString"},
+        "cancellation": {"$ref": "#/$defs/nonEmptyString"},
+        "backupInvitation": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "scheduling": {
+      "type": "object",
+      "required": [
+        "timezone",
+        "sessionLengthMinutes",
+        "windows",
+        "bookingMethod",
+        "accessibility",
+        "recruitmentDeadline"
+      ],
+      "properties": {
+        "timezone": {"$ref": "#/$defs/nonEmptyString"},
+        "sessionLengthMinutes": {"type": "integer", "minimum": 1},
+        "windows": {"$ref": "#/$defs/stringList"},
+        "bookingMethod": {"$ref": "#/$defs/nonEmptyString"},
+        "accessibility": {"$ref": "#/$defs/stringList"},
+        "recruitmentDeadline": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    },
+    "consent": {
+      "type": "object",
+      "required": [
+        "introduction",
+        "recordingPlan",
+        "anonymisation",
+        "dataRetention",
+        "withdrawal",
+        "checklist"
+      ],
+      "properties": {
+        "introduction": {"$ref": "#/$defs/nonEmptyString"},
+        "recordingPlan": {"$ref": "#/$defs/nonEmptyString"},
+        "anonymisation": {"$ref": "#/$defs/nonEmptyString"},
+        "dataRetention": {"$ref": "#/$defs/nonEmptyString"},
+        "withdrawal": {"$ref": "#/$defs/nonEmptyString"},
+        "checklist": {"$ref": "#/$defs/stringList"}
+      },
+      "additionalProperties": false
+    },
+    "backupPlan": {
+      "type": "object",
+      "required": ["activationTrigger", "actions", "partialRecruitmentHandling"],
+      "properties": {
+        "activationTrigger": {"$ref": "#/$defs/nonEmptyString"},
+        "actions": {"$ref": "#/$defs/stringList"},
+        "partialRecruitmentHandling": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "tracking": {
+      "type": "object",
+      "required": [
+        "owner",
+        "status",
+        "nextAction",
+        "deadline",
+        "lastActivityAt",
+        "candidatesScreened",
+        "sessionsBooked",
+        "backupsBooked",
+        "milestones"
+      ],
+      "properties": {
+        "owner": {"$ref": "#/$defs/nonEmptyString"},
+        "status": {"enum": ["draft", "ready", "recruiting", "scheduled", "partial", "complete", "blocked"]},
+        "nextAction": {"$ref": "#/$defs/nonEmptyString"},
+        "deadline": {"type": "string", "format": "date"},
+        "lastActivityAt": {"type": "string", "format": "date-time"},
+        "candidatesScreened": {"type": "integer", "minimum": 0},
+        "sessionsBooked": {"type": "integer", "minimum": 0},
+        "backupsBooked": {"type": "integer", "minimum": 0},
+        "milestones": {
+          "type": "object",
+          "required": [
+            "targetDefined",
+            "screenerApproved",
+            "outreachLive",
+            "candidatesScreened",
+            "sessionsBooked",
+            "backupsBooked",
+            "consentReady"
+          ],
+          "properties": {
+            "targetDefined": {"$ref": "#/$defs/milestoneStatus"},
+            "screenerApproved": {"$ref": "#/$defs/milestoneStatus"},
+            "outreachLive": {"$ref": "#/$defs/milestoneStatus"},
+            "candidatesScreened": {"$ref": "#/$defs/milestoneStatus"},
+            "sessionsBooked": {"$ref": "#/$defs/milestoneStatus"},
+            "backupsBooked": {"$ref": "#/$defs/milestoneStatus"},
+            "consentReady": {"$ref": "#/$defs/milestoneStatus"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/nonEmptyString"}
+    },
+    "milestoneStatus": {"enum": ["not-started", "in-progress", "complete", "blocked"]},
+    "screenerQuestion": {
+      "type": "object",
+      "required": ["prompt", "qualifyingSignal", "disqualifyingSignal", "revealsPreferredAnswer"],
+      "properties": {
+        "prompt": {"$ref": "#/$defs/nonEmptyString"},
+        "qualifyingSignal": {"$ref": "#/$defs/nonEmptyString"},
+        "disqualifyingSignal": {"$ref": "#/$defs/nonEmptyString"},
+        "revealsPreferredAnswer": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "channel": {
+      "type": "object",
+      "required": ["name", "tradeOff", "selected", "requiresSpend"],
+      "properties": {
+        "name": {"enum": ["existing-customers", "founder-team-networks", "communities", "research-panels", "partners", "direct-outreach"]},
+        "tradeOff": {"$ref": "#/$defs/nonEmptyString"},
+        "selected": {"type": "boolean"},
+        "requiresSpend": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

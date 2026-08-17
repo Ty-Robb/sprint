@@ -23,7 +23,7 @@ Use this playbook to guide the human from the first prompt to the final decision
 
 For every step:
 
-1. State the current step and its purpose in one sentence.
+1. Run `guidance --workspace <sprint-directory>` and show its compact card.
 2. Show what the AI roles can complete without the human.
 3. Ask one focused question or request one bounded decision.
 4. Offer a recommended draft when the human may not know the terminology.
@@ -34,6 +34,11 @@ For every step:
 Keep three decisions visible throughout: method profile, execution mode, and route. At the end of every step, compare what actually happened with its record in `method-profiles.json`; record actual participants and timebox, and document each substitution, compression, omission, or skip with its reason and method-fidelity, evidence, and decision-readiness impacts.
 
 At a human gate, accept `approve`, `revise`, `go back`, `show evidence`, or `pause`. Do not treat silence as approval.
+
+Offer `show example`, `explain why`, `show canonical method`, `show checklist`,
+`compare substitutes`, `I am blocked`, and `pause`. Use the corresponding
+`guidance --action` output on demand. Keep examples, failure modes, deeper
+rationale, and substitute comparisons collapsed during the normal flow.
 
 ## Step 1 — Intake
 
@@ -91,6 +96,16 @@ The `sprint-book` profile pairs with `full-design-sprint` and retains the five-d
 
 Have the Evidence Researcher inventory supplied evidence and permitted public research. For each material claim, record status, source, date, and relevance. Have the Research Lead separately define the target participant and recruitment path.
 
+Create `10-test-plan` now and follow [the practical recruitment
+playbook](recruitment-playbook.md). Translate the target into qualifying and
+disqualifying behaviors, draft and obtain approval for a neutral screener,
+select one or more channels with trade-offs, and prepare invitation,
+confirmation, reminder, cancellation, schedule, consent, and backup material.
+Use five suitable sessions plus backups for a Sprint-book live run; for an
+adaptive run, record the target and rationale. Do not require a paid panel.
+Record the recruitment owner, status, next action, deadline, counts, and seven
+milestones with `recruitment-status`.
+
 When a Sprint-book run cannot convene canonical expert interviews and shared team knowledge, use bounded human or external-expert inputs plus a sourced evidence review. This preserves shared understanding but loses some live cross-functional knowledge; record the substitution and its limitations.
 
 Ask the human only when:
@@ -104,7 +119,11 @@ Ask at completion:
 
 > This is the evidence we can rely on, the evidence we are inferring from, and what remains unknown. Is any essential source or constraint missing?
 
-**Definition of done:** The evidence ledger contains sources, contradictions, and gaps; customer recruitment has a target and status. If the route is `research-first`, pause for a new route decision.
+**Definition of done:** The evidence ledger contains sources, contradictions,
+and gaps. On a live route the structured recruitment plan is usable, the
+canonical customer target matches it, the screener is neutral and approved,
+target/screener/consent milestones are complete, and an owner plus next action
+are explicit. If the route is `research-first`, pause for a new route decision.
 
 ## Step 4 — Foundation
 
