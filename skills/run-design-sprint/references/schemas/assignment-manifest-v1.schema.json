@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/assignment-manifest-v1.schema.json",
+  "title": "Design Sprint specialist assignment manifest 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "assignments", "updatedAt"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "assignments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/assignment"}
+    },
+    "updatedAt": {"$ref": "#/$defs/timestamp"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "stepId": {
+      "enum": [
+        "01-intake",
+        "02-qualify",
+        "03-evidence",
+        "04-foundation",
+        "05-map",
+        "06-questions",
+        "07-explore",
+        "08-decide",
+        "09-experiment",
+        "10-prototype",
+        "11-customer-sessions",
+        "12-synthesis",
+        "13-outcome"
+      ]
+    },
+    "roleId": {
+      "enum": [
+        "sprint-orchestrator",
+        "evidence-researcher",
+        "product-strategist",
+        "experience-designer",
+        "technical-lead",
+        "prototype-builder",
+        "research-lead",
+        "critical-reviewer",
+        "synthesis-analyst"
+      ]
+    },
+    "assignmentId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "inputSnapshot": {
+      "type": "object",
+      "required": ["path", "digest"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "digest": {"$ref": "#/$defs/digest"}
+      },
+      "additionalProperties": false
+    },
+    "packet": {
+      "type": "object",
+      "required": ["path", "digest", "version", "createdAt", "inputs"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "version": {"const": "1.0"},
+        "createdAt": {"$ref": "#/$defs/timestamp"},
+        "inputs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/inputSnapshot"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "assignee": {
+      "type": "object",
+      "required": ["label", "runId"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1, "maxLength": 120},
+        "runId": {"type": "string", "minLength": 1, "maxLength": 160}
+      },
+      "additionalProperties": false
+    },
+    "independence": {
+      "type": "object",
+      "required": ["required", "isolated", "group"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "isolated": {"type": "boolean"},
+        "group": {"type": "string"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"required": {"const": true}}, "required": ["required"]},
+          "then": {"properties": {"isolated": {"const": true}, "group": {"minLength": 1}}}
+        }
+      ]
+    },
+    "resultMemo": {
+      "type": "object",
+      "required": [
+        "path",
+        "digest",
+        "sourceAssignmentId",
+        "includedAssignmentIds",
+        "returnedAt"
+      ],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sourceAssignmentId": {"$ref": "#/$defs/assignmentId"},
+        "includedAssignmentIds": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/assignmentId"},
+          "uniqueItems": true
+        },
+        "returnedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "assignment": {
+      "type": "object",
+      "required": [
+        "id",
+        "step",
+        "role",
+        "objective",
+        "assignee",
+        "packet",
+        "requiredOutputs",
+        "independence",
+        "status",
+        "assignedAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/assignmentId"},
+        "step": {"$ref": "#/$defs/stepId"},
+        "role": {"$ref": "#/$defs/roleId"},
+        "objective": {"type": "string", "minLength": 1},
+        "assignee": {"$ref": "#/$defs/assignee"},
+        "packet": {"$ref": "#/$defs/packet"},
+        "requiredOutputs": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "independence": {"$ref": "#/$defs/independence"},
+        "status": {
+          "enum": ["assigned", "in-progress", "returned", "accepted", "rejected"]
+        },
+        "assignedAt": {"$ref": "#/$defs/timestamp"},
+        "startedAt": {"$ref": "#/$defs/timestamp"},
+        "resultMemo": {"$ref": "#/$defs/resultMemo"},
+        "reviewedAt": {"$ref": "#/$defs/timestamp"},
+        "reviewNote": {"type": "string"},
+        "updatedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"enum": ["returned", "accepted"]}},
+            "required": ["status"]
+          },
+          "then": {"required": ["resultMemo"]}
+        },
+        {
+          "if": {"properties": {"status": {"const": "in-progress"}}, "required": ["status"]},
+          "then": {"required": ["startedAt"]}
+        },
+        {
+          "if": {
+            "properties": {"status": {"enum": ["accepted", "rejected"]}},
+            "required": ["status"]
+          },
+          "then": {"required": ["reviewedAt", "reviewNote"]}
+        }
+      ]
+    }
+  }
+}

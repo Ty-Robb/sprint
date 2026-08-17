@@ -17,7 +17,9 @@ route.
 route. It contains one initial transition and, only for `research-first`, one
 post-research transition. Every transition records a non-blank reason and
 timestamp. A workspace cannot finish while its route is `undecided` or
-`research-first`.
+`research-first`. A post-research transition supersedes the original Gate 1
+attestation and cannot advance beyond `03-evidence` until the human records a
+new Gate 1 decision for the final route.
 
 ## Route and step matrix
 
@@ -38,7 +40,8 @@ weaken method fidelity.
 Required prior steps must appear exactly once in workflow order as completed or
 as an eligible deliberate skip. A current or future step cannot appear in
 history early. A gated completed step remains current until its gate closes.
-The completed research step remains current until a final route is recorded.
+The completed research step remains current until a final route is recorded
+and re-attested at Gate 1.
 
 ## Skip policy
 
@@ -60,6 +63,14 @@ evidence, and decision-readiness impacts.
 Gates close in order after their owning step: Gate 1 after 02, Gate 2 after 06,
 Gate 3 after 08, Gate 4 after 10, and Gate 5 after 13. A direct `no-sprint`
 route closes Gate 1, marks Gates 2–4 not applicable, and continues at step 13.
+Every completed gate references exactly one active, content-digested human
+decision record; superseded decisions remain historical and cannot authorize
+the current route or concept. A material concept change similarly supersedes
+and reopens Gate 3.
+
+Every role required for a step must have a current returned or accepted result
+memo before the step can complete. Assignment presence does not replace route,
+artifact, customer-session, or gate readiness.
 
 An artifact may be `ready-for-decision` only for the current gated step while
 that gate is still pending. This status can open review and lets the gated step
@@ -100,10 +111,11 @@ Every terminal state has all of these invariants:
 
 - a final route with continuous `routeHistory`;
 - `currentStep` equal to completed `13-outcome`, no pending gate, and Gate 5
-  complete with exactly one matching human decision;
+  complete with exactly one matching active human decision;
 - every route-required step accounted for in order, with only policy-eligible
   skips and exact route exclusions;
-- all required artifacts complete and all recorded sessions consistent;
+- all required specialist results returned or accepted, all required artifacts
+  complete, and all recorded sessions consistent;
 - an outcome of `Proceed`, `Iterate`, `Pivot`, `Investigate`, or `Stop`.
 
 The terminal evidence modes are:
