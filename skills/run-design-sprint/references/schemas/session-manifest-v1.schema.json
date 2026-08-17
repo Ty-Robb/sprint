@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/session-manifest-v1.schema.json",
+  "title": "Customer-testing session manifest 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "workspaceSlug",
+    "currentVersions",
+    "versionCatalog",
+    "contextBudget",
+    "sessions",
+    "synthesis",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "customer-session-manifest"},
+    "workspaceSlug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "currentVersions": {
+      "type": "object",
+      "required": ["prototype", "questions"],
+      "properties": {
+        "prototype": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/version"}]},
+        "questions": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/version"}]}
+      },
+      "additionalProperties": false
+    },
+    "versionCatalog": {
+      "type": "object",
+      "required": ["prototypes", "questions"],
+      "properties": {
+        "prototypes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/prototypeVersion"}
+        },
+        "questions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/questionsVersion"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "contextBudget": {
+      "type": "object",
+      "required": ["unit", "perSessionMaximum", "synthesisMaximum", "warningPercent"],
+      "properties": {
+        "unit": {"const": "characters"},
+        "perSessionMaximum": {"type": "integer", "minimum": 1000},
+        "synthesisMaximum": {"type": "integer", "minimum": 1000},
+        "warningPercent": {"type": "integer", "minimum": 1, "maximum": 99}
+      },
+      "additionalProperties": false
+    },
+    "sessions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sessionEntry"}
+    },
+    "synthesis": {"$ref": "#/$defs/synthesis"},
+    "createdAt": {"$ref": "#/$defs/timestamp"},
+    "updatedAt": {"$ref": "#/$defs/timestamp"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "version": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "sessionIdentifier": {"type": "string", "minLength": 3, "maxLength": 32, "pattern": "^S[0-9][A-Z0-9-]*$"},
+    "participantIdentifier": {"type": "string", "minLength": 3, "maxLength": 32, "pattern": "^P[0-9][A-Z0-9-]*$"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^[^/]"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sourceDescriptor": {
+      "type": "object",
+      "required": ["path", "sha256", "characters"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "characters": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "prototypeVersion": {
+      "type": "object",
+      "required": ["version", "prototypeArtifact", "prototypeContext", "recordedAt"],
+      "properties": {
+        "version": {"$ref": "#/$defs/version"},
+        "prototypeArtifact": {"$ref": "#/$defs/sourceDescriptor"},
+        "prototypeContext": {"$ref": "#/$defs/sourceDescriptor"},
+        "recordedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "questionsVersion": {
+      "type": "object",
+      "required": ["version", "interviewGuide", "scorecard", "recordedAt"],
+      "properties": {
+        "version": {"$ref": "#/$defs/version"},
+        "interviewGuide": {"$ref": "#/$defs/sourceDescriptor"},
+        "scorecard": {"$ref": "#/$defs/sourceDescriptor"},
+        "recordedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "sessionEntry": {
+      "type": "object",
+      "required": [
+        "sessionId",
+        "participantId",
+        "sessionDate",
+        "prototypeVersion",
+        "questionsVersion",
+        "status",
+        "recordPath",
+        "summaryPath",
+        "summarySha256",
+        "packetPath",
+        "includeInSynthesis",
+        "counted",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "sessionId": {"$ref": "#/$defs/sessionIdentifier"},
+        "participantId": {"$ref": "#/$defs/participantIdentifier"},
+        "sessionDate": {"type": "string", "format": "date"},
+        "prototypeVersion": {"$ref": "#/$defs/version"},
+        "questionsVersion": {"$ref": "#/$defs/version"},
+        "status": {
+          "enum": ["initialized", "packet-generated", "in-progress", "complete", "reopened", "blocked", "withdrawn"]
+        },
+        "recordPath": {"$ref": "#/$defs/relativePath"},
+        "summaryPath": {"$ref": "#/$defs/relativePath"},
+        "summarySha256": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+        "packetPath": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/relativePath"}]},
+        "includeInSynthesis": {"type": "boolean"},
+        "counted": {"type": "boolean"},
+        "createdAt": {"$ref": "#/$defs/timestamp"},
+        "updatedAt": {"$ref": "#/$defs/timestamp"},
+        "completedAt": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": false
+    },
+    "summaryHash": {
+      "type": "object",
+      "required": ["sessionId", "path", "sha256"],
+      "properties": {
+        "sessionId": {"$ref": "#/$defs/sessionIdentifier"},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "synthesis": {
+      "type": "object",
+      "required": [
+        "status",
+        "packetPath",
+        "generatedAt",
+        "questionsVersion",
+        "sessionIds",
+        "summaryHashes",
+        "packetSha256",
+        "characters",
+        "budgetStatus",
+        "rawEvidenceIncluded"
+      ],
+      "properties": {
+        "status": {"enum": ["not-generated", "packet-generated", "stale"]},
+        "packetPath": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/relativePath"}]},
+        "generatedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "questionsVersion": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/version"}]},
+        "sessionIds": {"type": "array", "items": {"$ref": "#/$defs/sessionIdentifier"}, "uniqueItems": true},
+        "summaryHashes": {"type": "array", "items": {"$ref": "#/$defs/summaryHash"}},
+        "packetSha256": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+        "characters": {"anyOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "budgetStatus": {"enum": ["not-generated", "within-budget", "approaching-limit"]},
+        "rawEvidenceIncluded": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  }
+}
