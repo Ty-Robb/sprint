@@ -4,6 +4,7 @@ import importlib.util
 import functools
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -2084,6 +2085,25 @@ class SprintWorkspaceTests(unittest.TestCase):
             '{\n  "a": "é",\n  "z": 1\n}\n',
         )
         self.run_cli("render", "--workspace", str(self.workspace), "--check")
+
+    def test_site_manifest_hashes_the_portable_stylesheet_payload(self) -> None:
+        self.initialise()
+        html_kit = Path(self.temporary_directory.name) / "html-kit"
+        shutil.copytree(WORKSPACE_MODULE.HTML_KIT_DIR, html_kit)
+        (html_kit / "sprint.css").write_bytes(b"body {\r\n  color: navy;\r\n}\r\n")
+
+        with mock.patch.object(WORKSPACE_MODULE, "HTML_KIT_DIR", html_kit):
+            plan = WORKSPACE_MODULE.build_render_plan(self.workspace)
+
+        stylesheet = plan.generated_files[self.workspace / "assets" / "sprint.css"]
+        stylesheet_payload = stylesheet.encode("utf-8")
+        manifest_asset = plan.site_manifest["assets"][0]
+        self.assertEqual(stylesheet, "body {\n  color: navy;\n}\n")
+        self.assertEqual(
+            manifest_asset["sha256"],
+            WORKSPACE_MODULE.sha256_bytes(stylesheet_payload),
+        )
+        self.assertEqual(manifest_asset["bytes"], len(stylesheet_payload))
 
     def test_interrupted_atomic_batch_restores_prior_files(self) -> None:
         first = Path(self.temporary_directory.name) / "first.txt"
