@@ -70,25 +70,13 @@ jobs:
       - name: Check public/private evidence boundary
         run: python scripts/check_publication.py
 
-      - name: Run workspace tests
-        run: python -m unittest discover -s tests -v
-
-      - name: Validate generated HTML
+      - name: Validate every generated artifact and renderer
         run: |
-          workspace="$RUNNER_TEMP/generated-sprint"
-          python skills/run-design-sprint/scripts/sprint_workspace.py init \
-            --title "CI Sprint" \
-            --challenge "Validate generated HTML" \
-            --selected-by "CI validation fixture" \
-            --mode-reason "Exercise the generated live-mode workspace." \
-            --output "$workspace"
-          python skills/run-design-sprint/scripts/sprint_workspace.py render \
-            --workspace "$workspace" \
-            --check
-          python skills/run-design-sprint/scripts/sprint_workspace.py validate \
-            --workspace "$workspace"
+          workspace="$RUNNER_TEMP/complete-generated-sprint"
+          python tests/support/build_ci_site.py --output "$workspace"
           find "$workspace" -name '*.html' -print0 | \
-            xargs -0 npx --yes html-validate@11.6.2
+            xargs -0 npx --yes html-validate@11.6.2 \
+              --config .htmlvalidate.json
 
   python-compatibility:
     name: Python ${{ matrix.python-version }} full suite
@@ -96,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
@@ -106,6 +94,30 @@ jobs:
 
       - name: Run full suite on supported Python
         run: python -m unittest discover -s tests -v
+
+  generated-site-browser:
+    name: Generated site browser and accessibility
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install pinned browser test dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check generated-site navigation, responsive behavior, and accessibility
+        run: npm run test:browser
 
   platform-smoke:
     name: ${{ matrix.os }} runtime smoke

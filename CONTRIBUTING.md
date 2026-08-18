@@ -35,6 +35,20 @@ python3 scripts/release_smoke_test.py \
 
 CI also compiles every published schema and validates generated HTML.
 
+The generated-site browser checks use pinned development-only dependencies;
+they do not change the skill's dependency-free Python runtime. Install Chromium
+once, then run the checks with:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+The browser suite builds a complete synthetic site in a temporary directory
+and checks navigation, narrow-screen overflow, keyboard behavior, and automated
+accessibility rules across every generated page.
+
 ## Change requirements
 
 - Keep the Agent Skills frontmatter valid and keep its version aligned with

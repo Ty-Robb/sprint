@@ -18,3 +18,8 @@ contains only invented planning inputs and expected version/file assertions.
 The clean smoke test uses it to install and discover the skill in a new project,
 then initialize, inspect, render-check, and validate a workspace without
 claiming that customer research or a sprint occurred.
+
+The `ci/` fixtures drive the exhaustive contract, renderer, malformed-input,
+generated-site, responsive-browser, and accessibility checks. All content and
+counts are invented. The deliberately truncated `.json.txt` file tests parser
+failure behavior while retaining its synthetic/privacy markers in the text.

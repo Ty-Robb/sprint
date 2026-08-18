@@ -5651,7 +5651,10 @@ class SprintWorkspaceTests(unittest.TestCase):
             }
         )
         self.assertIn('class="table-scroll"', table)
-        self.assertIn('role="region"', table)
+        self.assertIn('<section class="table-scroll"', table)
+        self.assertIn(
+            'aria-label="Dense evidence across a long operational record"', table
+        )
         self.assertIn('tabindex="0"', table)
         self.assertIn("<caption>Dense evidence across a long operational record</caption>", table)
         self.assertEqual(table.count('scope="col"'), 4)

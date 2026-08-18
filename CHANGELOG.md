@@ -7,7 +7,19 @@ families are versioned independently as described in the
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- Contract-focused CI coverage for the complete route, transition, skip-policy,
+  terminal-state, schema-error, renderer, and generated-site matrices across
+  every supported Python version.
+- Pinned Playwright and axe-core checks for generated-site navigation,
+  narrow-screen behavior, keyboard operation, and accessibility using only
+  synthetic, privacy-safe fixtures.
+
+### Fixed
+
+- Generated-page skip links now move keyboard focus to the main content, and
+  wide tables use a labelled, focusable native region for accessible overflow.
 
 ## [1.0.0] - Unreleased
 
