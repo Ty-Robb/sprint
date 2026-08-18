@@ -183,10 +183,16 @@ class ReleaseContractTests(unittest.TestCase):
             self.assertIn(f"skills@{self.contract['runtime']['installer']['version']}", text)
             self.assertIn(f"#{release_tag}", text)
 
-    def test_public_source_guard_requires_an_explicit_https_github_ref(self) -> None:
+    def test_public_source_guard_requires_an_explicit_github_ref_or_archive(self) -> None:
         self.assertTrue(
-            RELEASE_SMOKE.is_public_github_ref(
+            RELEASE_SMOKE.is_public_github_source(
                 "https://github.com/Ty-Robb/sprint.git#v1.0.0"
+            )
+        )
+        self.assertTrue(
+            RELEASE_SMOKE.is_public_github_source(
+                "https://github.com/Ty-Robb/sprint/archive/"
+                "9636558e9be51de07745609c35bc3c9c7f35dc5b.tar.gz"
             )
         )
         for source in (
@@ -194,9 +200,11 @@ class ReleaseContractTests(unittest.TestCase):
             "https://github.com/Ty-Robb/sprint",
             "https://github.com/Ty-Robb/sprint.git",
             "http://github.com/Ty-Robb/sprint.git#v1.0.0",
+            "https://github.com/Ty-Robb/sprint/archive/main.tar.gz",
+            "https://github.com/Ty-Robb/sprint/archive/9636558.tar.gz",
         ):
             with self.subTest(source=source):
-                self.assertFalse(RELEASE_SMOKE.is_public_github_ref(source))
+                self.assertFalse(RELEASE_SMOKE.is_public_github_source(source))
 
 
 if __name__ == "__main__":

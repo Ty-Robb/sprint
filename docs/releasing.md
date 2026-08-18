@@ -31,9 +31,13 @@ python3 -m unittest discover -s tests -v
 release_sha="$(git rev-parse HEAD)"
 printf 'VERIFIED_RELEASE_SHA=%s\n' "${release_sha}"
 python3 scripts/release_smoke_test.py \
-  --source "https://github.com/Ty-Robb/sprint.git#${release_sha}" \
+  --source "https://github.com/Ty-Robb/sprint/archive/${release_sha}.tar.gz" \
   --require-public-source
 ```
+
+The immutable commit archive is intentional: `skills@1.5.22` accepts branch or
+tag names after `#`, but it cannot clone a raw commit SHA as a ref. The archive
+keeps pre-tag verification pinned to the exact candidate commit.
 
 Confirm `release_sha` is the exact green `main` commit and that it still
 contains skill version `1.0.0`, tag contract `v1.0.0`, and the final release

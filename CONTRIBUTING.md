@@ -29,7 +29,7 @@ After pushing, the equivalent public-ref check is:
 
 ```bash
 python3 scripts/release_smoke_test.py \
-  --source "https://github.com/Ty-Robb/sprint.git#<commit-sha>" \
+  --source "https://github.com/Ty-Robb/sprint/archive/<40-character-commit-sha>.tar.gz" \
   --require-public-source
 ```
 

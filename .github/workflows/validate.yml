@@ -152,5 +152,5 @@ jobs:
       - name: Verify clean public install and discovery
         run: |
           python scripts/release_smoke_test.py \
-            --source "https://github.com/${RELEASE_REPOSITORY}.git#${RELEASE_REF}" \
+            --source "https://github.com/${RELEASE_REPOSITORY}/archive/${RELEASE_REF}.tar.gz" \
             --require-public-source

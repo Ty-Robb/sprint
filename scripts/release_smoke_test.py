@@ -55,16 +55,22 @@ def load_fixture(path: Path) -> dict[str, Any]:
     return fixture
 
 
-def is_public_github_ref(source: str) -> bool:
-    repository, marker, ref = source.partition("#")
-    parsed = urlsplit(repository)
-    return (
-        marker == "#"
-        and bool(ref)
-        and parsed.scheme == "https"
-        and parsed.hostname == PUBLIC_GITHUB_HOST
-        and parsed.path.endswith(".git")
-    )
+def is_public_github_source(source: str) -> bool:
+    parsed = urlsplit(source)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != PUBLIC_GITHUB_HOST
+        or parsed.query
+    ):
+        return False
+    tagged_repository = parsed.path.endswith(".git") and bool(parsed.fragment)
+    immutable_archive = bool(
+        re.fullmatch(
+            r"/[^/]+/[^/]+/archive/[0-9a-fA-F]{40}\.tar\.gz",
+            parsed.path,
+        )
+    ) and not parsed.fragment
+    return tagged_repository or immutable_archive
 
 
 def display_command(command: Sequence[str]) -> str:
@@ -151,11 +157,12 @@ def validate_installed_contract(skill_directory: Path) -> dict[str, Any]:
 
 
 def verify_release(source: str, fixture_path: Path, require_public_source: bool) -> None:
-    if require_public_source and not is_public_github_ref(source):
+    if require_public_source and not is_public_github_source(source):
         raise SmokeTestError(
-            "--require-public-source needs an HTTPS GitHub .git URL with an explicit #ref"
+            "--require-public-source needs an HTTPS GitHub .git URL with an explicit "
+            "#ref or a 40-character commit archive URL"
         )
-    if not is_public_github_ref(source):
+    if not is_public_github_source(source):
         local_source = Path(source).expanduser()
         if local_source.exists():
             source = str(local_source.resolve())
@@ -327,7 +334,7 @@ def verify_release(source: str, fixture_path: Path, require_public_source: bool)
             environment=environment,
         )
 
-    source_kind = "public ref" if is_public_github_ref(source) else "local source"
+    source_kind = "public source" if is_public_github_source(source) else "local source"
     print(
         f"Release smoke test passed for {skill_name} {expected_version} "
         f"from {source_kind}: install, discovery, init, status, guidance, render, validate"
@@ -348,7 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--require-public-source",
         action="store_true",
-        help="Reject local paths and require an HTTPS github.com .git URL with #ref",
+        help="Require an HTTPS GitHub tag/ref URL or immutable commit archive",
     )
     return parser
 
