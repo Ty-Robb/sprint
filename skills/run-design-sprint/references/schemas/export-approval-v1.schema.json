@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/export-approval-v1.schema.json",
+  "title": "Explicit sprint export approval 1.0",
+  "type": "object",
+  "required": [
+    "schemaVersion", "recordType", "kind", "approvedBy", "approvedAt",
+    "artifactIds", "sessionIds", "includePrototype", "includeCanonicalData",
+    "includeWorkingMaterial", "includeCustomerTesting", "redactionReview"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "sprint-export-approval"},
+    "kind": {"enum": ["private-archive", "shareable-site"]},
+    "approvedBy": {"type": "string", "minLength": 1},
+    "approvedAt": {"type": "string", "format": "date-time"},
+    "artifactIds": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+      "uniqueItems": true
+    },
+    "sessionIds": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^S[0-9][A-Z0-9-]*$"},
+      "uniqueItems": true
+    },
+    "includePrototype": {"type": "boolean"},
+    "includeCanonicalData": {"type": "boolean"},
+    "includeWorkingMaterial": {"type": "boolean"},
+    "includeCustomerTesting": {"type": "boolean"},
+    "redactionReview": {
+      "type": "object",
+      "required": ["completed", "secretsChecked", "contactDetailsChecked", "rawEvidenceChecked", "personalInformationChecked", "customerConfidentialChecked", "assetLicencesChecked", "consentAndRightsChecked", "notes"],
+      "properties": {
+        "completed": {"type": "boolean"},
+        "secretsChecked": {"type": "boolean"},
+        "contactDetailsChecked": {"type": "boolean"},
+        "rawEvidenceChecked": {"type": "boolean"},
+        "personalInformationChecked": {"type": "boolean"},
+        "customerConfidentialChecked": {"type": "boolean"},
+        "assetLicencesChecked": {"type": "boolean"},
+        "consentAndRightsChecked": {"type": "boolean"},
+        "notes": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "shareable-site"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "artifactIds": {"type": "array", "minItems": 1},
+          "includeCanonicalData": {"type": "boolean", "const": false},
+          "includeWorkingMaterial": {"type": "boolean", "const": false},
+          "includeCustomerTesting": {"type": "boolean", "const": false}
+        }
+      }
+    }
+  ]
+}
