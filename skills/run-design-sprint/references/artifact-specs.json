@@ -7,7 +7,8 @@
       "title": "Sprint Brief",
       "phase": "Intake",
       "purpose": "Define the challenge, intended outcome, constraints, available evidence, and initial unknowns.",
-      "requiredSections": ["Challenge", "Desired outcome", "Constraints", "Available evidence", "Unknowns"]
+      "requiredSections": ["Challenge", "Desired outcome", "Constraints", "Available evidence", "Unknowns"],
+      "relatedEvidence": ["02-evidence-ledger"]
     },
     "02-evidence-ledger": {
       "step": "03-evidence",
@@ -15,7 +16,8 @@
       "title": "Evidence Ledger",
       "phase": "Understand",
       "purpose": "Keep observed evidence, interpretations, assumptions, synthetic rehearsal, and unknowns visibly separate.",
-      "requiredSections": ["Evidence inventory", "Contradictions", "Evidence gaps"]
+      "requiredSections": ["Evidence inventory", "Contradictions", "Evidence gaps"],
+      "relatedEvidence": ["01-sprint-brief", "03-foundation", "05-sprint-questions", "11-customer-evidence", "12-synthesis"]
     },
     "03-foundation": {
       "step": "04-foundation",
@@ -23,7 +25,8 @@
       "title": "Foundation Hypothesis",
       "phase": "Foundation",
       "purpose": "State the target customer, problem, advantage, alternatives, differentiation, approach, and testable founding hypothesis.",
-      "requiredSections": ["Target customer", "Important problem", "Advantage", "Alternatives", "Differentiation", "Approach", "Founding hypothesis"]
+      "requiredSections": ["Target customer", "Important problem", "Advantage", "Alternatives", "Differentiation", "Approach", "Founding hypothesis"],
+      "relatedEvidence": ["02-evidence-ledger", "04-journey-map", "05-sprint-questions"]
     },
     "04-journey-map": {
       "step": "05-map",
@@ -31,7 +34,8 @@
       "title": "Journey and System Map",
       "phase": "Understand",
       "purpose": "Map the current journey, relevant actors, target moments, dependencies, and failure points.",
-      "requiredSections": ["Actors", "Current journey", "Target moment", "Dependencies", "Failure points"]
+      "requiredSections": ["Actors", "Current journey", "Target moment", "Dependencies", "Failure points"],
+      "relatedEvidence": ["02-evidence-ledger", "05-sprint-questions", "09-storyboard"]
     },
     "05-sprint-questions": {
       "step": "06-questions",
@@ -39,7 +43,8 @@
       "title": "Sprint Questions",
       "phase": "Define",
       "purpose": "Turn the long-term goal and riskiest assumptions into answerable sprint questions with signals and failure criteria.",
-      "requiredSections": ["Long-term goal", "Target", "Ranked assumptions", "Sprint questions", "Signals", "Failure criteria"]
+      "requiredSections": ["Long-term goal", "Target", "Ranked assumptions", "Sprint questions", "Signals", "Failure criteria"],
+      "relatedEvidence": ["02-evidence-ledger", "04-journey-map", "07-decision", "08-experiment", "12-synthesis"]
     },
     "06-solution-directions": {
       "step": "07-explore",
@@ -47,7 +52,8 @@
       "title": "Solution Directions",
       "phase": "Explore",
       "purpose": "Present meaningfully different independently generated directions without hiding trade-offs or dissent.",
-      "requiredSections": ["Decision criteria", "Directions", "Cross-role critique", "Unresolved trade-offs"]
+      "requiredSections": ["Decision criteria", "Directions", "Cross-role critique", "Unresolved trade-offs"],
+      "relatedEvidence": ["02-evidence-ledger", "05-sprint-questions", "07-decision"]
     },
     "07-decision": {
       "step": "08-decide",
@@ -55,7 +61,8 @@
       "title": "Direction Decision",
       "phase": "Decide",
       "purpose": "Record the human-selected direction, rationale, dissent, rejected alternatives, and unresolved risks.",
-      "requiredSections": ["Selected direction", "Decision criteria", "Rationale", "Dissent", "Rejected alternatives", "Unresolved risks"]
+      "requiredSections": ["Selected direction", "Decision criteria", "Rationale", "Dissent", "Rejected alternatives", "Unresolved risks"],
+      "relatedEvidence": ["02-evidence-ledger", "05-sprint-questions", "06-solution-directions", "08-experiment"]
     },
     "08-experiment": {
       "step": "09-experiment",
@@ -63,7 +70,8 @@
       "title": "Experiment Card",
       "phase": "Experiment",
       "purpose": "Define the hypothesis, test audience, scorecard, observable signals, and decision thresholds.",
-      "requiredSections": ["Hypothesis", "Audience", "Sprint-question scorecard", "Observable signals", "Decision thresholds"]
+      "requiredSections": ["Hypothesis", "Audience", "Sprint-question scorecard", "Observable signals", "Decision thresholds"],
+      "relatedEvidence": ["05-sprint-questions", "07-decision", "09-storyboard", "10-prototype-brief", "10-test-plan", "11-customer-evidence"]
     },
     "09-storyboard": {
       "step": "09-experiment",
@@ -71,7 +79,8 @@
       "title": "Prototype Storyboard",
       "phase": "Experiment",
       "purpose": "Specify the minimum sequence of realistic scenes required to test the selected hypothesis.",
-      "requiredSections": ["Entry context", "Test scenes", "Mocked behaviour", "Prototype boundaries"]
+      "requiredSections": ["Entry context", "Test scenes", "Mocked behaviour", "Prototype boundaries"],
+      "relatedEvidence": ["04-journey-map", "07-decision", "08-experiment", "10-prototype-brief"]
     },
     "10-prototype-brief": {
       "step": "09-experiment",
@@ -79,7 +88,8 @@
       "title": "Prototype / MVP Brief",
       "phase": "Experiment",
       "purpose": "Choose the smallest test artifact that can answer the sprint questions and record its approved build, tool, safety, trial, deployment, and version boundaries.",
-      "requiredSections": ["Structured prototype/MVP brief"]
+      "requiredSections": ["Structured prototype/MVP brief"],
+      "relatedEvidence": ["08-experiment", "09-storyboard", "10-test-plan"]
     },
     "10-test-plan": {
       "step": "10-prototype",
@@ -87,7 +97,8 @@
       "title": "Customer Test Plan",
       "phase": "Validate",
       "purpose": "Start recruitment during evidence collection, then define consent, tasks, neutral interview prompts, evidence capture, and session logistics before testing.",
-      "requiredSections": ["Recruitment criteria", "Screener", "Consent", "Tasks", "Interview guide", "Evidence capture", "Logistics"]
+      "requiredSections": ["Recruitment criteria", "Screener", "Consent", "Tasks", "Interview guide", "Evidence capture", "Logistics"],
+      "relatedEvidence": ["05-sprint-questions", "08-experiment", "10-prototype-brief", "11-customer-evidence"]
     },
     "11-customer-evidence": {
       "step": "11-customer-sessions",
@@ -95,7 +106,8 @@
       "title": "Customer Evidence",
       "phase": "Validate",
       "purpose": "Present anonymised observed behaviour and quote/source pointers from isolated customer-session summaries before interpretation.",
-      "requiredSections": ["Session register", "Observed behaviour", "Customer quotations", "Per-session sprint-question evidence", "Data limitations"]
+      "requiredSections": ["Session register", "Observed behaviour", "Customer quotations", "Per-session sprint-question evidence", "Data limitations"],
+      "relatedEvidence": ["02-evidence-ledger", "05-sprint-questions", "10-test-plan", "12-synthesis"]
     },
     "12-synthesis": {
       "step": "12-synthesis",
@@ -103,7 +115,8 @@
       "title": "Evidence Synthesis",
       "phase": "Synthesis",
       "purpose": "Compare structured customer-session summaries with sprint questions and show traceable patterns, contradictions, outliers, evidence strength, and gaps.",
-      "requiredSections": ["Question-by-question findings", "Patterns", "Contradictions", "Outliers", "Evidence strength", "Evidence gaps"]
+      "requiredSections": ["Question-by-question findings", "Patterns", "Contradictions", "Outliers", "Evidence strength", "Evidence gaps"],
+      "relatedEvidence": ["02-evidence-ledger", "05-sprint-questions", "11-customer-evidence", "13-outcome"]
     },
     "13-outcome": {
       "step": "13-outcome",
@@ -111,7 +124,8 @@
       "title": "Sprint Outcome",
       "phase": "Decision",
       "purpose": "Record the human's final outcome, supporting evidence, evidence strength, decision readiness, unresolved risks, owned next actions, and generated four-dimensional assessment.",
-      "requiredSections": ["Outcome decision", "Supporting evidence", "Evidence strength", "Unresolved risks", "Next actions"]
+      "requiredSections": ["Outcome decision", "Supporting evidence", "Evidence strength", "Unresolved risks", "Next actions"],
+      "relatedEvidence": ["07-decision", "08-experiment", "10-prototype-brief", "11-customer-evidence", "12-synthesis"]
     }
   }
 }

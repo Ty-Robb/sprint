@@ -22,6 +22,8 @@ dependency-free and reports instance locations as JSONPath, for example
 | Prototype/MVP brief | `artifact-data/10-prototype-brief.json` → `prototypeBrief` | `1.0` nested in artifact data `3.0` | Current only |
 | Recruitment plan | `artifact-data/10-test-plan.json` → `recruitmentPlan` | `1.0` optional capability nested in artifact data `3.0` | Current only; required for new live evidence work |
 | Immutable tested version | `prototype/*/tested-version.json` | `1.0` | Current only; records are never migrated in place |
+| Generated site manifest | `site-manifest.json` | `1.0` | Current generated view; rebuilt by `render` and `export` |
+| Explicit export approval | operator-supplied `*.json` | `1.0` | Current only; required by `export` |
 | Public usage evidence | `*.usage-evidence.json` publication records | `1.0` | Current only |
 | Redacted usage record | `*.usage-record.json` publication records | `1.0` | Current only |
 | Pricing snapshot | `*.pricing-snapshot.json` dated calculation inputs | `1.0` | Current only |
@@ -68,10 +70,20 @@ The step-guidance reference defines why each step matters, canonical purpose,
 profile-specific method and timebox, human effort/action, AI role, dependencies,
 what good looks like, definition of done, examples, failure modes, limitations,
 approved substitutes, and deeper-help links for all 13 steps. Runtime loading
-detects drift from the canonical method profile. The recruitment-plan schema defines behavior-based targets, neutral
-screener questions, optional channel trade-offs, incentive approval, message
-templates, scheduling/accessibility, consent/retention, backups, partial
-handling, owner/action/deadline tracking, and seven progress milestones.
+detects drift from the canonical method profile. The recruitment-plan schema
+defines behavior-based targets, neutral screener questions, optional channel
+trade-offs, incentive approval, message templates, scheduling/accessibility,
+consent/retention, backups, partial handling, owner/action/deadline tracking,
+and seven progress milestones.
+
+The site-manifest schema catalogs every generated page, its relative path,
+current phase/status/disposition/visibility, content and render digests, local
+assets, site/export version metadata, and navigational relationships. The
+export-approval schema separates `private-archive` from `shareable-site`, names
+the human reviewer and time, allowlists artifacts and sessions, controls private
+category inclusion, and requires explicit redaction, rights, confidentiality,
+and asset-licence checks. Runtime crawling and privacy checks enforce the
+cross-file rules that JSON Schema cannot express.
 
 ## Compatibility policy
 

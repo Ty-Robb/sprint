@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/site-manifest-v1.schema.json",
+  "title": "Portable sprint results site manifest 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "recordType", "site", "export", "pages", "assets"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "sprint-results-site-manifest"},
+    "site": {
+      "type": "object",
+      "required": ["title", "slug", "methodProfile", "executionMode", "route", "terminalState", "sourceUpdatedAt", "versionDigest"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "slug": {"type": "string", "minLength": 1},
+        "methodProfile": {"type": "string", "minLength": 1},
+        "executionMode": {"type": "string", "minLength": 1},
+        "route": {"type": "string", "minLength": 1},
+        "terminalState": {"type": "string", "minLength": 1},
+        "sourceUpdatedAt": {"type": "string", "format": "date-time"},
+        "versionDigest": {"$ref": "#/$defs/digest"}
+      },
+      "additionalProperties": false
+    },
+    "export": {
+      "type": "object",
+      "required": ["kind", "approvedBy", "approvedAt", "approvalDigest", "selection", "humanPublicationRequired", "published"],
+      "properties": {
+        "kind": {"enum": ["workspace", "private-archive", "shareable-site"]},
+        "approvedBy": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
+        "approvedAt": {"anyOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+        "approvalDigest": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "selection": {
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/exportSelection"}
+          ]
+        },
+        "humanPublicationRequired": {"const": true},
+        "published": {"const": false}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "workspace"}}, "required": ["kind"]},
+          "then": {
+            "properties": {
+              "approvedBy": {"type": "null"},
+              "approvedAt": {"type": "null"},
+              "approvalDigest": {"type": "null"},
+              "selection": {"type": "null"}
+            }
+          },
+          "else": {
+            "properties": {
+              "approvedBy": {"type": "string", "minLength": 1},
+              "approvedAt": {"type": "string", "format": "date-time"},
+              "approvalDigest": {"$ref": "#/$defs/digest"},
+              "selection": {"$ref": "#/$defs/exportSelection"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "shareable-site"}}, "required": ["kind"]},
+          "then": {
+            "properties": {
+              "selection": {
+                "allOf": [
+                  {"$ref": "#/$defs/exportSelection"},
+                  {
+                    "type": "object",
+                    "properties": {
+                      "includeCanonicalData": {"type": "boolean", "const": false},
+                      "includeWorkingMaterial": {"type": "boolean", "const": false},
+                      "includeCustomerTesting": {"type": "boolean", "const": false}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/page"}
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "bytes"],
+        "properties": {
+          "path": {"$ref": "#/$defs/relativePath"},
+          "sha256": {"$ref": "#/$defs/digest"},
+          "bytes": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "pageId": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "exportSelection": {
+      "type": "object",
+      "required": ["artifactIds", "sessionIds", "includePrototype", "includeCanonicalData", "includeWorkingMaterial", "includeCustomerTesting", "zipRequested"],
+      "properties": {
+        "artifactIds": {"type": "array", "items": {"$ref": "#/$defs/pageId"}, "uniqueItems": true},
+        "sessionIds": {"type": "array", "items": {"type": "string", "pattern": "^S[0-9][A-Z0-9-]*$"}, "uniqueItems": true},
+        "includePrototype": {"type": "boolean"},
+        "includeCanonicalData": {"type": "boolean"},
+        "includeWorkingMaterial": {"type": "boolean"},
+        "includeCustomerTesting": {"type": "boolean"},
+        "zipRequested": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "relationship": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/pageId"}]},
+    "relationships": {
+      "type": "object",
+      "required": ["home", "previous", "next", "relatedEvidence", "decision", "prototype", "outcome"],
+      "properties": {
+        "home": {"$ref": "#/$defs/relationship"},
+        "previous": {"$ref": "#/$defs/relationship"},
+        "next": {"$ref": "#/$defs/relationship"},
+        "relatedEvidence": {"type": "array", "items": {"$ref": "#/$defs/pageId"}, "uniqueItems": true},
+        "decision": {"$ref": "#/$defs/relationship"},
+        "prototype": {"$ref": "#/$defs/relationship"},
+        "outcome": {"$ref": "#/$defs/relationship"}
+      },
+      "additionalProperties": false
+    },
+    "prototype": {
+      "type": "object",
+      "required": ["version", "artifactPath", "accessModel", "deploymentUrl"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "artifactPath": {"$ref": "#/$defs/relativePath"},
+        "accessModel": {"type": "string", "minLength": 1},
+        "deploymentUrl": {"anyOf": [{"type": "null"}, {"type": "string", "format": "uri"}]}
+      },
+      "additionalProperties": false
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "type", "title", "path", "phase", "status", "disposition", "visibility", "sourceVersion", "contentDigest", "renderDigest", "relationships"],
+      "properties": {
+        "id": {"$ref": "#/$defs/pageId"},
+        "type": {"enum": ["dashboard", "artifact", "session-evidence", "prototype-launch"]},
+        "title": {"type": "string", "minLength": 1},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "phase": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1},
+        "disposition": {"enum": ["current", "completed", "upcoming", "skipped", "not-applicable", "supporting"]},
+        "visibility": {"enum": ["private", "shareable"]},
+        "sourceVersion": {"type": "string", "minLength": 1},
+        "contentDigest": {"$ref": "#/$defs/digest"},
+        "renderDigest": {"$ref": "#/$defs/digest"},
+        "relationships": {"$ref": "#/$defs/relationships"},
+        "prototype": {"$ref": "#/$defs/prototype"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "prototype-launch"}}, "required": ["type"]},
+          "then": {"required": ["prototype"]},
+          "else": {"not": {"required": ["prototype"]}}
+        }
+      ]
+    }
+  }
+}

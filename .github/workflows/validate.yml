@@ -86,6 +86,5 @@ jobs:
             --check
           python skills/run-design-sprint/scripts/sprint_workspace.py validate \
             --workspace "$workspace"
-          npx --yes html-validate@11.6.2 \
-            "$workspace/index.html" \
-            "$workspace/artifacts/01-sprint-brief.html"
+          find "$workspace" -name '*.html' -print0 | \
+            xargs -0 npx --yes html-validate@11.6.2
