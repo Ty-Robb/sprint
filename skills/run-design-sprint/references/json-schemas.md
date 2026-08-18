@@ -28,6 +28,7 @@ dependency-free and reports instance locations as JSONPath, for example
 | Redacted usage record | `*.usage-record.json` publication records | `1.0` | Current only |
 | Pricing snapshot | `*.pricing-snapshot.json` dated calculation inputs | `1.0` | Current only |
 | Usage report | `*.usage-report.json` deterministic generated reports | `1.0` | Current only |
+| Release compatibility | `references/release-contract.json` | `1.0` | Current only; records the skill, runtime, workflow, and schema release set |
 
 The state schema includes its separate method-profile, execution-mode, and
 route selectors; explicit process and terminal states; audited skip records;
@@ -85,6 +86,14 @@ category inclusion, and requires explicit redaction, rights, confidentiality,
 and asset-licence checks. Runtime crawling and privacy checks enforce the
 cross-file rules that JSON Schema cannot express.
 
+The release-contract schema keeps the skill's Semantic Version, verified
+installer and Python/platform matrix, workflow contract versions, current and
+migratable schema files, and repository policy paths in one strict document.
+Release CI checks those declarations against runtime constants, skill metadata,
+the actual schemas, changelog/release notes, and the synthetic release fixture.
+Schema-family versions remain independent from the skill release number; see
+the [release and compatibility contract](release-compatibility.md).
+
 ## Compatibility policy
 
 - Readers and mutation commands accept only the current version of their
@@ -126,7 +135,8 @@ cross-file rules that JSON Schema cannot express.
   assignment manifest, packaged artifact, role, and method-profile registries,
   public usage-evidence records, redacted usage records, pricing snapshots, and
   generated usage reports currently have no legacy line. Their loaders reject
-  any version other than `1.0`.
+  any version other than `1.0`. The release compatibility contract also has no
+  legacy line.
 - Adding required or otherwise incompatible fields to a strict document
   requires a new schema version. An optional capability marker and optional
   fields may extend a current schema only when every previously valid document

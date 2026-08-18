@@ -12,3 +12,9 @@ pricing, tools, a credit, subscription/API separation, and missing
 request-level data. All run quantities are invented. The pricing snapshot alone
 copies dated public facts from its linked official sources and is not a live
 price lookup or a subscription-plan claim.
+
+`release/minimal-planning.synthetic.json` is the end-to-end release fixture. It
+contains only invented planning inputs and expected version/file assertions.
+The clean smoke test uses it to install and discover the skill in a new project,
+then initialize, inspect, render-check, and validate a workspace without
+claiming that customer research or a sprint occurred.

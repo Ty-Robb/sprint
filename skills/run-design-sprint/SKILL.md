@@ -1,6 +1,12 @@
 ---
 name: run-design-sprint
 description: Guide one human Decider through an end-to-end, evidence-led design sprint using tightly bounded AI specialist roles and accessible HTML artifacts. Use when Codex needs to run, prepare, resume, or document a solo-founder or one-person-plus-AI sprint; qualify a challenge; conduct a foundation, research-first, focused, or full design sprint; generate and compare solution directions; build a prototype; prepare real-customer testing; or synthesise results into a proceed, iterate, pivot, investigate, or stop decision. Never substitute simulated customers for customer evidence.
+license: MIT
+compatibility: Requires Python 3.10-3.14 on Ubuntu 24.04, macOS 14+, or Windows Server 2022+. Installing with skills@1.5.22 requires Node.js 22 or 24; the installed runtime has no third-party Python or network dependency.
+metadata:
+  author: Ty-Robb
+  version: "1.0.0"
+  release-contract: references/release-contract.json
 ---
 
 # Run a One-Person + AI Design Sprint
@@ -23,6 +29,7 @@ Read the following references before running a sprint:
 - [references/site-exports.md](references/site-exports.md) before preparing a private archive, shareable site, ZIP, or static-hosting handoff.
 - [references/prototype-mvp-testing.md](references/prototype-mvp-testing.md) before selecting, briefing, building, trialling, deploying, or versioning a test artifact.
 - [references/json-schemas.md](references/json-schemas.md) before migrating a legacy workspace or diagnosing persisted JSON errors.
+- [references/release-compatibility.md](references/release-compatibility.md) when checking the installed skill version, runtime support, schema compatibility, or deprecation policy.
 - [references/usage-reporting.md](references/usage-reporting.md) before measuring, calculating, or publishing usage, cost, subscription, or capacity evidence.
 
 Read [references/recruitment-playbook.md](references/recruitment-playbook.md) during evidence collection and [references/customer-testing.md](references/customer-testing.md) before recruitment, test planning, moderation, or synthesis.

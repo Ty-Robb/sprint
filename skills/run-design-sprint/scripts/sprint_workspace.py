@@ -31,6 +31,7 @@ REFERENCES_DIR = SKILL_DIR / "references"
 HTML_KIT_DIR = SKILL_DIR / "assets" / "html-kit"
 SCHEMAS_DIR = REFERENCES_DIR / "schemas"
 
+SKILL_VERSION = "1.0.0"
 STATE_FILENAME = "sprint-state.json"
 ASSIGNMENT_MANIFEST_FILENAME = "assignment-manifest.json"
 STATE_SCHEMA_VERSION = "4.0"
@@ -4332,7 +4333,12 @@ def build_site_manifest(
         ],
         "export": export_record,
     }
-    css_payload = (HTML_KIT_DIR / "sprint.css").read_bytes()
+    # Text-mode reads normalize checkout-specific CRLF line endings. Hash the
+    # same UTF-8 payload that build_render_plan publishes so manifests remain
+    # portable across Windows, macOS, and Linux checkouts.
+    css_payload = (HTML_KIT_DIR / "sprint.css").read_text(
+        encoding="utf-8"
+    ).encode("utf-8")
     return {
         "schemaVersion": SITE_MANIFEST_SCHEMA_VERSION,
         "recordType": "sprint-results-site-manifest",
@@ -7511,6 +7517,11 @@ def command_prototype_build_packet(args: argparse.Namespace) -> None:
             f"SHA-256: `{descriptor['sha256']}`  \nBytes: `{descriptor['bytes']}`\n\n"
             f"<approved-asset path=\"{descriptor['path']}\">\n{asset_text.rstrip()}\n</approved-asset>"
         )
+    approved_assets = (
+        chr(10).join(asset_blocks)
+        if asset_blocks
+        else "## Approved assets\n\nNo additional assets were approved."
+    )
     packet = f"""# Approved AI build packet
 
 This packet is the complete build boundary. Do not load sprint history, private transcripts, secrets, production customer data, account material, or any file not listed below. Do not connect accounts, incur cost, enable analytics, change production, or deploy publicly unless the matching human approval is recorded in the approved brief.
@@ -7525,7 +7536,7 @@ SHA-256: `{brief_sha}`
 {snapshot_text.rstrip()}
 ```
 
-{chr(10).join(asset_blocks) if asset_blocks else "## Approved assets\n\nNo additional assets were approved."}
+{approved_assets}
 
 ## Stop condition
 
@@ -12801,6 +12812,11 @@ def command_status(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the deterministic workspace layer for Design Sprint for One."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {SKILL_VERSION}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

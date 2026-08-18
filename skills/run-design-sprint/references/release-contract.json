@@ -1,0 +1,168 @@
+{
+  "schemaVersion": "1.0",
+  "recordType": "run-design-sprint-release-contract",
+  "skill": {
+    "name": "run-design-sprint",
+    "version": "1.0.0",
+    "releaseTag": "v1.0.0"
+  },
+  "runtime": {
+    "python": {
+      "minimum": "3.10",
+      "maximumTested": "3.14",
+      "tested": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+      "thirdPartyDependencies": false
+    },
+    "platforms": [
+      {
+        "name": "ubuntu",
+        "minimumVersion": "24.04",
+        "ciRunner": "ubuntu-24.04"
+      },
+      {
+        "name": "macos",
+        "minimumVersion": "14",
+        "ciRunner": "macos-14"
+      },
+      {
+        "name": "windows-server",
+        "minimumVersion": "2022",
+        "ciRunner": "windows-2022"
+      }
+    ],
+    "installer": {
+      "package": "skills",
+      "version": "1.5.22",
+      "nodeMajorVersions": ["22", "24"],
+      "discoveryAgent": "codex"
+    }
+  },
+  "workflowContracts": {
+    "methodProfiles": "1.0",
+    "stepGuidance": "1.0",
+    "fidelity": "1.0",
+    "rolePackets": "1.0",
+    "testArtifactWorkflow": "1.0"
+  },
+  "schemaFamilies": {
+    "workspace-state": {
+      "current": "4.0",
+      "currentSchema": "schemas/workspace-state-v4.schema.json",
+      "migratable": {
+        "1.0": "schemas/workspace-state-v1.schema.json",
+        "2.0": "schemas/workspace-state-v2.schema.json",
+        "3.0": "schemas/workspace-state-v3.schema.json"
+      }
+    },
+    "assignment-manifest": {
+      "current": "1.0",
+      "currentSchema": "schemas/assignment-manifest-v1.schema.json",
+      "migratable": {}
+    },
+    "artifact-data": {
+      "current": "3.0",
+      "currentSchema": "schemas/artifact-data-v3.schema.json",
+      "migratable": {
+        "1.0": "schemas/artifact-data-v1.schema.json",
+        "2.0": "schemas/artifact-data-v2.schema.json"
+      }
+    },
+    "artifact-specs": {
+      "current": "1.0",
+      "currentSchema": "schemas/artifact-specs-v1.schema.json",
+      "migratable": {}
+    },
+    "role-contracts": {
+      "current": "1.0",
+      "currentSchema": "schemas/role-contracts-v1.schema.json",
+      "migratable": {}
+    },
+    "method-profiles": {
+      "current": "1.0",
+      "currentSchema": "schemas/method-profiles-v1.schema.json",
+      "migratable": {}
+    },
+    "step-guidance": {
+      "current": "1.0",
+      "currentSchema": "schemas/step-guidance-v1.schema.json",
+      "migratable": {}
+    },
+    "session-manifest": {
+      "current": "2.0",
+      "currentSchema": "schemas/session-manifest-v2.schema.json",
+      "migratable": {
+        "1.0": "schemas/session-manifest-v1.schema.json"
+      }
+    },
+    "customer-session": {
+      "current": "2.0",
+      "currentSchema": "schemas/customer-session-v2.schema.json",
+      "migratable": {
+        "1.0": "schemas/customer-session-v1.schema.json"
+      }
+    },
+    "session-summary": {
+      "current": "1.0",
+      "currentSchema": "schemas/session-summary-v1.schema.json",
+      "migratable": {}
+    },
+    "prototype-brief": {
+      "current": "1.0",
+      "currentSchema": "schemas/prototype-brief-v1.schema.json",
+      "migratable": {}
+    },
+    "recruitment-plan": {
+      "current": "1.0",
+      "currentSchema": "schemas/recruitment-plan-v1.schema.json",
+      "migratable": {}
+    },
+    "tested-version": {
+      "current": "1.0",
+      "currentSchema": "schemas/tested-version-v1.schema.json",
+      "migratable": {}
+    },
+    "site-manifest": {
+      "current": "1.0",
+      "currentSchema": "schemas/site-manifest-v1.schema.json",
+      "migratable": {}
+    },
+    "export-approval": {
+      "current": "1.0",
+      "currentSchema": "schemas/export-approval-v1.schema.json",
+      "migratable": {}
+    },
+    "usage-evidence": {
+      "current": "1.0",
+      "currentSchema": "schemas/usage-evidence-v1.schema.json",
+      "migratable": {}
+    },
+    "usage-record": {
+      "current": "1.0",
+      "currentSchema": "schemas/usage-record-v1.schema.json",
+      "migratable": {}
+    },
+    "pricing-snapshot": {
+      "current": "1.0",
+      "currentSchema": "schemas/pricing-snapshot-v1.schema.json",
+      "migratable": {}
+    },
+    "usage-report": {
+      "current": "1.0",
+      "currentSchema": "schemas/usage-report-v1.schema.json",
+      "migratable": {}
+    },
+    "release-contract": {
+      "current": "1.0",
+      "currentSchema": "schemas/release-contract-v1.schema.json",
+      "migratable": {}
+    }
+  },
+  "policies": {
+    "compatibility": "skills/run-design-sprint/references/release-compatibility.md",
+    "changelog": "CHANGELOG.md",
+    "support": "SUPPORT.md",
+    "deprecation": "skills/run-design-sprint/references/release-compatibility.md",
+    "contributing": "CONTRIBUTING.md",
+    "security": "SECURITY.md"
+  }
+}

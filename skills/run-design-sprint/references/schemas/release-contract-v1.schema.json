@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/release-contract-v1.schema.json",
+  "title": "Run Design Sprint release compatibility contract 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "recordType",
+    "skill",
+    "runtime",
+    "workflowContracts",
+    "schemaFamilies",
+    "policies"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "recordType": {"const": "run-design-sprint-release-contract"},
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "releaseTag"],
+      "properties": {
+        "name": {"const": "run-design-sprint"},
+        "version": {"$ref": "#/$defs/semver"},
+        "releaseTag": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "platforms", "installer"],
+      "properties": {
+        "python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimum", "maximumTested", "tested", "thirdPartyDependencies"],
+          "properties": {
+            "minimum": {"$ref": "#/$defs/majorMinor"},
+            "maximumTested": {"$ref": "#/$defs/majorMinor"},
+            "tested": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/majorMinor"}
+            },
+            "thirdPartyDependencies": {"type": "boolean"}
+          }
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "minimumVersion", "ciRunner"],
+            "properties": {
+              "name": {"enum": ["ubuntu", "macos", "windows-server"]},
+              "minimumVersion": {"type": "string", "minLength": 1},
+              "ciRunner": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "installer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["package", "version", "nodeMajorVersions", "discoveryAgent"],
+          "properties": {
+            "package": {"const": "skills"},
+            "version": {"$ref": "#/$defs/semver"},
+            "nodeMajorVersions": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[0-9]+$"}
+            },
+            "discoveryAgent": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "workflowContracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["methodProfiles", "stepGuidance", "fidelity", "rolePackets", "testArtifactWorkflow"],
+      "properties": {
+        "methodProfiles": {"$ref": "#/$defs/schemaVersion"},
+        "stepGuidance": {"$ref": "#/$defs/schemaVersion"},
+        "fidelity": {"$ref": "#/$defs/schemaVersion"},
+        "rolePackets": {"$ref": "#/$defs/schemaVersion"},
+        "testArtifactWorkflow": {"$ref": "#/$defs/schemaVersion"}
+      }
+    },
+    "schemaFamilies": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/schemaFamily"}
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compatibility", "changelog", "support", "deprecation", "contributing", "security"],
+      "properties": {
+        "compatibility": {"$ref": "#/$defs/relativePath"},
+        "changelog": {"$ref": "#/$defs/relativePath"},
+        "support": {"$ref": "#/$defs/relativePath"},
+        "deprecation": {"$ref": "#/$defs/relativePath"},
+        "contributing": {"$ref": "#/$defs/relativePath"},
+        "security": {"$ref": "#/$defs/relativePath"}
+      }
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "majorMinor": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)[^\\u0000]+$"
+    },
+    "schemaFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "currentSchema", "migratable"],
+      "properties": {
+        "current": {"$ref": "#/$defs/schemaVersion"},
+        "currentSchema": {"type": "string", "pattern": "^schemas/[a-z0-9-]+-v[0-9]+\\.schema\\.json$"},
+        "migratable": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "pattern": "^schemas/[a-z0-9-]+-v[0-9]+\\.schema\\.json$"}
+        }
+      }
+    }
+  }
+}
