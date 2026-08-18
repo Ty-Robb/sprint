@@ -1,0 +1,40 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "fixtureVersion": "1.0",
+  "skill": {
+    "name": "run-design-sprint",
+    "version": "1.0.0"
+  },
+  "workspace": {
+    "title": "Synthetic Release Verification",
+    "challenge": "Verify that a clean public skill install can create and validate a minimal planning workspace.",
+    "methodProfile": "adaptive-design-sprint",
+    "executionMode": "planning-rehearsal",
+    "selectedBy": "Synthetic release verifier",
+    "profileReason": "Exercise the supported adaptive profile without claiming a real sprint occurred.",
+    "modeReason": "This fixture checks installation and runtime behavior only; it contains no customer evidence."
+  },
+  "expected": {
+    "stateSchemaVersion": "4.0",
+    "assignmentManifestSchemaVersion": "1.0",
+    "siteManifestSchemaVersion": "1.0",
+    "currentStep": "01-intake",
+    "status": "waiting-for-human",
+    "requiredSkillFiles": [
+      "SKILL.md",
+      "agents/openai.yaml",
+      "references/release-contract.json",
+      "references/schemas/release-contract-v1.schema.json",
+      "scripts/schema_validation.py",
+      "scripts/sprint_workspace.py"
+    ],
+    "generatedFiles": [
+      "sprint-state.json",
+      "assignment-manifest.json",
+      "site-manifest.json",
+      "index.html",
+      "assets/sprint.css"
+    ]
+  }
+}

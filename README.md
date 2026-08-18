@@ -2,6 +2,11 @@
 
 An installable skill that gives one human a tightly scoped AI sprint team and guides them from an ambiguous challenge to a real-customer-informed decision.
 
+The current skill version is `1.0.0`. Skill releases follow Semantic
+Versioning independently from persisted workspace schema families. See the
+[release and compatibility contract](skills/run-design-sprint/references/release-compatibility.md),
+[changelog](CHANGELOG.md), and [support policy](SUPPORT.md).
+
 The human remains the Decider. Specialist AI roles handle research, strategy, experience design, feasibility, prototyping, test preparation, critique, and synthesis. Customers are always real people rather than simulated personas.
 
 ## Privacy boundary
@@ -12,9 +17,37 @@ Before starting a sprint, choose an access-controlled workspace location outside
 
 ## Install
 
+Install the current public development version interactively:
+
 ```bash
 npx skills@latest add Ty-Robb/sprint
 ```
+
+After the `v1.0.0` tag is approved and published, this is the reproducible
+Codex project install used by release verification:
+
+```bash
+npx --yes skills@1.5.22 add \
+  "https://github.com/Ty-Robb/sprint.git#v1.0.0" \
+  --skill run-design-sprint \
+  --agent codex \
+  --copy \
+  --yes
+```
+
+The installer requires Node.js 22 or 24. Once installed, the skill's workspace
+engine is dependency-free Python and needs no network access. Confirm discovery
+and the installed runtime version from the project directory:
+
+```bash
+npx --yes skills@1.5.22 list --json
+python3 .agents/skills/run-design-sprint/scripts/sprint_workspace.py --version
+```
+
+Expected skill runtime output for this release is
+`sprint_workspace.py 1.0.0`. Other Agent Skills clients may use a different
+installation directory; select their supported agent identifier in place of
+`codex`.
 
 Then ask your agent:
 
@@ -115,6 +148,10 @@ Before publishing changes to this repository, run:
 ```bash
 python3 scripts/check_publication.py
 ```
+
+Contributors should also read [CONTRIBUTING.md](CONTRIBUTING.md). Security
+reports must follow [SECURITY.md](SECURITY.md) and must not include sensitive
+details in a public issue.
 
 ## Status
 

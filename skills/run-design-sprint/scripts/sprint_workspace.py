@@ -31,6 +31,7 @@ REFERENCES_DIR = SKILL_DIR / "references"
 HTML_KIT_DIR = SKILL_DIR / "assets" / "html-kit"
 SCHEMAS_DIR = REFERENCES_DIR / "schemas"
 
+SKILL_VERSION = "1.0.0"
 STATE_FILENAME = "sprint-state.json"
 ASSIGNMENT_MANIFEST_FILENAME = "assignment-manifest.json"
 STATE_SCHEMA_VERSION = "4.0"
@@ -12801,6 +12802,11 @@ def command_status(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the deterministic workspace layer for Design Sprint for One."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {SKILL_VERSION}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
