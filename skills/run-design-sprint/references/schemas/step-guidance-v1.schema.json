@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ty-Robb/sprint/schemas/step-guidance-v1.schema.json",
+  "title": "Design Sprint progressive step guidance 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "actions", "steps"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "actions": {
+      "type": "object",
+      "required": [
+        "show-example",
+        "explain-why",
+        "show-canonical-method",
+        "show-checklist",
+        "compare-substitutes",
+        "i-am-blocked",
+        "pause"
+      ],
+      "properties": {
+        "show-example": {"$ref": "#/$defs/action"},
+        "explain-why": {"$ref": "#/$defs/action"},
+        "show-canonical-method": {"$ref": "#/$defs/action"},
+        "show-checklist": {"$ref": "#/$defs/action"},
+        "compare-substitutes": {"$ref": "#/$defs/action"},
+        "i-am-blocked": {"$ref": "#/$defs/action"},
+        "pause": {"$ref": "#/$defs/action"}
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "object",
+      "required": [
+        "01-intake",
+        "02-qualify",
+        "03-evidence",
+        "04-foundation",
+        "05-map",
+        "06-questions",
+        "07-explore",
+        "08-decide",
+        "09-experiment",
+        "10-prototype",
+        "11-customer-sessions",
+        "12-synthesis",
+        "13-outcome"
+      ],
+      "properties": {
+        "01-intake": {"$ref": "#/$defs/step"},
+        "02-qualify": {"$ref": "#/$defs/step"},
+        "03-evidence": {"$ref": "#/$defs/step"},
+        "04-foundation": {"$ref": "#/$defs/step"},
+        "05-map": {"$ref": "#/$defs/step"},
+        "06-questions": {"$ref": "#/$defs/step"},
+        "07-explore": {"$ref": "#/$defs/step"},
+        "08-decide": {"$ref": "#/$defs/step"},
+        "09-experiment": {"$ref": "#/$defs/step"},
+        "10-prototype": {"$ref": "#/$defs/step"},
+        "11-customer-sessions": {"$ref": "#/$defs/step"},
+        "12-synthesis": {"$ref": "#/$defs/step"},
+        "13-outcome": {"$ref": "#/$defs/step"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/nonEmptyString"}
+    },
+    "action": {
+      "type": "object",
+      "required": ["label", "description"],
+      "properties": {
+        "label": {"$ref": "#/$defs/nonEmptyString"},
+        "description": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "profileValues": {
+      "type": "object",
+      "required": ["sprint-book", "adaptive-design-sprint"],
+      "properties": {
+        "sprint-book": {"$ref": "#/$defs/nonEmptyString"},
+        "adaptive-design-sprint": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "profileMinutes": {
+      "type": "object",
+      "required": ["sprint-book", "adaptive-design-sprint"],
+      "properties": {
+        "sprint-book": {"type": "integer", "minimum": 0},
+        "adaptive-design-sprint": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "substitute": {
+      "type": "object",
+      "required": [
+        "name",
+        "useWhen",
+        "preserves",
+        "methodFidelityImpact",
+        "evidenceImpact"
+      ],
+      "properties": {
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "useWhen": {"$ref": "#/$defs/nonEmptyString"},
+        "preserves": {"$ref": "#/$defs/nonEmptyString"},
+        "methodFidelityImpact": {"$ref": "#/$defs/nonEmptyString"},
+        "evidenceImpact": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": false
+    },
+    "helpLink": {
+      "type": "object",
+      "required": ["label", "reference"],
+      "properties": {
+        "label": {"$ref": "#/$defs/nonEmptyString"},
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^references/[a-z0-9-]+\\.md(?:#[a-z0-9-]+)?$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "title",
+        "whyItMatters",
+        "purpose",
+        "methods",
+        "timeboxMinutes",
+        "humanEffort",
+        "humanAction",
+        "aiRole",
+        "dependencies",
+        "whatGoodLooksLike",
+        "definitionOfDone",
+        "examples",
+        "failureModes",
+        "limitations",
+        "substitutes",
+        "deeperHelp"
+      ],
+      "properties": {
+        "title": {"$ref": "#/$defs/nonEmptyString"},
+        "whyItMatters": {"$ref": "#/$defs/nonEmptyString"},
+        "purpose": {"$ref": "#/$defs/nonEmptyString"},
+        "methods": {"$ref": "#/$defs/profileValues"},
+        "timeboxMinutes": {"$ref": "#/$defs/profileMinutes"},
+        "humanEffort": {"$ref": "#/$defs/nonEmptyString"},
+        "humanAction": {"$ref": "#/$defs/nonEmptyString"},
+        "aiRole": {"$ref": "#/$defs/stringList"},
+        "dependencies": {"$ref": "#/$defs/stringList"},
+        "whatGoodLooksLike": {"$ref": "#/$defs/stringList"},
+        "definitionOfDone": {"$ref": "#/$defs/stringList"},
+        "examples": {"$ref": "#/$defs/stringList"},
+        "failureModes": {"$ref": "#/$defs/stringList"},
+        "limitations": {"$ref": "#/$defs/stringList"},
+        "substitutes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/substitute"}
+        },
+        "deeperHelp": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/helpLink"}
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

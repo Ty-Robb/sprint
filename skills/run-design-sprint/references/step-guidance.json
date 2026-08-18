@@ -1,0 +1,411 @@
+{
+  "schemaVersion": "1.0",
+  "actions": {
+    "show-example": {
+      "label": "Show example",
+      "description": "Show the small starter example for this step."
+    },
+    "explain-why": {
+      "label": "Explain why",
+      "description": "Explain the purpose and what becomes weaker if this step is compressed or skipped."
+    },
+    "show-canonical-method": {
+      "label": "Show canonical method",
+      "description": "Show the profile-specific method, schedule, selected method, and fidelity impact."
+    },
+    "show-checklist": {
+      "label": "Show checklist",
+      "description": "Show dependencies, what good looks like, and the complete definition-of-done checklist."
+    },
+    "compare-substitutes": {
+      "label": "Compare substitutes",
+      "description": "Compare approved substitutes and their method and evidence trade-offs."
+    },
+    "i-am-blocked": {
+      "label": "I am blocked",
+      "description": "Show likely failure modes, approved workarounds, and the smallest useful next action."
+    },
+    "pause": {
+      "label": "Pause",
+      "description": "Record a resumable pause without inventing progress or crossing a human gate."
+    }
+  },
+  "steps": {
+    "01-intake": {
+      "title": "Intake",
+      "whyItMatters": "A clear decision frame prevents the sprint from producing a polished answer to the wrong problem.",
+      "purpose": "Frame the consequential challenge, intended outcome, constraints, evidence, and unknowns before committing to a sprint.",
+      "methods": {
+        "sprint-book": "Pre-sprint challenge intake and Decider alignment",
+        "adaptive-design-sprint": "Focused challenge intake"
+      },
+      "timeboxMinutes": {"sprint-book": 30, "adaptive-design-sprint": 30},
+      "humanEffort": "Answer one focused question at a time and correct the drafted brief.",
+      "humanAction": "Describe what you need to create, change, or decide and why it matters now.",
+      "aiRole": ["Draft the brief from supplied context", "Identify the single highest-value missing input"],
+      "dependencies": ["A human Decider", "An initial challenge or decision to frame"],
+      "whatGoodLooksLike": ["The brief is specific enough to guide a route decision", "Known evidence and unresolved assumptions are easy to distinguish"],
+      "definitionOfDone": ["Challenge and likely customer are explicit", "Outcome, constraints, evidence, unknowns, and deadline are recorded"],
+      "examples": ["Improve onboarding for first-time team admins so they can invite a colleague without support."],
+      "failureModes": ["Demanding a polished brief before starting", "Framing a deliverable instead of the decision or outcome"],
+      "limitations": ["A partial intake leaves route selection and later evidence work less reliable", "Skipping intake can optimize the wrong challenge"],
+      "substitutes": [{
+        "name": "Evidence-led draft for human correction",
+        "useWhen": "The Decider has supplied documents but little time for an interview.",
+        "preserves": "A concrete brief and explicit human correction.",
+        "methodFidelityImpact": "Compresses live alignment into asynchronous review.",
+        "evidenceImpact": "Missing tacit constraints remain unknown until the human corrects the draft."
+      }],
+      "deeperHelp": [
+        {"label": "Intake prompts", "reference": "references/facilitation-playbook.md#step-1--intake"},
+        {"label": "Private workspace setup", "reference": "references/privacy-and-publication.md"}
+      ]
+    },
+    "02-qualify": {
+      "title": "Qualify and route",
+      "whyItMatters": "Choosing the route deliberately focuses effort on the uncertainty that can actually change the decision.",
+      "purpose": "Choose a route that matches the uncertainty instead of applying sprint ceremony by default.",
+      "methods": {
+        "sprint-book": "Pre-sprint challenge and team-readiness check",
+        "adaptive-design-sprint": "Evidence sufficiency and decision-uncertainty assessment"
+      },
+      "timeboxMinutes": {"sprint-book": 30, "adaptive-design-sprint": 30},
+      "humanEffort": "Review one route recommendation and approve, revise, or stop.",
+      "humanAction": "Choose the route, method profile, and execution mode after reviewing their trade-offs.",
+      "aiRole": ["Assess evidence sufficiency and decision uncertainty independently", "Recommend a route with limitations and customer needs"],
+      "dependencies": ["Completed sprint brief", "Explicit human selector for method profile and execution mode"],
+      "whatGoodLooksLike": ["The recommendation follows from the evidence and decision uncertainty", "The human can see what the route includes, excludes, and requires"],
+      "definitionOfDone": ["Route and rationale are recorded", "Human involvement, recruitment needs, and exclusions are visible", "Gate 1 has an explicit human decision"],
+      "examples": ["Recommend research-first because the customer and problem are not yet evidenced; reroute after the research stage."],
+      "failureModes": ["Choosing the full route because it sounds more rigorous", "Treating self-test or rehearsal as customer evidence"],
+      "limitations": ["A weak route decision can add ceremony without reducing uncertainty", "The one-human-plus-AI team does not reproduce a cross-functional human team"],
+      "substitutes": [{
+        "name": "Short evidence-and-uncertainty review",
+        "useWhen": "A full readiness workshop is impractical.",
+        "preserves": "Explicit route choice tied to evidence and decision uncertainty.",
+        "methodFidelityImpact": "Compresses team readiness discussion into bounded independent assessments.",
+        "evidenceImpact": "Unrepresented stakeholder constraints may remain unknown."
+      }],
+      "deeperHelp": [
+        {"label": "Route definitions", "reference": "references/guided-workflow.md#step-2-qualify-and-route"},
+        {"label": "Execution modes", "reference": "references/execution-modes.md"}
+      ]
+    },
+    "03-evidence": {
+      "title": "Build the evidence base",
+      "whyItMatters": "Early evidence reduces assumption-driven design, while starting recruitment now protects the longest-lead part of live testing.",
+      "purpose": "Create shared understanding from relevant knowledge and evidence before solution generation.",
+      "methods": {
+        "sprint-book": "Expert interviews, shared knowledge, and How Might We notes",
+        "adaptive-design-sprint": "Sourced evidence review and early recruitment planning"
+      },
+      "timeboxMinutes": {"sprint-book": 120, "adaptive-design-sprint": 90},
+      "humanEffort": "Provide private context, resolve material source conflicts, and approve the recruitment target, screener, owner, and next action.",
+      "humanAction": "Confirm the reliable evidence and launch the smallest approved recruitment action now.",
+      "aiRole": ["Build a sourced evidence ledger", "Draft the complete neutral recruitment plan and detect stalled progress"],
+      "dependencies": ["Approved route", "Permitted evidence sources", "Live route: recruitment owner, suitable target, channels, consent expectations, and deadline"],
+      "whatGoodLooksLike": ["Claims are traceable to sources, with contradictions and gaps visible", "The live recruitment plan is neutral, practical, owned, and ready for its next action without depending on a paid vendor"],
+      "definitionOfDone": ["Sources, contradictions, and gaps are recorded", "Live route has a usable target definition, neutral screener, outreach and reminder templates, schedule, consent checklist, and backup plan", "Live route has an explicit owner and next action"],
+      "examples": ["Target people who personally completed the relevant workflow in the past 30 days; exclude colleagues, conflicted participants, and respondents who cannot describe a recent instance."],
+      "failureModes": ["Waiting until the prototype is finished to recruit", "Writing a screener that names the preferred solution", "Assuming a paid panel is the only route"],
+      "limitations": ["AI synthesis adds no firsthand evidence", "Incomplete recruitment can delay testing and later produces only the partial evidence classification implemented by the four-dimensional completion model"],
+      "substitutes": [{
+        "name": "Bounded expert inputs plus sourced review",
+        "useWhen": "Canonical live expert interviews and shared team knowledge are unavailable.",
+        "preserves": "Relevant knowledge becomes traceable and shared before solution work.",
+        "methodFidelityImpact": "Replaces a live cross-functional exercise with asynchronous inputs.",
+        "evidenceImpact": "Quality depends on available sources and expert access; missing operational knowledge stays unknown."
+      }],
+      "deeperHelp": [
+        {"label": "Recruitment playbook", "reference": "references/recruitment-playbook.md"},
+        {"label": "Evidence facilitation", "reference": "references/facilitation-playbook.md#step-3--evidence"}
+      ]
+    },
+    "04-foundation": {
+      "title": "Establish the foundation",
+      "whyItMatters": "An explicit strategic hypothesis gives later solution work a coherent customer, problem, alternative, and reason to believe.",
+      "purpose": "Establish a coherent customer, problem, advantage, alternative, and differentiation hypothesis when one does not yet exist.",
+      "methods": {
+        "sprint-book": "Not a separate Sprint-book exercise; use an established challenge and strategic context",
+        "adaptive-design-sprint": "Evidence-labelled foundation hypothesis"
+      },
+      "timeboxMinutes": {"sprint-book": 0, "adaptive-design-sprint": 90},
+      "humanEffort": "Resolve material strategic conflicts and approve a testable founding hypothesis.",
+      "humanAction": "Choose the customer/problem/differentiation hypothesis worth carrying into design.",
+      "aiRole": ["Draft evidence-labelled strategic elements", "Challenge unsupported advantage and differentiation claims"],
+      "dependencies": ["Evidence ledger", "A route that includes the foundation stage"],
+      "whatGoodLooksLike": ["Each strategic claim is evidence-labelled and internally coherent", "The proposed differentiation is deliverable and falsifiable"],
+      "definitionOfDone": ["Every hypothesis element has an evidence label", "Differentiation is deliverable rather than aspirational", "The founding hypothesis can be tested"],
+      "examples": ["If we help independent clinic managers reconcile claims without spreadsheets, they will choose it over manual review because exceptions are explained at the point of action."],
+      "failureModes": ["Treating generic quality claims as differentiation", "Hiding missing evidence behind a polished strategy statement"],
+      "limitations": ["A foundation hypothesis is a proposal, not customer evidence", "Skipping this stage on an unformed product makes later solution comparison arbitrary"],
+      "substitutes": [{
+        "name": "Existing strategy audit",
+        "useWhen": "A current strategic brief already exists.",
+        "preserves": "Explicit customer, problem, alternatives, advantage, and testable differentiation.",
+        "methodFidelityImpact": "Uses reviewed existing decisions instead of creating a new foundation artifact from scratch.",
+        "evidenceImpact": "Stale or unevidenced assumptions must remain labelled and may require investigation."
+      }],
+      "deeperHelp": [{"label": "Foundation prompts", "reference": "references/facilitation-playbook.md#step-4--foundation"}]
+    },
+    "05-map": {
+      "title": "Map the experience",
+      "whyItMatters": "A shared view of actors, handoffs, and failure points reveals where an intervention can change the outcome.",
+      "purpose": "Build shared understanding of the customer journey or system and select the most consequential target moment.",
+      "methods": {
+        "sprint-book": "Map the challenge from actors to outcome and select a target",
+        "adaptive-design-sprint": "Journey and system mapping"
+      },
+      "timeboxMinutes": {"sprint-book": 90, "adaptive-design-sprint": 75},
+      "humanEffort": "Correct the map and choose the moment where change would matter most.",
+      "humanAction": "Select the target moment on the merged customer and system map.",
+      "aiRole": ["Map the experience and technical dependencies separately", "Merge the maps while preserving failure points and edge cases"],
+      "dependencies": ["Evidence base", "A defined customer or actor", "Known operational and technical constraints"],
+      "whatGoodLooksLike": ["The map connects customer action to system and operational response", "The selected target moment is consequential and supported by the evidence"],
+      "definitionOfDone": ["Trigger, actors, journey, system responses, dependencies, and failures are explicit", "One consequential target moment is selected"],
+      "examples": ["Target the moment a new admin decides whether to invite teammates, before setup becomes a solo dead end."],
+      "failureModes": ["Mapping only interface screens", "Selecting the easiest moment rather than the riskiest consequential moment"],
+      "limitations": ["An inferred journey can omit real behavior", "Compressing the map can hide operational handoffs and edge cases"],
+      "substitutes": [{
+        "name": "Critical-path map",
+        "useWhen": "A full journey workshop is impractical and the decision concerns one narrow flow.",
+        "preserves": "Actors, trigger, target moment, dependencies, failures, and outcome remain visible.",
+        "methodFidelityImpact": "Compresses the breadth of canonical mapping.",
+        "evidenceImpact": "Adjacent journeys and secondary actors may remain unknown."
+      }],
+      "deeperHelp": [{"label": "Map prompts", "reference": "references/facilitation-playbook.md#step-5--map"}]
+    },
+    "06-questions": {
+      "title": "Define sprint questions",
+      "whyItMatters": "Precommitted questions and signals keep the test focused on risks and make later interpretation harder to rewrite after the fact.",
+      "purpose": "Turn the long-term goal and riskiest assumptions into agreed questions and observable failure signals.",
+      "methods": {
+        "sprint-book": "Long-term goal, sprint questions, target selection, and Decider confirmation",
+        "adaptive-design-sprint": "Risk-ranked sprint questions and scorecard"
+      },
+      "timeboxMinutes": {"sprint-book": 90, "adaptive-design-sprint": 75},
+      "humanEffort": "Review the ranked risks and approve the target questions and failure criteria.",
+      "humanAction": "Confirm which risks could genuinely make the idea fail.",
+      "aiRole": ["Rank assumptions independently by consequence, uncertainty, and testability", "Turn top risks into observable questions and signals"],
+      "dependencies": ["Approved target moment", "Evidence-labelled assumptions", "Human Decider for Gate 2"],
+      "whatGoodLooksLike": ["Questions concern consequential uncertainty rather than preference", "Each question has observable success, ambiguity, and failure signals"],
+      "definitionOfDone": ["Long-term goal and target are explicit", "Ranked questions have observable success, ambiguity, and failure signals", "Gate 2 is human-approved"],
+      "examples": ["Can a target customer explain the value and choose a next step without the moderator teaching the concept?"],
+      "failureModes": ["Asking whether users like the idea", "Rewriting questions after results are known"],
+      "limitations": ["Poorly observable questions produce opinion rather than behavioral evidence", "Compressing independent risk ranking increases anchoring risk"],
+      "substitutes": [{
+        "name": "Independent risk memos plus human ranking",
+        "useWhen": "A live cross-functional risk workshop is unavailable.",
+        "preserves": "Multiple perspectives diverge before the Decider converges on observable risks.",
+        "methodFidelityImpact": "Changes synchronous discussion into bounded independent assessments.",
+        "evidenceImpact": "AI assessments are proposals and do not supply stakeholder or customer evidence."
+      }],
+      "deeperHelp": [{"label": "Question prompts", "reference": "references/facilitation-playbook.md#step-6--sprint-questions"}]
+    },
+    "07-explore": {
+      "title": "Explore independently",
+      "whyItMatters": "Independent divergence reduces anchoring and gives the Decider concrete alternatives instead of one prematurely polished idea.",
+      "purpose": "Diverge independently into multiple concrete, evidence-aware solution directions before evaluating them.",
+      "methods": {
+        "sprint-book": "Lightning Demos followed by four-step sketching",
+        "adaptive-design-sprint": "Independent concrete solution directions with a sourced precedent scan"
+      },
+      "timeboxMinutes": {"sprint-book": 240, "adaptive-design-sprint": 150},
+      "humanEffort": "Contribute or review concrete flows only after independent directions are complete.",
+      "humanAction": "Confirm that the directions are meaningfully different and concrete enough to test.",
+      "aiRole": ["Run a sourced precedent scan", "Generate independent concrete flows from bounded specialist roles without cross-contamination"],
+      "dependencies": ["Approved sprint questions", "Shared evidence base", "Isolated role packets"],
+      "whatGoodLooksLike": ["Directions differ in mechanism, not only presentation", "Each flow is concrete enough to expose a critical test scene and its assumptions"],
+      "definitionOfDone": ["At least three meaningfully different concrete directions exist", "Each direction names evidence, assumptions, risk, and a test scene", "Dissent remains visible"],
+      "examples": ["Show a four-scene flow with entry context, action, system response, and consequence—not a paragraph saying use AI."],
+      "failureModes": ["Producing cosmetic variants", "Sharing the first recommendation before other roles diverge", "Submitting prose-only ideas as sketches"],
+      "limitations": ["AI-generated directions are proposals, not evidence", "Missing human disciplines and lived experience can narrow the option set"],
+      "substitutes": [{
+        "name": "Sourced precedent scan plus independently generated concrete flows",
+        "useWhen": "Lightning Demos and multi-person four-step sketching are unavailable.",
+        "preserves": "Inspiration is sourced and concrete alternatives exist before convergence.",
+        "methodFidelityImpact": "Replaces live human show-and-tell and sketching with bounded AI-assisted work.",
+        "evidenceImpact": "Precedents and generated flows do not demonstrate customer preference or stakeholder support."
+      }],
+      "deeperHelp": [{"label": "Exploration method", "reference": "references/facilitation-playbook.md#step-7--explore"}]
+    },
+    "08-decide": {
+      "title": "Compare and decide",
+      "whyItMatters": "Explicit criteria and a named Decider turn divergent work into one testable direction without hiding trade-offs or dissent.",
+      "purpose": "Converge deliberately on one coherent direction while keeping decision criteria, dissent, and rejected alternatives visible.",
+      "methods": {
+        "sprint-book": "Art museum, heat-map review, speed critique, straw poll, and Decider supervote",
+        "adaptive-design-sprint": "Independent role assessments followed by the human Decider"
+      },
+      "timeboxMinutes": {"sprint-book": 120, "adaptive-design-sprint": 75},
+      "humanEffort": "Review the comparison and make one explicit consequential choice.",
+      "humanAction": "Choose one coherent direction and state the main reason, reservations, and any deliberate combination.",
+      "aiRole": ["Define criteria before revealing recommendations", "Present comparison, trade-offs, and dissent without choosing"],
+      "dependencies": ["Independent concrete directions", "Approved sprint questions", "Human Decider for Gate 3"],
+      "whatGoodLooksLike": ["The choice follows criteria fixed before recommendations were revealed", "Rejected alternatives and material reservations remain visible"],
+      "definitionOfDone": ["Criteria predate the choice", "Selected and rejected directions and dissent are recorded", "Gate 3 records the human decision"],
+      "examples": ["Choose Direction B because it tests the highest-consequence trust risk with the fewest simulated steps."],
+      "failureModes": ["Counting AI assessments as votes", "Combining every idea into an incoherent prototype", "Hiding a material dissenting view"],
+      "limitations": ["Assessment convergence is not stakeholder support or customer evidence", "A single Decider may lack perspectives held by an absent human team"],
+      "substitutes": [{
+        "name": "Independent role assessments followed by the human Decider",
+        "useWhen": "A team heat map, critique, and straw poll are unavailable.",
+        "preserves": "Trade-offs are exposed and the Decider owns the final choice.",
+        "methodFidelityImpact": "Substitutes structured analysis for human team voting mechanics.",
+        "evidenceImpact": "AI agreement cannot be interpreted as stakeholder or customer preference."
+      }],
+      "deeperHelp": [{"label": "Decision prompts", "reference": "references/facilitation-playbook.md#step-8--decide"}]
+    },
+    "09-experiment": {
+      "title": "Design the experiment",
+      "whyItMatters": "A bounded experiment connects the chosen direction to observable evidence before build effort makes the team defensive about the solution.",
+      "purpose": "Translate the chosen direction into a fixed hypothesis, realistic storyboard, and observable test signals.",
+      "methods": {
+        "sprint-book": "Storyboard the customer test from opening scene through critical moments",
+        "adaptive-design-sprint": "Experiment card and four-to-six-scene storyboard"
+      },
+      "timeboxMinutes": {"sprint-book": 180, "adaptive-design-sprint": 120},
+      "humanEffort": "Approve the hypothesis, lowest sufficient artifact rung, tool route, safety boundaries, and build approvals.",
+      "humanAction": "Confirm that the scenes and approved prototype/MVP brief can answer the sprint questions.",
+      "aiRole": ["Draft scenes, scorecard, and realistic boundaries", "Recommend the lowest sufficient artifact rung and provider-neutral tool route"],
+      "dependencies": ["Gate 3 selected concept", "Fixed sprint questions and scorecard", "Approved prototype/MVP brief and tool decision from the #15 workflow"],
+      "whatGoodLooksLike": ["Every scene earns its place by answering an approved sprint question", "The lowest sufficient artifact rung, reality boundary, tool route, and approvals are explicit"],
+      "definitionOfDone": ["Four to six scenes map to sprint questions", "Signals and thresholds are fixed before testing", "The typed prototype/MVP brief and applicable human approvals are complete"],
+      "examples": ["Use a clickable four-scene facade because task comprehension matters; simulate persistence because repeated use is outside the question."],
+      "failureModes": ["Designing a demo instead of an experiment", "Increasing fidelity because AI can build quickly", "Requesting a vague build without approved scope and tool boundaries"],
+      "limitations": ["A storyboard cannot answer behaviors it does not realistically expose", "Unapproved or excessive fidelity adds cost, privacy, and operational risk without stronger evidence"],
+      "substitutes": [{
+        "name": "Four-to-six-scene experiment card",
+        "useWhen": "A room-scale storyboard exercise is impractical.",
+        "preserves": "The opening context, critical moments, questions, signals, and prototype boundary are fixed.",
+        "methodFidelityImpact": "Compresses collaborative storyboarding into an explicit reviewable sequence.",
+        "evidenceImpact": "Missing perspectives can leave unrealistic context or omitted failure states."
+      }],
+      "deeperHelp": [
+        {"label": "Prototype/MVP brief and tool selection", "reference": "references/prototype-mvp-testing.md"},
+        {"label": "Experiment prompts", "reference": "references/facilitation-playbook.md#step-9--experiment"}
+      ]
+    },
+    "10-prototype": {
+      "title": "Build and review the prototype",
+      "whyItMatters": "A realistic but tightly bounded artifact lets customers encounter the critical experience without confusing build completeness with validation.",
+      "purpose": "Build and trial-run the smallest realistic prototype capable of answering the agreed questions.",
+      "methods": {
+        "sprint-book": "Divide-and-conquer realistic prototype build plus trial run",
+        "adaptive-design-sprint": "Bounded prototype build with independent critique and research-readiness review"
+      },
+      "timeboxMinutes": {"sprint-book": 420, "adaptive-design-sprint": 300},
+      "humanEffort": "Authorize any external account, spend, data, or deployment action and approve Gate 4 after the real script passes a trial.",
+      "humanAction": "Approve or reject the immutable trial-passed tested version for customer sessions.",
+      "aiRole": ["Build only from the #15 approved brief packet", "Run separate critical and research-readiness reviews and document simulation"],
+      "dependencies": ["Complete #15 typed prototype/MVP brief", "Approved build packet and assets", "Early recruitment plan", "Canonical test plan and moderated trial"],
+      "whatGoodLooksLike": ["The approved critical scenes feel coherent while simulated boundaries remain explicit", "The exact neutral protocol passes a trial and the tested version is immutable"],
+      "definitionOfDone": ["Approved scenes work accessibly within the reality boundary", "The actual neutral script passes a moderated trial", "A tested version freezes prototype, plan, deployment, expiry, cleanup, rollback, and limitations", "Gate 4 is human-approved"],
+      "examples": ["Freeze proto-v1 only after the exact interview script runs end to end without teaching the concept."],
+      "failureModes": ["Building beyond the approved brief", "Treating a live URL as validation", "Using production data or spend without explicit human approval", "Changing the script or prototype without a new version"],
+      "limitations": ["A test-ready prototype is neither customer validation nor production readiness", "Simulated behavior bounds what sessions can establish"],
+      "substitutes": [{
+        "name": "Single-builder bounded implementation plus independent reviews",
+        "useWhen": "A divide-and-conquer prototype team is unavailable.",
+        "preserves": "The approved scenes are built, trialled, critiqued, and frozen separately from the build claim.",
+        "methodFidelityImpact": "Changes team production mechanics while retaining independent readiness checks.",
+        "evidenceImpact": "Reduced implementation diversity can miss issues; the trial and explicit limitations constrain later claims."
+      }],
+      "deeperHelp": [
+        {"label": "Build, trial, and freeze workflow", "reference": "references/prototype-mvp-testing.md#build-trial-freeze-and-session-sequence"},
+        {"label": "Prototype prompts", "reference": "references/facilitation-playbook.md#step-10--prototype"}
+      ]
+    },
+    "11-customer-sessions": {
+      "title": "Run real-customer sessions",
+      "whyItMatters": "Observing suitable customers using the same tested version produces evidence that internal opinions and simulated participants cannot supply.",
+      "purpose": "Observe suitable real customers encountering the prototype under a consistent protocol.",
+      "methods": {
+        "sprint-book": "Five one-to-one customer interviews observed by the sprint team",
+        "adaptive-design-sprint": "Planned one-to-one sessions with suitable real customers"
+      },
+      "timeboxMinutes": {"sprint-book": 300, "adaptive-design-sprint": 180},
+      "humanEffort": "Confirm suitability and consent, conduct or authorize moderation, and keep session records accurate.",
+      "humanAction": "Run the next booked suitable participant session or activate the smallest recruitment backup action.",
+      "aiRole": ["Prepare isolated version-bound session packets", "Support neutral moderation only with suitable tooling and consent", "Record observation separately from inference"],
+      "dependencies": ["Gate 4 approved immutable tested version", "Approved target, screener, consent, schedule, and backups", "Suitable real participants"],
+      "whatGoodLooksLike": ["Participants are suitable, consenting, and exposed to a consistent neutral protocol", "Observation stays separate from inference and any target shortfall remains explicit"],
+      "definitionOfDone": ["Recruitment and consent are documented", "At least one suitable real session is complete", "Protocol deviations and anonymized evidence are recorded", "Target shortfall remains visible rather than silently lowered"],
+      "examples": ["With three usable sessions from a five-session plan, mark testing partial directional, activate backups, and retain the original target and limitations."],
+      "failureModes": ["Counting colleagues, conflicted respondents, or AI personas", "Leading the participant or teaching the interface", "Lowering the target after cancellations", "Mixing prototype or question versions silently"],
+      "limitations": ["One or two usable sessions are early/limited; three or four are partial directional under the #11 evidence model", "Session counts never establish statistical confidence, prevalence, or representativeness"],
+      "substitutes": [{
+        "name": "One-to-one sessions plus deliberate observation and debrief checkpoints",
+        "useWhen": "A cross-functional Sprint watch party is unavailable.",
+        "preserves": "Individual observations remain traceable across sessions before synthesis.",
+        "methodFidelityImpact": "Adapts team observation mechanics; the Sprint-book target remains five unless a deviation is recorded.",
+        "evidenceImpact": "A single human observer can miss signals, so contradictions and observation limitations must remain visible."
+      }],
+      "deeperHelp": [
+        {"label": "Recruitment operations", "reference": "references/recruitment-playbook.md"},
+        {"label": "Session protocol", "reference": "references/customer-testing.md"}
+      ]
+    },
+    "12-synthesis": {
+      "title": "Synthesise evidence",
+      "whyItMatters": "Traceable synthesis turns individual observations into bounded decision evidence while keeping contradictions and uncertainty intact.",
+      "purpose": "Compare observed customer evidence against the predefined questions and expose patterns, contradictions, outliers, and limitations.",
+      "methods": {
+        "sprint-book": "End-of-customer-day pattern review against sprint questions",
+        "adaptive-design-sprint": "Traceable question-by-question synthesis with independent critique"
+      },
+      "timeboxMinutes": {"sprint-book": 60, "adaptive-design-sprint": 75},
+      "humanEffort": "Supply missing material session context and review evidence boundaries without repairing inconvenient results.",
+      "humanAction": "Confirm that no material session context is missing before the final decision.",
+      "aiRole": ["Synthesize only from the bounded summaries packet", "Trace every claim to observation or inference IDs", "Challenge cherry-picking and overclaiming"],
+      "dependencies": ["At least one usable real session", "Current summaries-only synthesis packet", "Unchanged scorecard and version bindings"],
+      "whatGoodLooksLike": ["Every claim can be traced to included session evidence", "Patterns, contradictions, outliers, quality limits, and partial counts are presented together"],
+      "definitionOfDone": ["Every finding traces to included session evidence", "Patterns, contradictions, outliers, strength, and gaps are visible", "Partial recruitment remains partial under the #11 four-dimensional assessment"],
+      "examples": ["Two of three participants hesitated at TASK-1; one completed directly. This is a directional usability signal, not prevalence."],
+      "failureModes": ["Rewriting the scorecard after results", "Ignoring contradictory sessions", "Inferring population confidence from a small directional sample"],
+      "limitations": ["Partial or mixed-quality sessions narrow justified decisions", "Synthesis cannot repair missing, unsuitable, or unusable sessions"],
+      "substitutes": [{
+        "name": "Summaries-only question review with separate critical pass",
+        "useWhen": "A team watch-party synthesis is unavailable.",
+        "preserves": "Question-by-question comparison, traceability, contradictions, and independent challenge.",
+        "methodFidelityImpact": "Changes live group sensemaking into bounded sequential synthesis.",
+        "evidenceImpact": "Reduced human interpretive diversity can miss meanings; traceability keeps claims auditable."
+      }],
+      "deeperHelp": [
+        {"label": "Bounded synthesis", "reference": "references/customer-testing.md#bounded-synthesis"},
+        {"label": "Evidence strength and partial outcomes", "reference": "references/transition-model.md#customer-session-consistency"}
+      ]
+    },
+    "13-outcome": {
+      "title": "Decide and hand off",
+      "whyItMatters": "Separating process completion, evidence strength, and decision readiness prevents a finished sprint from being mistaken for a validated product.",
+      "purpose": "Make a bounded human-owned decision that states what was learned, what remains unknown, and the next learning action.",
+      "methods": {
+        "sprint-book": "Decider review and post-sprint next-step decision",
+        "adaptive-design-sprint": "Evidence-limited outcome decision and owned handoff"
+      },
+      "timeboxMinutes": {"sprint-book": 45, "adaptive-design-sprint": 45},
+      "humanEffort": "Choose Proceed, Iterate, Pivot, Investigate, or Stop and own the dated next action.",
+      "humanAction": "Select the evidence-bounded outcome, rationale, owner, and smallest next learning action.",
+      "aiRole": ["Present options with method, evidence, readiness, and limitation boundaries", "Render the final private result and publication checklist links"],
+      "dependencies": ["Current four-dimensional completion assessment", "Traceable synthesis or explicit unvalidated closure", "Human Decider for Gate 5"],
+      "whatGoodLooksLike": ["The decision is no larger than the evidence supports", "The portable result preserves method adaptations, evidence limits, risks, and the next learning action"],
+      "definitionOfDone": ["Outcome and rationale are human-owned", "Process completion, method fidelity, evidence strength, and decision readiness remain separate", "Owners and dated actions are recorded", "Private output validates before any separately sanitized #14-style results-site publication"],
+      "examples": ["Iterate: correct the observed TASK-1 failure, then retest the same question with qualified participants before a larger investment."],
+      "failureModes": ["Calling partial evidence validation", "Publishing the private workspace directly", "Choosing Proceed, Iterate, or Pivot without usable real-customer evidence"],
+      "limitations": ["The outcome is bounded by sample, protocol, prototype, and method limitations", "Publication approval is separate from workspace validation and requires a sanitized results export"],
+      "substitutes": [{
+        "name": "Asynchronous evidence-bounded Decider review",
+        "useWhen": "A live team outcome meeting is unavailable.",
+        "preserves": "The human owns a documented choice with dissent, limitations, owner, and date.",
+        "methodFidelityImpact": "Compresses collective review but does not transfer the decision to AI.",
+        "evidenceImpact": "Missing stakeholder perspectives remain a decision-readiness limitation."
+      }],
+      "deeperHelp": [
+        {"label": "Outcome prompts", "reference": "references/facilitation-playbook.md#step-13--outcome"},
+        {"label": "Portable results output", "reference": "references/html-output.md"},
+        {"label": "Publication checklist", "reference": "references/privacy-and-publication.md#publication-checklist"}
+      ]
+    }
+  }
+}

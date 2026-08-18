@@ -36,6 +36,13 @@ consequential decision made by the engine.
 
 ## Canonical structured brief
 
+The structured recruitment plan starts earlier, during Step 3 evidence
+collection. Keep `artifact-data/10-test-plan.json` as its canonical source while
+the typed prototype/MVP brief is developed; Step 9 must make the selected
+artifact rung and test scenes answer the same target and signals, and Step 10
+must use the approved screener, logistics, consent, and backup plan rather than
+silently replacing them.
+
 At Step 9, create `10-prototype-brief` with `new-artifact`. Its canonical JSON
 contains a typed `prototypeBrief` record; its accessible HTML is generated at
 `artifacts/10-prototype-brief.html`. Complete every field before approving it:

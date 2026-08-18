@@ -37,6 +37,7 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 ## What it produces
 
 - A guided, resumable workflow with explicit human decision gates
+- Compact just-in-time guidance for every step, with examples, rationale, canonical methods, checklists, substitutes, blockers, and pause help available on demand
 - Separate method-profile, execution-mode, and route selectors with named selection provenance and a versioned fidelity contract
 - Bounded AI roles with a versioned assignment manifest, immutable packet/input digests, result-memo lifecycle, and enforced independent runs
 - A living HTML dashboard showing process status, method fidelity, descriptive evidence strength, and action-specific decision readiness independently
@@ -44,6 +45,7 @@ Use $run-design-sprint to prepare an end-to-end sprint plan and HTML workspace f
 - HTML sprint artifacts, from the brief and evidence ledger through the outcome report
 - Independent solution directions, a decision record, and a testable prototype
 - A test-artifact ladder and typed prototype/MVP brief with provider-neutral tool selection, explicit approvals, bounded build packets, moderated trials, and immutable deployment/version records
+- An early practical recruitment plan with behavioral target, neutral screener, optional channels, outreach/reminder/scheduling/consent/backup templates, owner, deadline, milestones, and honest partial handling without requiring a paid vendor
 - A real-customer test plan with separate planned, invited, attempted, completed, qualified, excluded, and usable counts plus traceable material findings
 - A final proceed, iterate, pivot, investigate, or stop decision
 - Separately approved private-archive and privacy-checked shareable-site preparation, with optional deterministic ZIP output and no automatic publication

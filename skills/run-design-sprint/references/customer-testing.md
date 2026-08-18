@@ -31,6 +31,13 @@ Do not count colleagues who know the desired answer, AI personas, unlabelled syn
 
 ## Recruitment
 
+Run the operational [recruitment playbook](recruitment-playbook.md) during
+`03-evidence`. Its structured plan in `10-test-plan` is the canonical source for
+the target definition, neutral screener, optional channels, templates,
+scheduling, consent readiness, backups, owner, status, next action, deadline,
+and partial-recruitment handling. The protocol below defines the evidence
+boundary that plan must preserve.
+
 Define:
 
 - required behaviours or circumstances;
@@ -55,6 +62,11 @@ Example structure:
 5. “Is there anything that would make participating difficult?”
 
 Recruitment must begin during the evidence phase because participants are usually the longest-lead dependency.
+
+Never require a paid recruitment provider. Present existing customers,
+founder/team networks, communities, research panels, partners, and direct
+outreach with trade-offs; the human chooses. Obtain explicit human approval
+before spending on a panel, incentive, account, or outreach service.
 
 ## Consent and privacy
 

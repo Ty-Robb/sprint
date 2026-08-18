@@ -35,7 +35,8 @@
     "outcomeAssessment": {"$ref": "#/$defs/outcomeAssessment"},
     "unknowns": {"$ref": "#/$defs/stringList"},
     "nextActions": {"$ref": "#/$defs/stringList"},
-    "prototypeBrief": {"$ref": "prototype-brief-v1.schema.json"}
+    "prototypeBrief": {"$ref": "prototype-brief-v1.schema.json"},
+    "recruitmentPlan": {"$ref": "recruitment-plan-v1.schema.json"}
   },
   "additionalProperties": false,
   "allOf": [
@@ -149,7 +150,8 @@
         {"$ref": "#/$defs/sectionInterviewGuide"},
         {"$ref": "#/$defs/sectionEvidenceCapture"},
         {"$ref": "#/$defs/sectionLogistics"}
-      ]}}}
+      ]}}},
+      "else": {"not": {"required": ["recruitmentPlan"]}}
     },
     {
       "if": {"properties": {"id": {"const": "11-customer-evidence"}}, "required": ["id"]},

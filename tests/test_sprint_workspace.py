@@ -206,6 +206,13 @@ class SprintWorkspaceTests(unittest.TestCase):
             }
         self.write_json(path, data)
         self.run_cli("render", "--workspace", str(self.workspace))
+        if artifact_id == "02-evidence-ledger":
+            state = self.read_json("sprint-state.json")
+            if (
+                state["executionMode"] == "live"
+                and state["currentStep"] == "03-evidence"
+            ):
+                self.prepare_recruitment_plan()
 
     def complete_prototype_brief(
         self,
@@ -680,6 +687,116 @@ class SprintWorkspaceTests(unittest.TestCase):
             str(planned),
         )
 
+    def prepare_recruitment_plan(
+        self,
+        *,
+        deadline: str = "2099-12-31",
+        target: str = "People who personally completed the target workflow in the past 30 days",
+    ) -> None:
+        test_plan_path = self.workspace / "artifact-data" / "10-test-plan.json"
+        if not test_plan_path.exists():
+            self.run_cli(
+                "new-artifact",
+                "--workspace",
+                str(self.workspace),
+                "--id",
+                "10-test-plan",
+            )
+        state = self.read_json("sprint-state.json")
+        planned = state["customerTesting"]["sessionsPlanned"] or 3
+        self.run_cli(
+            "customer",
+            "--workspace",
+            str(self.workspace),
+            "--status",
+            "recruiting",
+            "--target",
+            target,
+            "--planned",
+            str(planned),
+            "--rationale",
+            "This behavior-based target can answer the approved sprint question.",
+        )
+        data = self.read_json("artifact-data/10-test-plan.json")
+        plan = data["recruitmentPlan"]
+        plan["targetDefinition"].update(
+            {
+                "audience": target,
+                "qualifyingBehaviours": [
+                    "Personally completed the target workflow in the past 30 days"
+                ],
+                "disqualifyingConditions": [
+                    "Colleague, conflicted participant, or no recent first-person example"
+                ],
+                "targetSessions": planned,
+                "backupParticipants": 2,
+                "rationale": "This behavior-based target can answer the approved sprint question.",
+                "specialConsiderations": [
+                    "Remote participation must support the participant's accessibility needs."
+                ],
+            }
+        )
+        plan["screener"]["questions"] = [
+            {
+                "prompt": "Tell me about the last time you completed the target workflow.",
+                "qualifyingSignal": "A first-person example from the past 30 days.",
+                "disqualifyingSignal": "No recent first-person example.",
+                "revealsPreferredAnswer": False,
+            },
+            {
+                "prompt": "How often have you completed that workflow in the past 90 days?",
+                "qualifyingSignal": "At least one completed instance.",
+                "disqualifyingSignal": "No completed instance.",
+                "revealsPreferredAnswer": False,
+            },
+            {
+                "prompt": "What part of the workflow or decision was personally yours?",
+                "qualifyingSignal": "Personally performed or owned the relevant decision.",
+                "disqualifyingSignal": "Only observed someone else's work.",
+                "revealsPreferredAnswer": False,
+            },
+        ]
+        for channel in plan["channels"]:
+            channel["selected"] = channel["name"] == "direct-outreach"
+        plan["outreach"] = {
+            "invitation": "We are speaking with people who recently completed this workflow for a 45-minute research session. We are testing a prototype, not you. Reply to receive the neutral screener.",
+            "reminder": "Reminder: your research session is at the confirmed date, time, timezone, and private link. Reply for accessibility support or rescheduling.",
+            "confirmation": "You are booked for the confirmed date, time, and timezone for 45 minutes. We will confirm consent before notes or recording, and you may cancel by replying.",
+            "cancellation": "Your session is cancelled with no penalty. Scheduling and screener data will be handled under the stated retention policy, and a qualified backup may be invited.",
+            "backupInvitation": "A session window has opened. Participation remains optional; confirm through the private scheduling route before the stated deadline.",
+        }
+        plan["scheduling"].update(
+            {
+                "timezone": "Europe/London",
+                "windows": ["2099-12-29 10:00–12:00 Europe/London"],
+                "bookingMethod": "Private calendar link or direct confirmation",
+                "recruitmentDeadline": deadline,
+            }
+        )
+        plan["consent"]["dataRetention"] = (
+            "Delete contact and raw recording data 30 days after synthesis unless the participant withdraws sooner."
+        )
+        self.write_json("artifact-data/10-test-plan.json", data)
+        self.run_cli(
+            "recruitment-status",
+            "--workspace",
+            str(self.workspace),
+            "--owner",
+            "Research owner",
+            "--status",
+            "recruiting",
+            "--next-action",
+            "Send the approved invitation to the first suitable candidates.",
+            "--deadline",
+            deadline,
+            "--complete-milestone",
+            "target-defined",
+            "--complete-milestone",
+            "screener-approved",
+            "--complete-milestone",
+            "consent-ready",
+        )
+
     def initialise_customer_session(
         self,
         session_id: str,
@@ -892,6 +1009,206 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertEqual(manifest["currentVersions"]["prototype"], None)
         result = self.run_cli("validate", "--workspace", str(self.workspace))
         self.assertIn("Sprint workspace is valid", result.stdout)
+
+    def test_progressive_guidance_is_complete_and_default_output_stays_compact(self) -> None:
+        self.initialise()
+        registry = WORKSPACE_MODULE.load_step_guidance()
+        self.assertEqual(set(registry["steps"]), set(WORKSPACE_MODULE.STEP_INDEX))
+        required = {
+            "whyItMatters",
+            "purpose",
+            "methods",
+            "timeboxMinutes",
+            "humanEffort",
+            "humanAction",
+            "aiRole",
+            "dependencies",
+            "whatGoodLooksLike",
+            "definitionOfDone",
+            "examples",
+            "failureModes",
+            "limitations",
+            "substitutes",
+            "deeperHelp",
+        }
+        for step_id, guidance in registry["steps"].items():
+            with self.subTest(step=step_id):
+                self.assertTrue(required.issubset(guidance))
+                self.assertTrue(guidance["substitutes"])
+                self.assertTrue(guidance["deeperHelp"])
+
+        compact = self.run_cli(
+            "guidance", "--workspace", str(self.workspace)
+        ).stdout
+        self.assertIn("Need from you:", compact)
+        self.assertIn("Why it matters:", compact)
+        self.assertIn("Canonical purpose:", compact)
+        self.assertIn("Why this method:", compact)
+        self.assertIn("AI can:", compact)
+        self.assertIn("Done when:", compact)
+        self.assertIn("More:", compact)
+        self.assertNotIn("Failure modes:", compact)
+        self.assertNotIn("Demanding a polished brief", compact)
+
+        example = self.run_cli(
+            "guidance",
+            "--workspace",
+            str(self.workspace),
+            "--action",
+            "show-example",
+        ).stdout
+        self.assertIn("Examples:", example)
+        self.assertIn("Improve onboarding for first-time team admins", example)
+        status = self.run_cli("status", "--workspace", str(self.workspace)).stdout
+        self.assertIn("Need from human:", status)
+        self.assertIn("Deeper guidance actions:", status)
+        self.assertNotIn("Failure modes:", status)
+
+        experiment = json.loads(
+            self.run_cli(
+                "guidance",
+                "--workspace",
+                str(self.workspace),
+                "--step",
+                "09-experiment",
+                "--json",
+            ).stdout
+        )
+        self.assertTrue(
+            any("#15" in item for item in experiment["dependencies"])
+        )
+        sessions = registry["steps"]["11-customer-sessions"]
+        self.assertTrue(any("#11" in item for item in sessions["limitations"]))
+
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Just-in-time guidance", dashboard)
+        self.assertIn(
+            "Show examples, checklist, substitutes, and troubleshooting", dashboard
+        )
+
+    def test_live_evidence_requires_and_tracks_the_practical_recruitment_plan(self) -> None:
+        self.advance_to_qualify()
+        self.run_cli(
+            "set-route",
+            "--workspace",
+            str(self.workspace),
+            "--route",
+            "full-design-sprint",
+            "--rationale",
+            "The strategic foundation already exists.",
+        )
+        self.complete_required_assignments("02-qualify")
+        self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "02-qualify",
+        )
+        self.run_cli(
+            "gate",
+            "--workspace",
+            str(self.workspace),
+            "--gate",
+            "gate-1",
+            "--decision",
+            "Approve full route",
+            "--rationale",
+            "Proceed with live evidence work.",
+        )
+        missing = self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "03-evidence",
+            check=False,
+        )
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("early structured recruitment plan", missing.stderr)
+
+        self.run_cli(
+            "new-artifact",
+            "--workspace",
+            str(self.workspace),
+            "--id",
+            "02-evidence-ledger",
+        )
+        self.complete_artifact("02-evidence-ledger")
+        self.complete_required_assignments("03-evidence")
+        plan_data = self.read_json("artifact-data/10-test-plan.json")
+        plan = plan_data["recruitmentPlan"]
+        self.assertIs(plan["paidVendorRequired"], False)
+        self.assertEqual(len(plan["channels"]), 6)
+        self.assertTrue(all(
+            item["revealsPreferredAnswer"] is False
+            for item in plan["screener"]["questions"]
+        ))
+        self.assertIn("#11", plan["backupPlan"]["partialRecruitmentHandling"])
+
+        plan["incentive"].update(
+            {
+                "offer": "A fixed approved thank-you payment after the session.",
+                "spendingRequired": True,
+                "approvalStatus": "pending",
+                "approvalNote": "Awaiting the human budget owner's decision.",
+            }
+        )
+        self.write_json("artifact-data/10-test-plan.json", plan_data)
+        pending_spend = self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "03-evidence",
+            check=False,
+        )
+        self.assertEqual(pending_spend.returncode, 2)
+        self.assertIn("human approval is required before spending", pending_spend.stderr)
+        plan["incentive"].update(
+            {
+                "approvalStatus": "approved",
+                "approvedBy": "Budget owner",
+                "approvalNote": "Approved only for the recorded fixed participant incentive.",
+            }
+        )
+        self.write_json("artifact-data/10-test-plan.json", plan_data)
+        self.run_cli(
+            "recruitment-status",
+            "--workspace",
+            str(self.workspace),
+            "--owner",
+            "Research owner",
+            "--status",
+            "recruiting",
+            "--next-action",
+            "Send the first approved direct-outreach message.",
+            "--deadline",
+            "2020-01-01",
+        )
+        completed = self.run_cli(
+            "complete-step",
+            "--workspace",
+            str(self.workspace),
+            "--step",
+            "03-evidence",
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Research owner", dashboard)
+        self.assertIn("Stalled or due", dashboard)
+        self.assertIn("No paid vendor required", dashboard)
+        test_plan = (
+            self.workspace / "artifacts" / "10-test-plan.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Neutral screener", test_plan)
+        self.assertIn("Outreach templates", test_plan)
+        self.assertIn("Backups and partial recruitment", test_plan)
+        status = self.run_cli("status", "--workspace", str(self.workspace)).stdout
+        self.assertIn("Recruitment: recruiting, owner Research owner", status)
+        self.assertIn("Recruitment stalled or due", status)
+        self.run_cli("validate", "--workspace", str(self.workspace))
 
     def test_init_requires_explicit_execution_mode_selector_and_reason(self) -> None:
         result = self.run_cli(

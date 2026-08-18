@@ -15,10 +15,12 @@ dependency-free and reports instance locations as JSONPath, for example
 | Artifact specifications | `references/artifact-specs.json` | `1.0` | Current only |
 | Role contracts | `references/role-contracts.json` | `1.0` | Current only |
 | Method profiles | `references/method-profiles.json` | `1.0` | Current only |
+| Progressive step guidance | `references/step-guidance.json` | `1.0` | Current only |
 | Session manifest | `customer-testing/session-manifest.json` | `2.0` | `1.0` is migratable |
 | Customer session | `customer-testing/sessions/*/session.json` | `2.0` | `1.0` is migratable |
 | Session summary | `customer-testing/sessions/*/summary.json` | `1.0` | Current only |
 | Prototype/MVP brief | `artifact-data/10-prototype-brief.json` → `prototypeBrief` | `1.0` nested in artifact data `3.0` | Current only |
+| Recruitment plan | `artifact-data/10-test-plan.json` → `recruitmentPlan` | `1.0` optional capability nested in artifact data `3.0` | Current only; required for new live evidence work |
 | Immutable tested version | `prototype/*/tested-version.json` | `1.0` | Current only; records are never migrated in place |
 | Generated site manifest | `site-manifest.json` | `1.0` | Current generated view; rebuilt by `render` and `export` |
 | Explicit export approval | operator-supplied `*.json` | `1.0` | Current only; required by `export` |
@@ -63,6 +65,16 @@ version summaries. The tested-version schema freezes the approved brief
 snapshot, build packet, passed trial, linked experiment/storyboard/test plan,
 prototype/context, deployment record, and explicit non-validation/readiness
 claims.
+
+The step-guidance reference defines why each step matters, canonical purpose,
+profile-specific method and timebox, human effort/action, AI role, dependencies,
+what good looks like, definition of done, examples, failure modes, limitations,
+approved substitutes, and deeper-help links for all 13 steps. Runtime loading
+detects drift from the canonical method profile. The recruitment-plan schema
+defines behavior-based targets, neutral screener questions, optional channel
+trade-offs, incentive approval, message templates, scheduling/accessibility,
+consent/retention, backups, partial handling, owner/action/deadline tracking,
+and seven progress milestones.
 
 The site-manifest schema catalogs every generated page, its relative path,
 current phase/status/disposition/visibility, content and render digests, local

@@ -23,6 +23,14 @@ Need from you: <one focused decision or input>
 Next: <what the AI team will do after the response>
 ```
 
+Run `guidance --workspace <sprint-directory>` to populate the current-step
+why, canonical purpose, selected method and timebox, AI role, human action, and
+definition of done. Offer `show-example`, `explain-why`, `show-canonical-method`,
+`show-checklist`, `compare-substitutes`, `i-am-blocked`, and `pause`; render
+only the selected action with `guidance --action <action>`. The complete
+machine-readable contract is [step-guidance.json](step-guidance.json). Do not
+add its examples, failure modes, limitations, or substitutes to every turn.
+
 Ask one focused question when possible. Offer a draft recommendation when the user may not know the terminology. Allow `approve`, `revise`, `go back`, `show evidence`, and `pause` at every gate.
 
 Do not ask the user for information that can be derived safely from supplied material or public evidence. Do not advance through a human gate using an assumed answer.
@@ -35,7 +43,7 @@ Use `scripts/sprint_workspace.py` for deterministic state and rendering. Run:
 python3 <skill-dir>/scripts/sprint_workspace.py --help
 ```
 
-The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `set-concept`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `session-init`, `session-packet`, `session-checkpoint`, `session-complete`, `session-reopen`, `synthesis-packet`, `next-action`, `role-packet`, `role-result`, `assignment-status`, `render`, `render --check`, `status`, `validate`, and `migrate`.
+The key commands are `init`, `set-method-profile`, `set-execution-mode`, `set-challenge`, `question`, `new-artifact`, `artifact-status`, `set-route`, `set-concept`, `record-fidelity`, `complete-step`, `skip-step`, `gate`, `customer`, `recruitment-status`, `guidance`, `session-init`, `session-packet`, `session-checkpoint`, `session-complete`, `session-reopen`, `synthesis-packet`, `next-action`, `role-packet`, `role-result`, `assignment-status`, `render`, `render --check`, `status`, `validate`, and `migrate`.
 
 Read [json-schemas.md](json-schemas.md) when a workspace reports a legacy or unsupported schema version. Do not render or mutate legacy JSON before a protected migration.
 
@@ -194,7 +202,7 @@ design-sprint-<slug>/
         └── synthesis-packet.md
 ```
 
-Create only artifacts required by the selected route. Omit `03-foundation.html` when a foundation stage is unnecessary. Store identity/contact maps, raw transcripts, recordings, account evidence, and usage-dashboard captures in separately access-controlled source storage, not in the workspace. Session records keep opaque audit references to those sources. Keep every version-bound prototype, context, guide, and scorecard file immutable; create a new path and version rather than overwriting it. The generated `.gitignore` is a fallback for common sensitive paths, not permission to put the workspace in a public repository.
+Create only artifacts required by the selected route. Omit `03-foundation.html` when a foundation stage is unnecessary. Create the structured recruitment portion of `10-test-plan` during Step 3, even though the interview tasks and protocol are finalized during Step 10. Store identity/contact maps, raw transcripts, recordings, account evidence, and usage-dashboard captures in separately access-controlled source storage, not in the workspace. Session records keep opaque audit references to those sources. Keep every version-bound prototype, context, guide, and scorecard file immutable; create a new path and version rather than overwriting it. The generated `.gitignore` is a fallback for common sensitive paths, not permission to put the workspace in a public repository.
 
 ## End-to-end workflow
 
@@ -226,11 +234,11 @@ Confirm the method profile and execution mode separately from the route. Use `sp
 
 ### Step 3: Build the evidence base
 
-Collect supplied research, public evidence when permitted, analytics, customer feedback, alternatives, technical constraints, and business context. Start customer recruitment now rather than waiting for the prototype.
+Collect supplied research, public evidence when permitted, analytics, customer feedback, alternatives, technical constraints, and business context. Start customer recruitment now rather than waiting for the prototype. Follow [the practical recruitment playbook](recruitment-playbook.md): create `10-test-plan`, tailor its structured `recruitmentPlan`, set the canonical customer target, and record an owner, status, next action, and deadline. Completing evidence on a live route is blocked until the target, neutral approved screener, channels, templates, schedule, consent, backups, and partial-recruitment handling are usable. A paid vendor is never required.
 
 **Primary roles:** Evidence Researcher, Research Lead
 
-**Artifacts:** `02-evidence-ledger.html`, recruitment section in `10-test-plan.html`
+**Artifacts:** `02-evidence-ledger.html`, early structured recruitment section in `10-test-plan.html`
 
 ### Step 4: Establish the foundation when required
 
@@ -326,6 +334,13 @@ attempted, completed, qualified, excluded, and usable counts reconcile to
 unique manifest entries and cannot be set directly.
 
 If sessions cannot occur, set the state to `waiting-for-customers`. Do not skip forward to a customer-tested conclusion.
+
+If only part of the target is recruited, keep the original target, activate the
+recorded backups and next approved channel, and run the suitable booked
+sessions. Report one or two usable sessions as early/limited and three or four
+as partial directional through the four-dimensional completion/evidence model;
+never convert those labels into statistical confidence or silently lower the
+target.
 
 For a live Sprint-book profile, five suitable one-to-one sessions are the default target. A different target requires a reason and a fidelity/evidence/readiness impact record. Self-test and planning/rehearsal modes cannot complete this step or the customer-evidence artifact; they may skip it explicitly and may only rehearse later mechanics with synthetic material clearly labelled `Synthetic rehearsal`.
 

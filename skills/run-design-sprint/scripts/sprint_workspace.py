@@ -42,6 +42,8 @@ LEGACY_ARTIFACT_SCHEMA_VERSION = "1.0"
 PREVIOUS_ARTIFACT_SCHEMA_VERSION = "2.0"
 REFERENCE_SCHEMA_VERSION = "1.0"
 FIDELITY_SCHEMA_VERSION = "1.0"
+STEP_GUIDANCE_SCHEMA_VERSION = "1.0"
+RECRUITMENT_PLAN_VERSION = "1.0"
 ASSIGNMENT_MANIFEST_SCHEMA_VERSION = "1.0"
 ROLE_PACKET_VERSION = "1.0"
 SESSION_MANIFEST_SCHEMA_VERSION = "2.0"
@@ -109,6 +111,14 @@ SCHEMA_FAMILIES = {
         "current": REFERENCE_SCHEMA_VERSION,
         "schemas": {
             REFERENCE_SCHEMA_VERSION: SCHEMAS_DIR / "method-profiles-v1.schema.json"
+        },
+        "migratable": set(),
+    },
+    "step-guidance": {
+        "label": "progressive step guidance",
+        "current": STEP_GUIDANCE_SCHEMA_VERSION,
+        "schemas": {
+            STEP_GUIDANCE_SCHEMA_VERSION: SCHEMAS_DIR / "step-guidance-v1.schema.json"
         },
         "migratable": set(),
     },
@@ -252,6 +262,34 @@ DECISION_IMPACTS = {
     "defer-large-or-irreversible-investment",
 }
 PROTOTYPE_BRIEF_ID = "10-prototype-brief"
+TEST_PLAN_ID = "10-test-plan"
+GUIDANCE_ACTIONS = {
+    "show-example",
+    "explain-why",
+    "show-canonical-method",
+    "show-checklist",
+    "compare-substitutes",
+    "i-am-blocked",
+    "pause",
+}
+RECRUITMENT_STATUSES = {
+    "draft",
+    "ready",
+    "recruiting",
+    "scheduled",
+    "partial",
+    "complete",
+    "blocked",
+}
+RECRUITMENT_MILESTONES = {
+    "target-defined": "targetDefined",
+    "screener-approved": "screenerApproved",
+    "outreach-live": "outreachLive",
+    "candidates-screened": "candidatesScreened",
+    "sessions-booked": "sessionsBooked",
+    "backups-booked": "backupsBooked",
+    "consent-ready": "consentReady",
+}
 ARTIFACT_LADDER = (
     "copy-concept",
     "concierge",
@@ -818,6 +856,48 @@ def load_method_contract() -> dict[str, Any]:
         raise SprintError("method-profiles.json must define non-negotiable principles")
     if not isinstance(steps, dict) or set(steps) != set(STEP_INDEX):
         raise SprintError("method-profiles.json must define every workflow step")
+    return data
+
+
+def load_step_guidance() -> dict[str, Any]:
+    """Load the complete user-facing guidance registry and detect method drift."""
+
+    path = REFERENCES_DIR / "step-guidance.json"
+    data = read_json(path)
+    require_valid_schema(data, "step-guidance", path)
+    actions = data.get("actions")
+    steps = data.get("steps")
+    if not isinstance(actions, dict) or set(actions) != GUIDANCE_ACTIONS:
+        raise SprintError("step-guidance.json must define every supported help action")
+    if not isinstance(steps, dict) or set(steps) != set(STEP_INDEX):
+        raise SprintError("step-guidance.json must define every workflow step")
+
+    method_contract = load_method_contract()
+    for step_id, guidance in steps.items():
+        method_step = method_contract["steps"][step_id]
+        expected_methods = {
+            "sprint-book": method_step["bookDefaultMethod"],
+            "adaptive-design-sprint": method_step["adaptiveDefaultMethod"],
+        }
+        if guidance["purpose"] != method_step["canonicalPurpose"]:
+            raise SprintError(
+                f"step-guidance.json purpose drifted from method-profiles.json for {step_id}"
+            )
+        if guidance["methods"] != expected_methods:
+            raise SprintError(
+                f"step-guidance.json methods drifted from method-profiles.json for {step_id}"
+            )
+        if guidance["timeboxMinutes"] != method_step["suggestedTimeboxMinutes"]:
+            raise SprintError(
+                f"step-guidance.json timeboxes drifted from method-profiles.json for {step_id}"
+            )
+        for help_link in guidance["deeperHelp"]:
+            reference = str(help_link["reference"])
+            reference_path = REFERENCES_DIR / reference.removeprefix("references/").split("#", 1)[0]
+            if not reference_path.is_file():
+                raise SprintError(
+                    f"step-guidance.json has a missing deeper-help reference for {step_id}: {reference}"
+                )
     return data
 
 
@@ -2268,6 +2348,243 @@ def render_prototype_brief(
     return "\n".join(sections)
 
 
+def recruitment_stall(plan: dict[str, Any]) -> tuple[bool, str]:
+    tracking = plan.get("tracking", {})
+    milestones = tracking.get("milestones", {})
+    pending = [
+        key for key, value in milestones.items() if value != "complete"
+    ]
+    if not pending:
+        return False, "All recruitment milestones are complete."
+    deadline = datetime.fromisoformat(str(tracking["deadline"])).date()
+    status = tracking.get("status")
+    stalled = status == "blocked" or (
+        status in {"ready", "recruiting", "scheduled", "partial"}
+        and deadline < datetime.now(timezone.utc).date()
+    )
+    smallest_actions = {
+        "targetDefined": "Approve the behavioral target and disqualifiers.",
+        "screenerApproved": "Review and approve the next neutral screener question.",
+        "outreachLive": "Send the approved invitation through one selected channel.",
+        "candidatesScreened": "Screen the next candidate against the approved criteria.",
+        "sessionsBooked": "Offer concrete timezone-labelled windows to the next qualified candidate.",
+        "backupsBooked": "Invite the next qualified backup.",
+        "consentReady": "Approve the consent and data-retention checklist.",
+    }
+    return stalled, smallest_actions[pending[0]]
+
+
+def render_recruitment_plan(plan: dict[str, Any]) -> str:
+    target = plan["targetDefinition"]
+    screener = plan["screener"]
+    incentive = plan["incentive"]
+    outreach = plan["outreach"]
+    scheduling = plan["scheduling"]
+    consent = plan["consent"]
+    backup = plan["backupPlan"]
+    tracking = plan["tracking"]
+    stalled, smallest_action = recruitment_stall(plan)
+    sections = [
+        render_section(
+            {
+                "title": "Recruitment owner and progress",
+                "eyebrow": "Started during evidence collection",
+                "type": "key-value",
+                "items": [
+                    {"label": "Owner", "value": tracking["owner"]},
+                    {"label": "Status", "value": display_label(tracking["status"])},
+                    {"label": "Next action", "value": tracking["nextAction"]},
+                    {"label": "Deadline", "value": tracking["deadline"]},
+                    {"label": "Candidates screened", "value": str(tracking["candidatesScreened"])},
+                    {"label": "Sessions booked", "value": str(tracking["sessionsBooked"])},
+                    {"label": "Backups booked", "value": str(tracking["backupsBooked"])},
+                ],
+            },
+            201,
+        ),
+        render_section(
+            {
+                "title": "Recruitment milestones",
+                "eyebrow": "Visible operational state",
+                "type": "table",
+                "caption": "Progress from target definition through consent readiness",
+                "columns": ["Milestone", "Status"],
+                "rows": [
+                    [display_label(key), display_label(value)]
+                    for key, value in tracking["milestones"].items()
+                ],
+            },
+            202,
+        ),
+        render_section(
+            {
+                "title": "Behavioral target",
+                "eyebrow": "Suitability before volume",
+                "type": "key-value",
+                "items": [
+                    {"label": "Audience", "value": target["audience"]},
+                    {"label": "Target sessions", "value": str(target["targetSessions"])},
+                    {"label": "Suitable backups", "value": str(target["backupParticipants"])},
+                    {"label": "Rationale", "value": target["rationale"]},
+                    {"label": "Qualifying behaviors", "value": "; ".join(target["qualifyingBehaviours"])},
+                    {"label": "Disqualifiers", "value": "; ".join(target["disqualifyingConditions"])},
+                    {"label": "Special considerations", "value": "; ".join(target["specialConsiderations"])},
+                ],
+            },
+            203,
+        ),
+        render_section(
+            {
+                "title": "Neutral screener",
+                "eyebrow": display_label(screener["status"]),
+                "type": "table",
+                "caption": screener["introduction"],
+                "columns": ["Question", "Qualifies", "Disqualifies", "Reveals preferred answer"],
+                "rows": [
+                    [
+                        item["prompt"],
+                        item["qualifyingSignal"],
+                        item["disqualifyingSignal"],
+                        "No" if item["revealsPreferredAnswer"] is False else "Yes",
+                    ]
+                    for item in screener["questions"]
+                ],
+            },
+            204,
+        ),
+        render_section(
+            {
+                "title": "Channels and trade-offs",
+                "eyebrow": "No paid vendor required",
+                "type": "table",
+                "caption": "Available routes remain optional; the human chooses the mix.",
+                "columns": ["Channel", "Selected", "May require spend", "Trade-off"],
+                "rows": [
+                    [
+                        display_label(item["name"]),
+                        "Yes" if item["selected"] else "No",
+                        "Yes" if item["requiresSpend"] else "No",
+                        item["tradeOff"],
+                    ]
+                    for item in plan["channels"]
+                ],
+            },
+            205,
+        ),
+        render_section(
+            {
+                "title": "Incentive and approval",
+                "eyebrow": "Human approval before spend",
+                "type": "key-value",
+                "items": [
+                    {"label": "Guidance", "value": incentive["guidance"]},
+                    {"label": "Offer", "value": incentive["offer"]},
+                    {"label": "Spending required", "value": "Yes" if incentive["spendingRequired"] else "No"},
+                    {"label": "Approval", "value": display_label(incentive["approvalStatus"])},
+                    {"label": "Approved by", "value": incentive["approvedBy"] or "Not applicable"},
+                    {"label": "Approval note", "value": incentive["approvalNote"]},
+                ],
+            },
+            206,
+        ),
+        render_section(
+            {
+                "title": "Outreach templates",
+                "eyebrow": "Neutral and ready to send after approval",
+                "type": "key-value",
+                "items": [
+                    {"label": display_label(key), "value": value}
+                    for key, value in outreach.items()
+                ],
+            },
+            207,
+        ),
+        render_section(
+            {
+                "title": "Schedule and accessible participation",
+                "eyebrow": "Timezone explicit",
+                "type": "key-value",
+                "items": [
+                    {"label": "Timezone", "value": scheduling["timezone"]},
+                    {"label": "Session length", "value": f'{scheduling["sessionLengthMinutes"]} minutes'},
+                    {"label": "Windows", "value": "; ".join(scheduling["windows"])},
+                    {"label": "Booking method", "value": scheduling["bookingMethod"]},
+                    {"label": "Accessibility", "value": "; ".join(scheduling["accessibility"])},
+                    {"label": "Recruitment deadline", "value": scheduling["recruitmentDeadline"]},
+                ],
+            },
+            208,
+        ),
+        render_section(
+            {
+                "title": "Consent and data handling",
+                "eyebrow": "Private by default",
+                "type": "key-value",
+                "items": [
+                    {"label": "Introduction", "value": consent["introduction"]},
+                    {"label": "Recording", "value": consent["recordingPlan"]},
+                    {"label": "Anonymisation", "value": consent["anonymisation"]},
+                    {"label": "Retention", "value": consent["dataRetention"]},
+                    {"label": "Withdrawal", "value": consent["withdrawal"]},
+                    {"label": "Checklist", "value": "; ".join(consent["checklist"])},
+                ],
+            },
+            209,
+        ),
+        render_section(
+            {
+                "title": "Backups and partial recruitment",
+                "eyebrow": "Keep the original target visible",
+                "type": "key-value",
+                "items": [
+                    {"label": "Activation trigger", "value": backup["activationTrigger"]},
+                    {"label": "Backup actions", "value": "; ".join(backup["actions"])},
+                    {"label": "Partial handling", "value": backup["partialRecruitmentHandling"]},
+                ],
+            },
+            210,
+        ),
+    ]
+    if stalled:
+        sections.insert(
+            0,
+            '<section class="section section--warning" aria-labelledby="recruitment-stalled">'
+            '<p class="eyebrow">Recruitment needs attention</p>'
+            '<h2 id="recruitment-stalled">Stalled or due</h2>'
+            f'<p><strong>Next smallest action:</strong> {escape(smallest_action)}</p>'
+            '</section>',
+        )
+    return "\n".join(sections)
+
+
+def render_recruitment_summary(plan: dict[str, Any] | None) -> str:
+    if not isinstance(plan, dict):
+        return (
+            '<p>No structured recruitment plan yet. Create the customer test plan during evidence collection.</p>'
+        )
+    tracking = plan["tracking"]
+    stalled, smallest_action = recruitment_stall(plan)
+    completed = sum(
+        value == "complete" for value in tracking["milestones"].values()
+    )
+    warning = (
+        '<div class="callout"><strong>Stalled or due:</strong> '
+        f'{escape(smallest_action)}</div>'
+        if stalled
+        else ""
+    )
+    return (
+        '<div class="guidance-grid">'
+        f'<div><span class="metric__label">Owner</span><p>{escape(tracking["owner"])}</p></div>'
+        f'<div><span class="metric__label">Status</span><p>{escape(display_label(tracking["status"]))}</p></div>'
+        f'<div><span class="metric__label">Deadline</span><p>{escape(tracking["deadline"])}</p></div>'
+        f'<div><span class="metric__label">Milestones</span><p>{completed}/7 complete</p></div>'
+        f'</div><p><strong>Next action:</strong> {escape(tracking["nextAction"])}</p>'
+        '<p><strong>Channels:</strong> No paid vendor required; use the approved route and trade-off.</p>'
+        f'{warning}<p><a href="artifacts/10-test-plan.html">Open recruitment plan and templates</a></p>'
+    )
+
+
 def render_evidence(values: Any) -> str:
     if not isinstance(values, list) or not values:
         return "<p>No evidence entries recorded yet.</p>"
@@ -2294,6 +2611,103 @@ def render_evidence(values: Any) -> str:
 
 def display_label(value: Any) -> str:
     return str(value or "unknown").replace("-", " ").title()
+
+
+def guidance_for_state(
+    state: dict[str, Any], step_id: str | None = None
+) -> dict[str, Any]:
+    registry = load_step_guidance()
+    selected_step = step_id or str(state.get("currentStep", "01-intake"))
+    if selected_step not in STEP_INDEX:
+        raise SprintError(f"Unknown guidance step: {selected_step}")
+    profile = str(state.get("methodProfile", "adaptive-design-sprint"))
+    guidance = copy.deepcopy(registry["steps"][selected_step])
+    fidelity = state.get("fidelity", {}).get("steps", {}).get(selected_step, {})
+    timebox = fidelity.get("timebox", {})
+    deviations = copy.deepcopy(fidelity.get("deviations", []))
+    deviation_reasons = [
+        str(item.get("reason", "")).strip()
+        for item in deviations
+        if isinstance(item, dict) and str(item.get("reason", "")).strip()
+    ]
+    method_rationale = (
+        "; ".join(deviation_reasons)
+        or str(state.get("methodProfileSelection", {}).get("reason", "")).strip()
+        or "No method-selection rationale has been recorded."
+    )
+    guidance.update(
+        {
+            "step": selected_step,
+            "profile": profile,
+            "canonicalMethod": guidance["methods"][profile],
+            "selectedMethod": fidelity.get(
+                "selectedMethod", guidance["methods"][profile]
+            ),
+            "selectedMethodRationale": method_rationale,
+            "suggestedTimeboxMinutes": guidance["timeboxMinutes"][profile],
+            "actualTimeboxMinutes": timebox.get("actualMinutes"),
+            "recordedDeviations": deviations,
+            "availableActions": copy.deepcopy(registry["actions"]),
+        }
+    )
+    return guidance
+
+
+def render_step_guidance(state: dict[str, Any]) -> str:
+    guidance = guidance_for_state(state)
+    ai_role = "; ".join(guidance["aiRole"])
+    good = "; ".join(guidance["whatGoodLooksLike"])
+    done = "; ".join(guidance["definitionOfDone"])
+    dependencies = "; ".join(guidance["dependencies"])
+    actual = guidance["actualTimeboxMinutes"]
+    actual_text = (
+        "not recorded" if actual is None else f"{actual} minutes actual"
+    )
+    substitute_items = "".join(
+        "<li>"
+        f'<strong>{escape(item["name"])}:</strong> {escape(item["useWhen"])} '
+        f'Method impact: {escape(item["methodFidelityImpact"])} '
+        f'Evidence impact: {escape(item["evidenceImpact"])}'
+        "</li>"
+        for item in guidance["substitutes"]
+    )
+    action_items = "".join(
+        f'<li><strong>{escape(item["label"])}:</strong> {escape(item["description"])}</li>'
+        for item in guidance["availableActions"].values()
+    )
+    help_items = "".join(
+        f'<li><strong>{escape(item["label"])}:</strong> <code>{escape(item["reference"])}</code></li>'
+        for item in guidance["deeperHelp"]
+    )
+    return (
+        '<section class="section section--accent" aria-labelledby="step-guidance-title">'
+        '<p class="eyebrow">Just-in-time guidance</p>'
+        f'<h2 id="step-guidance-title">{escape(guidance["step"])} — {escape(guidance["title"])}</h2>'
+        f'<p>{escape(guidance["whyItMatters"])}</p>'
+        f'<p><strong>Canonical purpose:</strong> {escape(guidance["purpose"])}</p>'
+        '<div class="guidance-grid">'
+        '<div><span class="metric__label">Method and timebox</span>'
+        f'<p>{escape(guidance["selectedMethod"])} · {guidance["suggestedTimeboxMinutes"]} minutes suggested · {escape(actual_text)}</p>'
+        f'<p>{escape(guidance["selectedMethodRationale"])}</p></div>'
+        '<div><span class="metric__label">Need from you</span>'
+        f'<p>{escape(guidance["humanAction"])}</p></div>'
+        '<div><span class="metric__label">AI can</span>'
+        f'<p>{escape(ai_role)}</p></div>'
+        '<div><span class="metric__label">Done when</span>'
+        f'<p>{escape(done)}</p></div>'
+        '</div>'
+        '<details class="guidance"><summary>Show examples, checklist, substitutes, and troubleshooting</summary>'
+        f'<h3>Expected human effort</h3><p>{escape(guidance["humanEffort"])}</p>'
+        f'<h3>Dependencies</h3><p>{escape(dependencies)}</p>'
+        f'<h3>What good looks like</h3><p>{escape(good)}</p>'
+        f'<h3>Example</h3>{render_list(guidance["examples"])}'
+        f'<h3>Failure modes</h3>{render_list(guidance["failureModes"])}'
+        f'<h3>Limitations</h3>{render_list(guidance["limitations"])}'
+        f'<h3>Approved substitutes</h3><ul>{substitute_items}</ul>'
+        f'<h3>Available actions</h3><ul>{action_items}</ul>'
+        f'<h3>Deeper help</h3><ul>{help_items}</ul>'
+        '</details></section>'
+    )
 
 
 def render_fidelity_adaptations(state: dict[str, Any]) -> str:
@@ -3084,6 +3498,146 @@ def prototype_brief_errors(
     return errors
 
 
+def recruitment_plan_errors(
+    plan: Any,
+    *,
+    require_ready: bool,
+    state: dict[str, Any] | None = None,
+) -> list[str]:
+    """Enforce operational recruitment readiness above the nested JSON shape."""
+
+    if not isinstance(plan, dict):
+        return (
+            ["$.recruitmentPlan: create the structured recruitment plan during 03-evidence"]
+            if require_ready
+            else []
+        )
+    errors: list[str] = []
+    if plan.get("paidVendorRequired") is not False:
+        errors.append(
+            "$.recruitmentPlan.paidVendorRequired: recruitment must retain a no-paid-vendor route"
+        )
+    if not require_ready:
+        return errors
+
+    def text_items(value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            values: list[str] = []
+            for item in value.values():
+                values.extend(text_items(item))
+            return values
+        if isinstance(value, list):
+            values = []
+            for item in value:
+                values.extend(text_items(item))
+            return values
+        return []
+
+    placeholders = [
+        value
+        for value in text_items(plan)
+        if value.strip().lower() == "not established yet."
+        or re.search(r"\[[^\]]+\]", value)
+    ]
+    if placeholders:
+        errors.append(
+            "$.recruitmentPlan: replace every draft or bracketed template placeholder before evidence completes"
+        )
+
+    target = plan.get("targetDefinition", {})
+    if int(target.get("backupParticipants", 0) or 0) < 1:
+        errors.append(
+            "$.recruitmentPlan.targetDefinition.backupParticipants: plan at least one suitable backup"
+        )
+    screener = plan.get("screener", {})
+    if screener.get("status") != "approved":
+        errors.append(
+            "$.recruitmentPlan.screener.status: the human must approve the neutral screener"
+        )
+    if any(
+        item.get("revealsPreferredAnswer") is not False
+        for item in screener.get("questions", [])
+        if isinstance(item, dict)
+    ):
+        errors.append(
+            "$.recruitmentPlan.screener.questions: every question must remain neutral"
+        )
+    channels = plan.get("channels", [])
+    if not any(item.get("selected") is True for item in channels if isinstance(item, dict)):
+        errors.append(
+            "$.recruitmentPlan.channels: select at least one route and retain its trade-off"
+        )
+    incentive = plan.get("incentive", {})
+    if incentive.get("spendingRequired") and incentive.get("approvalStatus") != "approved":
+        errors.append(
+            "$.recruitmentPlan.incentive.approvalStatus: human approval is required before spending"
+        )
+    if incentive.get("approvalStatus") == "approved" and not str(
+        incentive.get("approvedBy", "")
+    ).strip():
+        errors.append(
+            "$.recruitmentPlan.incentive.approvedBy: name a human-safe approver label"
+        )
+    partial = str(
+        plan.get("backupPlan", {}).get("partialRecruitmentHandling", "")
+    ).lower()
+    if "partial" not in partial or "target" not in partial:
+        errors.append(
+            "$.recruitmentPlan.backupPlan.partialRecruitmentHandling: keep the target visible and describe partial evidence handling"
+        )
+
+    tracking = plan.get("tracking", {})
+    if tracking.get("status") == "draft":
+        errors.append(
+            "$.recruitmentPlan.tracking.status: mark the tailored plan ready, recruiting, scheduled, partial, complete, or blocked"
+        )
+    milestones = tracking.get("milestones", {})
+    for key in ("targetDefined", "screenerApproved", "consentReady"):
+        if milestones.get(key) != "complete":
+            errors.append(
+                f"$.recruitmentPlan.tracking.milestones.{key}: complete this evidence-stage milestone"
+            )
+
+    if state is not None and state.get("executionMode") == "live":
+        customer = state.get("customerTesting", {})
+        planned = int(customer.get("sessionsPlanned", 0) or 0)
+        plan_target = int(target.get("targetSessions", 0) or 0)
+        if planned != plan_target:
+            errors.append(
+                "$.recruitmentPlan.targetDefinition.targetSessions: match the canonical customer-testing plan"
+            )
+        if str(customer.get("target", "")).strip() != str(
+            target.get("audience", "")
+        ).strip():
+            errors.append(
+                "$.recruitmentPlan.targetDefinition.audience: match the canonical customer-testing target"
+            )
+        if not str(customer.get("targetRationale", "")).strip():
+            errors.append(
+                "$.customerTesting.targetRationale: record why this live target fits the challenge"
+            )
+    return errors
+
+
+def load_recruitment_plan_artifact(
+    workspace: Path,
+) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    path = workspace / "artifact-data" / f"{TEST_PLAN_ID}.json"
+    if not path.is_file():
+        raise SprintError(
+            "Create 10-test-plan during 03-evidence so recruitment can start before prototyping"
+        )
+    data = load_artifact_data(path)
+    plan = data.get("recruitmentPlan")
+    if not isinstance(plan, dict):
+        raise SprintError(
+            "10-test-plan is missing its structured recruitmentPlan; create or migrate the plan before continuing"
+        )
+    return path, data, plan
+
+
 def artifact_data_errors(
     data: dict[str, Any], specs: dict[str, dict[str, Any]]
 ) -> list[str]:
@@ -3106,6 +3660,13 @@ def artifact_data_errors(
                     in {"ready-for-decision", "complete"},
                 )
             )
+    if artifact_id == TEST_PLAN_ID:
+        errors.extend(
+            recruitment_plan_errors(
+                data.get("recruitmentPlan"),
+                require_ready=False,
+            )
+        )
     sections = data.get("sections")
     assert isinstance(sections, list)
     section_indexes: dict[str, int] = {}
@@ -3857,6 +4418,8 @@ def render_artifact(
                 page["id"] == "prototype" for page in site_manifest["pages"]
             ),
         )
+    if artifact_id == TEST_PLAN_ID and isinstance(data.get("recruitmentPlan"), dict):
+        primary_content += "\n" + render_recruitment_plan(data["recruitmentPlan"])
     prototype_data_path = workspace / "artifact-data" / f"{PROTOTYPE_BRIEF_ID}.json"
     prototype_brief = None
     if artifact_id == "13-outcome" and prototype_data_path.exists():
@@ -4147,6 +4710,7 @@ def render_dashboard(
     manifest: dict[str, Any],
     assessment: dict[str, Any],
     prototype_brief: dict[str, Any] | None,
+    recruitment_plan: dict[str, Any] | None,
     site_manifest: dict[str, Any],
 ) -> str:
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
@@ -4219,11 +4783,13 @@ def render_dashboard(
             "NEXT_ACTION_TITLE": escape(next_action.get("title", "Continue the sprint")),
             "NEXT_ACTION_BODY": escape(next_action.get("body", "Review the current step.")),
             "HUMAN_INPUT_NEEDED": escape(next_action.get("humanInput", "None right now")),
+            "STEP_GUIDANCE_HTML": render_step_guidance(state),
             "SPRINT_STEPS": render_steps(state),
             "TEST_STATUS": escape(str(customer.get("status", "not-planned")).replace("-", " ").title()),
             "SESSIONS_PLANNED": escape(customer.get("sessionsPlanned", 0)),
             "SESSIONS_COMPLETED": escape(customer.get("sessionsCompleted", 0)),
             "EVIDENCE_BOUNDARY": escape(evidence_boundary),
+            "RECRUITMENT_SUMMARY": render_recruitment_summary(recruitment_plan),
             "FIDELITY_ADAPTATIONS": render_fidelity_adaptations(state),
             "FIDELITY_LIMITATIONS": render_fidelity_limitations(state),
             "CURRENT_FIDELITY_GUIDANCE": render_current_fidelity_guidance(state),
@@ -4352,6 +4918,14 @@ def build_render_plan(
         ),
         None,
     )
+    recruitment_plan = next(
+        (
+            data.get("recruitmentPlan")
+            for _path, data in artifact_documents
+            if data.get("id") == TEST_PLAN_ID
+        ),
+        None,
+    )
     site_manifest = build_site_manifest(
         workspace,
         render_state,
@@ -4390,6 +4964,7 @@ def build_render_plan(
         manifest,
         assessment,
         prototype_brief,
+        recruitment_plan,
         site_manifest,
     )
 
@@ -4599,8 +5174,172 @@ def initial_prototype_brief() -> dict[str, Any]:
     }
 
 
+def initial_recruitment_plan(
+    state: dict[str, Any] | None = None, timestamp: str | None = None
+) -> dict[str, Any]:
+    """Return a complete draft shape that must be tailored during evidence work."""
+
+    state = state or {}
+    customer = state.get("customerTesting", {})
+    method_profile = state.get("methodProfile", "adaptive-design-sprint")
+    planned = int(customer.get("sessionsPlanned", 0) or 0)
+    if planned < 1:
+        planned = 5 if method_profile == "sprint-book" else 1
+    target = str(customer.get("target") or "Not established yet.")
+    rationale = str(customer.get("targetRationale") or "Not established yet.")
+    now = timestamp or utc_now()
+    return {
+        "schemaVersion": RECRUITMENT_PLAN_VERSION,
+        "paidVendorRequired": False,
+        "targetDefinition": {
+            "audience": target,
+            "qualifyingBehaviours": ["Not established yet."],
+            "disqualifyingConditions": [
+                "Colleagues, conflicted participants, and respondents who cannot describe the required recent behavior."
+            ],
+            "targetSessions": planned,
+            "backupParticipants": 2 if method_profile == "sprint-book" else 1,
+            "rationale": rationale,
+            "specialConsiderations": [
+                "Confirm whether B2B, expert, regulated, low-incidence, language, geography, or accessibility constraints apply."
+            ],
+        },
+        "screener": {
+            "status": "draft",
+            "introduction": "We are recruiting people based on recent behavior for a research conversation; this screener does not name the preferred solution.",
+            "questions": [
+                {
+                    "prompt": "Tell me about the last time you [relevant behavior].",
+                    "qualifyingSignal": "A recent first-person example within the approved target bounds.",
+                    "disqualifyingSignal": "No relevant first-person example or only hypothetical familiarity.",
+                    "revealsPreferredAnswer": False,
+                },
+                {
+                    "prompt": "How often have you done that in the last [period]?",
+                    "qualifyingSignal": "Frequency matches the approved behavioral criterion.",
+                    "disqualifyingSignal": "Frequency is outside the approved criterion.",
+                    "revealsPreferredAnswer": False,
+                },
+                {
+                    "prompt": "Which tools, services, or workarounds did you use, and what part was personally yours?",
+                    "qualifyingSignal": "The person performed or owned the relevant decision.",
+                    "disqualifyingSignal": "The experience is second-hand or the decision belonged to someone else.",
+                    "revealsPreferredAnswer": False,
+                },
+            ],
+        },
+        "channels": [
+            {
+                "name": "existing-customers",
+                "tradeOff": "Fast when a suitable segment is reachable, but relationship context can bias candor.",
+                "selected": False,
+                "requiresSpend": False,
+            },
+            {
+                "name": "founder-team-networks",
+                "tradeOff": "Fast second-degree reach, but colleagues and close contacts must be excluded.",
+                "selected": False,
+                "requiresSpend": False,
+            },
+            {
+                "name": "communities",
+                "tradeOff": "Reaches behavior-based groups, but community rules and privacy must be respected.",
+                "selected": False,
+                "requiresSpend": False,
+            },
+            {
+                "name": "research-panels",
+                "tradeOff": "Can improve speed or specialist reach, but may cost money and requires professional-respondent quality checks.",
+                "selected": False,
+                "requiresSpend": True,
+            },
+            {
+                "name": "partners",
+                "tradeOff": "A trusted intermediary can reach the segment, but partner selection may bias the sample.",
+                "selected": False,
+                "requiresSpend": False,
+            },
+            {
+                "name": "direct-outreach",
+                "tradeOff": "Precise and provider-independent, but manual work and response time are higher.",
+                "selected": False,
+                "requiresSpend": False,
+            },
+        ],
+        "incentive": {
+            "guidance": "Compensate time and inconvenience without buying a preferred answer; consider session length, scarcity, local norms, and company policy.",
+            "offer": "No incentive proposed yet.",
+            "spendingRequired": False,
+            "approvalStatus": "not-required",
+            "approvedBy": "",
+            "approvalNote": "No spending is approved or required in this draft.",
+        },
+        "outreach": {
+            "invitation": "We are speaking with people who recently [neutral behavior] for a [duration]-minute research session. We are testing a prototype, not you. Respond via [route].",
+            "reminder": "Reminder: your research session is [date, time, timezone] at [link or location]. Reply if you need an accessibility adjustment or must reschedule.",
+            "confirmation": "You are booked for [date, time, timezone] for [duration]. We will confirm consent before recording or note capture. You may cancel via [route].",
+            "cancellation": "Your session is cancelled with no penalty. [State what happens to scheduling and screener data.] We may invite a qualified backup.",
+            "backupInvitation": "A session window has opened at [date, time, timezone]. Participation is optional; confirm by [deadline] if it works.",
+        },
+        "scheduling": {
+            "timezone": "Not established yet.",
+            "sessionLengthMinutes": 45,
+            "windows": ["Not established yet."],
+            "bookingMethod": "Not established yet.",
+            "accessibility": [
+                "Offer a clear route to request compatible format, captioning, assistive-technology, break, device, or scheduling support."
+            ],
+            "recruitmentDeadline": now[:10],
+        },
+        "consent": {
+            "introduction": "Explain the neutral research purpose and that the prototype, not the participant, is being tested.",
+            "recordingPlan": "Confirm the exact notes, recording, transcription, and agent-assistance scope before capture.",
+            "anonymisation": "Use participant IDs in the workspace and keep the identity/contact map separately access-controlled.",
+            "dataRetention": "Not established yet.",
+            "withdrawal": "Allow withdrawal before or during the session and state how to request deletion where applicable.",
+            "checklist": [
+                "Purpose explained without revealing the preferred answer",
+                "Prototype-not-participant framing stated",
+                "Recording and agent-assistance scope approved",
+                "Anonymisation, access, use, retention, and withdrawal explained",
+            ],
+        },
+        "backupPlan": {
+            "activationTrigger": "A booked participant cancels, misses the confirmation deadline, or the qualified pipeline cannot meet the recorded target.",
+            "actions": [
+                "Contact already-qualified backups.",
+                "Add another approved channel without changing the target behavior.",
+                "Extend accessible session windows before relaxing a material criterion.",
+            ],
+            "partialRecruitmentHandling": "Keep the original target visible, run every suitable booked session, report the usable count as partial evidence through the #11 four-dimensional completion/evidence model, state remaining uncertainty, and record the smallest next learning action; never silently lower the target.",
+        },
+        "tracking": {
+            "owner": "Not established yet.",
+            "status": "draft",
+            "nextAction": "Not established yet.",
+            "deadline": now[:10],
+            "lastActivityAt": now,
+            "candidatesScreened": 0,
+            "sessionsBooked": 0,
+            "backupsBooked": 0,
+            "milestones": {
+                "targetDefined": "not-started",
+                "screenerApproved": "not-started",
+                "outreachLive": "not-started",
+                "candidatesScreened": "not-started",
+                "sessionsBooked": "not-started",
+                "backupsBooked": "not-started",
+                "consentReady": "not-started",
+            },
+        },
+    }
+
+
 def new_artifact_data(
-    artifact_id: str, spec: dict[str, Any], timestamp: str | None = None
+    artifact_id: str,
+    spec: dict[str, Any],
+    timestamp: str | None = None,
+    state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = timestamp or utc_now()
     data: dict[str, Any] = {
@@ -4637,6 +5376,8 @@ def new_artifact_data(
                 ],
             }
         ]
+    if artifact_id == TEST_PLAN_ID:
+        data["recruitmentPlan"] = initial_recruitment_plan(state, now)
     return data
 
 
@@ -5131,6 +5872,7 @@ def command_init(args: argparse.Namespace) -> None:
     if not title or not challenge:
         raise SprintError("Both --title and --challenge are required")
     load_artifact_specs()
+    load_step_guidance()
     now = utc_now()
     method_profile = args.method_profile
     execution_mode = args.execution_mode
@@ -5281,7 +6023,9 @@ def command_new_artifact(args: argparse.Namespace) -> None:
     if existing is not None:
         raise SprintError(f"Artifact data for {args.id!r} already exists: {existing}")
     now = utc_now()
-    save_artifact_data(data_path, new_artifact_data(args.id, specs[args.id], now))
+    save_artifact_data(
+        data_path, new_artifact_data(args.id, specs[args.id], now, state)
+    )
     save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print(f"Created artifact draft: {data_path}")
@@ -5845,6 +6589,24 @@ def command_complete_step(args: argparse.Namespace) -> None:
         )
     if step_id == "02-qualify" and state.get("route") == "undecided":
         raise SprintError("Set the sprint route before completing 02-qualify")
+    if step_id == "03-evidence" and state.get("executionMode") == "live":
+        try:
+            _plan_path, _plan_data, recruitment_plan = load_recruitment_plan_artifact(
+                workspace
+            )
+        except SprintError as error:
+            raise SprintError(
+                "Live evidence work requires an early structured recruitment plan: "
+                f"{error}"
+            ) from error
+        readiness_errors = recruitment_plan_errors(
+            recruitment_plan, require_ready=True, state=state
+        )
+        if readiness_errors:
+            raise SprintError(
+                "Recruitment is not ready to leave the evidence step:\n"
+                + "\n".join(f"- {item}" for item in readiness_errors)
+            )
     if step_id == "10-prototype":
         _brief_path, brief_data, brief = load_prototype_brief_artifact(workspace)
         if brief_data.get("status") != "complete":
@@ -7843,9 +8605,86 @@ def command_customer(args: argparse.Namespace) -> None:
             "Customer update would create an invalid workflow state: "
             + "; ".join(state_errors)
         )
-    save_state(workspace, state)
+    now = utc_now()
+    test_plan_path = workspace / "artifact-data" / f"{TEST_PLAN_ID}.json"
+    if test_plan_path.is_file():
+        test_plan = load_artifact_data(test_plan_path)
+        recruitment_plan = test_plan.get("recruitmentPlan")
+        if isinstance(recruitment_plan, dict) and planned > 0:
+            recruitment_plan["targetDefinition"].update(
+                {
+                    "audience": target,
+                    "targetSessions": planned,
+                    "rationale": target_rationale,
+                }
+            )
+            recruitment_plan["tracking"]["lastActivityAt"] = now
+            test_plan["updatedAt"] = now
+            save_artifact_data(test_plan_path, test_plan)
+    save_state(workspace, state, timestamp=now)
     render_workspace(workspace)
     print(f"Updated customer testing: {args.status}, {completed}/{planned} sessions")
+
+
+def command_recruitment_status(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    data_path, data, plan = load_recruitment_plan_artifact(workspace)
+    if args.status not in RECRUITMENT_STATUSES:
+        raise SprintError(f"Invalid recruitment status: {args.status}")
+    owner = args.owner.strip()
+    next_action = args.next_action.strip()
+    if not owner or not next_action:
+        raise SprintError("Recruitment owner and next action cannot be blank")
+    try:
+        datetime.fromisoformat(args.deadline).date()
+    except ValueError as error:
+        raise SprintError("--deadline must use YYYY-MM-DD") from error
+    tracking = plan["tracking"]
+    tracking.update(
+        {
+            "owner": owner,
+            "status": args.status,
+            "nextAction": next_action,
+            "deadline": args.deadline,
+            "lastActivityAt": utc_now(),
+        }
+    )
+    for milestone in args.complete_milestone:
+        tracking["milestones"][RECRUITMENT_MILESTONES[milestone]] = "complete"
+        if milestone == "screener-approved":
+            plan["screener"]["status"] = "approved"
+    for argument_name, field in (
+        ("candidates_screened", "candidatesScreened"),
+        ("sessions_booked", "sessionsBooked"),
+        ("backups_booked", "backupsBooked"),
+    ):
+        value = getattr(args, argument_name)
+        if value is not None:
+            if value < 0:
+                raise SprintError(f"--{argument_name.replace('_', '-')} cannot be negative")
+            tracking[field] = value
+    if args.status == "complete" and any(
+        value != "complete" for value in tracking["milestones"].values()
+    ):
+        raise SprintError(
+            "Recruitment cannot be complete while a milestone remains incomplete"
+        )
+    now = utc_now()
+    data["updatedAt"] = now
+    errors = recruitment_plan_errors(plan, require_ready=False, state=state)
+    if errors:
+        raise SprintError("; ".join(errors))
+    save_artifact_data(data_path, data)
+    save_state(workspace, state, timestamp=now)
+    render_workspace(workspace)
+    stalled, smallest_action = recruitment_stall(plan)
+    print(
+        f"Updated recruitment: {args.status}, owner {owner}, "
+        f"{sum(value == 'complete' for value in tracking['milestones'].values())}/7 milestones"
+    )
+    if stalled:
+        print(f"Recruitment is stalled or due. Next smallest action: {smallest_action}")
 
 
 def command_next_action(args: argparse.Namespace) -> None:
@@ -7890,6 +8729,96 @@ def command_next_action(args: argparse.Namespace) -> None:
     save_state(workspace, state)
     render_workspace(workspace)
     print("Updated the next action")
+
+
+def print_guidance_list(title: str, values: list[str]) -> None:
+    print(f"{title}:")
+    for value in values:
+        print(f"- {value}")
+
+
+def command_guidance(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args.workspace)
+    state, _specs, _artifacts = load_workspace_documents(workspace)
+    guidance = guidance_for_state(state, args.step)
+    if args.json:
+        exported = copy.deepcopy(guidance)
+        if args.action:
+            exported["requestedAction"] = args.action
+        print(json.dumps(exported, indent=2, ensure_ascii=False, sort_keys=True))
+        return
+
+    print(f"Current step: {guidance['step']} — {guidance['title']}")
+    print(f"Why it matters: {guidance['whyItMatters']}")
+    print(f"Canonical purpose: {guidance['purpose']}")
+    print(
+        f"Method: {guidance['selectedMethod']} "
+        f"({guidance['suggestedTimeboxMinutes']} minutes suggested)"
+    )
+    print(f"Why this method: {guidance['selectedMethodRationale']}")
+    print(f"Need from you: {guidance['humanAction']}")
+    print(f"AI can: {'; '.join(guidance['aiRole'])}")
+    print(f"Done when: {'; '.join(guidance['definitionOfDone'])}")
+    if not args.action:
+        print(
+            "More: "
+            + ", ".join(
+                f"{action} ({item['label']})"
+                for action, item in guidance["availableActions"].items()
+            )
+        )
+        return
+
+    action = args.action
+    print(f"\n{guidance['availableActions'][action]['label']}")
+    if action == "show-example":
+        print_guidance_list("Examples", guidance["examples"])
+    elif action == "explain-why":
+        print(f"Why: {guidance['whyItMatters']}")
+        print(f"Canonical purpose: {guidance['purpose']}")
+        print_guidance_list(
+            "If partial, compressed, or skipped", guidance["limitations"]
+        )
+    elif action == "show-canonical-method":
+        for profile in ("sprint-book", "adaptive-design-sprint"):
+            print(
+                f"- {profile}: {guidance['methods'][profile]} "
+                f"({guidance['timeboxMinutes'][profile]} minutes)"
+            )
+        print(f"Selected for this run: {guidance['selectedMethod']}")
+        print(f"Selection rationale: {guidance['selectedMethodRationale']}")
+        if guidance["recordedDeviations"]:
+            print("Recorded fidelity impacts:")
+            for deviation in guidance["recordedDeviations"]:
+                impact = deviation.get("impact", {})
+                print(
+                    f"- {deviation.get('type')}: {impact.get('methodFidelity')} "
+                    f"Evidence: {impact.get('evidence')}"
+                )
+    elif action == "show-checklist":
+        print_guidance_list("Dependencies", guidance["dependencies"])
+        print_guidance_list("What good looks like", guidance["whatGoodLooksLike"])
+        print_guidance_list("Definition of done", guidance["definitionOfDone"])
+    elif action == "compare-substitutes":
+        for item in guidance["substitutes"]:
+            print(f"- {item['name']}: {item['useWhen']}")
+            print(f"  Preserves: {item['preserves']}")
+            print(f"  Method impact: {item['methodFidelityImpact']}")
+            print(f"  Evidence impact: {item['evidenceImpact']}")
+    elif action == "i-am-blocked":
+        print_guidance_list("Common blockers", guidance["failureModes"])
+        first = guidance["substitutes"][0]
+        print("Smallest approved workaround:")
+        print(f"- {first['name']}: {first['useWhen']}")
+        print(f"  Preserve: {first['preserves']}")
+    elif action == "pause":
+        print(
+            "Record the current result and next action, then use `next-action "
+            "--status paused`; do not mark the step or a human gate complete."
+        )
+    print("Deeper help:")
+    for item in guidance["deeperHelp"]:
+        print(f"- {item['label']}: {item['reference']}")
 
 
 def memo_section_errors(text: str, required_outputs: list[str]) -> list[str]:
@@ -10481,6 +11410,10 @@ def workspace_errors(workspace: Path) -> list[str]:
         specs = load_artifact_specs()
     except SprintError as error:
         return [*errors, str(error)]
+    try:
+        load_step_guidance()
+    except SprintError as error:
+        return [*errors, str(error)]
     registrations = (
         {item["id"]: item for item in state["artifacts"]} if state_is_valid else {}
     )
@@ -10549,6 +11482,20 @@ def workspace_errors(workspace: Path) -> list[str]:
             errors.append(
                 "Completed prototype step is missing a frozen, trial-passed tested version"
             )
+    if (
+        state_is_valid
+        and state.get("executionMode") == "live"
+        and "03-evidence" in state.get("completedSteps", [])
+    ):
+        recruitment_data = artifact_documents.get(TEST_PLAN_ID, {})
+        readiness_errors = recruitment_plan_errors(
+            recruitment_data.get("recruitmentPlan"),
+            require_ready=True,
+            state=state,
+        )
+        errors.extend(
+            f"Completed evidence step: {item}" for item in readiness_errors
+        )
     site_manifest_path = workspace / SITE_MANIFEST_FILENAME
     if not site_manifest_path.exists():
         errors.append(f"Missing generated site manifest: {site_manifest_path}")
@@ -11438,9 +12385,11 @@ def command_status(args: argparse.Namespace) -> None:
     assessment = build_completion_assessment(
         workspace, state, artifact_documents
     )
+    current_guidance = guidance_for_state(state)
     if args.json:
         exported = copy.deepcopy(state)
         exported["completionAssessment"] = assessment
+        exported["currentStepGuidance"] = current_guidance
         print(
             json.dumps(
                 exported,
@@ -11494,10 +12443,19 @@ def command_status(args: argparse.Namespace) -> None:
     print(f"Canonical purpose: {fidelity_step.get('canonicalPurpose', 'unknown')}")
     print(f"Default method: {fidelity_step.get('defaultMethod', 'unknown')}")
     print(f"Selected method: {fidelity_step.get('selectedMethod', 'unknown')}")
+    print(f"Selected-method rationale: {current_guidance['selectedMethodRationale']}")
     print(
         "Timebox: "
         f"{timebox.get('suggestedMinutes', 'unknown')} minutes suggested, "
         f"{timebox.get('actualMinutes') if timebox.get('actualMinutes') is not None else 'not recorded'} actual"
+    )
+    print(f"Why it matters: {current_guidance['whyItMatters']}")
+    print(f"Need from human: {current_guidance['humanAction']}")
+    print(f"AI role: {'; '.join(current_guidance['aiRole'])}")
+    print(f"Definition of done: {'; '.join(current_guidance['definitionOfDone'])}")
+    print(
+        "Deeper guidance actions: "
+        + ", ".join(current_guidance["availableActions"])
     )
     print(f"Pending gate: {state.get('pendingGate') or 'none'}")
     assignments = manifest.get("assignments", [])
@@ -11514,6 +12472,25 @@ def command_status(args: argparse.Namespace) -> None:
         "Session counts: "
         + ", ".join(f"{name} {value}" for name, value in counts.items())
     )
+    recruitment = next(
+        (
+            data.get("recruitmentPlan")
+            for _path, data in artifact_documents
+            if data.get("id") == TEST_PLAN_ID
+        ),
+        None,
+    )
+    if isinstance(recruitment, dict):
+        tracking = recruitment["tracking"]
+        stalled, smallest_action = recruitment_stall(recruitment)
+        print(
+            "Recruitment: "
+            f"{tracking['status']}, owner {tracking['owner']}, "
+            f"deadline {tracking['deadline']}"
+        )
+        print(f"Recruitment next action: {tracking['nextAction']}")
+        if stalled:
+            print(f"Recruitment stalled or due: {smallest_action}")
     if assessment["limitations"]:
         print("Automatic limitations:")
         for limitation in assessment["limitations"]:
@@ -11934,6 +12911,28 @@ def build_parser() -> argparse.ArgumentParser:
     customer_parser.add_argument("--rationale")
     customer_parser.set_defaults(handler=command_customer)
 
+    recruitment_parser = subparsers.add_parser(
+        "recruitment-status",
+        help="Update the early recruitment owner, next action, deadline, counts, and milestones",
+    )
+    recruitment_parser.add_argument("--workspace", required=True)
+    recruitment_parser.add_argument(
+        "--status", required=True, choices=sorted(RECRUITMENT_STATUSES)
+    )
+    recruitment_parser.add_argument("--owner", required=True)
+    recruitment_parser.add_argument("--next-action", required=True)
+    recruitment_parser.add_argument("--deadline", required=True)
+    recruitment_parser.add_argument(
+        "--complete-milestone",
+        action="append",
+        default=[],
+        choices=sorted(RECRUITMENT_MILESTONES),
+    )
+    recruitment_parser.add_argument("--candidates-screened", type=int)
+    recruitment_parser.add_argument("--sessions-booked", type=int)
+    recruitment_parser.add_argument("--backups-booked", type=int)
+    recruitment_parser.set_defaults(handler=command_recruitment_status)
+
     next_parser = subparsers.add_parser("next-action", help="Update dashboard guidance")
     next_parser.add_argument("--workspace", required=True)
     next_parser.add_argument("--title", required=True)
@@ -11941,6 +12940,17 @@ def build_parser() -> argparse.ArgumentParser:
     next_parser.add_argument("--human-input", required=True)
     next_parser.add_argument("--status", choices=sorted(WORKSPACE_STATUSES))
     next_parser.set_defaults(handler=command_next_action)
+
+    guidance_parser = subparsers.add_parser(
+        "guidance", help="Show compact current-step guidance or one deeper-help action"
+    )
+    guidance_parser.add_argument("--workspace", required=True)
+    guidance_parser.add_argument(
+        "--step", choices=[step["id"] for step in STEPS]
+    )
+    guidance_parser.add_argument("--action", choices=sorted(GUIDANCE_ACTIONS))
+    guidance_parser.add_argument("--json", action="store_true")
+    guidance_parser.set_defaults(handler=command_guidance)
 
     role_parser = subparsers.add_parser("role-packet", help="Generate a bounded specialist assignment")
     role_parser.add_argument("--workspace", required=True)
