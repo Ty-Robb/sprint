@@ -169,8 +169,13 @@ Include a unique page title, UTF-8 charset, responsive viewport, link to the loc
 
 Make `index.html` the control centre, not a decorative cover. Show:
 
-- sprint title, method profile, execution mode and its selector/reason, route,
-  process status, truthful terminal state, and current step;
+- in the first desktop viewport: sprint title, method profile, execution mode and
+  its selector/reason, route, current step, current or final human decision, exact
+  next action, process status, method fidelity, evidence strength, and decision
+  readiness;
+- a prominent customer-validation boundary in that same operational summary, so
+  a self-test, rehearsal, skipped test, blocked test, or unvalidated closure can
+  never inherit success styling from process completion;
 - process status with completed, skipped, blocked, not-applicable, and not-started stages;
 - method fidelity as a separate assessment with adaptations and limitations;
 - descriptive evidence strength based on usable sessions, participant fit, protocol fidelity, tested versions, segment/scenario coverage, contradiction, directness, and uncertainty;
@@ -191,6 +196,11 @@ Make `index.html` the control centre, not a decorative cover. Show:
 - a prominent customer-validation banner that says `UNVALIDATED` on every
   self-test, planning/rehearsal, blocked-live, and no-sprint export;
 - evidence-status legend.
+
+Derive every status label and status class from the same canonical state or
+derived completion assessment. Do not hardcode an optimistic style beside a
+dynamic label. Completion percentage counts only completed applicable steps;
+skipped steps remain visible and never increase it.
 
 Never show a later stage as complete merely because a placeholder file exists.
 
@@ -224,10 +234,13 @@ Keep quotations attributable to an anonymised participant or source. Separate ob
 ## Accessibility and safety
 
 - Maintain logical heading order.
-- Use landmarks, labels, table headers, captions, and descriptive links.
+- Use landmarks, labels, exactly one page `h1`, a shared manifest-driven
+  breadcrumb, table headers, captions, and descriptive links.
 - Preserve visible keyboard focus.
 - Do not rely on colour alone to communicate status.
 - Meet readable contrast and support narrow screens.
+- Wrap dense tables in a labelled, keyboard-focusable horizontal scroll region;
+  the table may scroll, but the page itself must not overflow horizontally.
 - Add meaningful alternative text to informative images; use empty alternative text for decorative images.
 - Use reduced-motion preferences and avoid continuous animation.
 - Include print styles.

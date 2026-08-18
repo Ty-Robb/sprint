@@ -519,18 +519,43 @@ class LocalLinkParser(HTMLParser):
         self.links: list[str] = []
         self.references: list[tuple[str, str, str]] = []
         self.ids: set[str] = set()
+        self.duplicate_ids: set[str] = set()
         self.site_navigation_landmarks = 0
         self.current_page_indicators = 0
+        self.breadcrumbs = 0
+        self.main_landmarks = 0
+        self.skip_links = 0
+        self.h1_count = 0
+        self.table_count = 0
+        self.table_caption_count = 0
+        self.table_headers_without_scope = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr_map = dict(attrs)
         element_id = attr_map.get("id")
         if element_id:
+            if element_id in self.ids:
+                self.duplicate_ids.add(element_id)
             self.ids.add(element_id)
         if tag == "nav" and attr_map.get("aria-label") == "Sprint site":
             self.site_navigation_landmarks += 1
         if attr_map.get("aria-current") == "page":
             self.current_page_indicators += 1
+        classes = set(str(attr_map.get("class") or "").split())
+        if tag == "ol" and "breadcrumb" in classes:
+            self.breadcrumbs += 1
+        if tag == "main" and element_id == "main":
+            self.main_landmarks += 1
+        if tag == "a" and "skip-link" in classes and attr_map.get("href") == "#main":
+            self.skip_links += 1
+        if tag == "h1":
+            self.h1_count += 1
+        if tag == "table":
+            self.table_count += 1
+        if tag == "caption":
+            self.table_caption_count += 1
+        if tag == "th" and attr_map.get("scope") not in {"col", "row"}:
+            self.table_headers_without_scope += 1
         reference_attributes = {
             "a": ("href",),
             "audio": ("src",),
@@ -1164,43 +1189,43 @@ def validation_truth(state: dict[str, Any]) -> tuple[str, str, str]:
         return (
             "Live customer testing completed",
             f"This live sprint includes {usable} usable of {completed} completed real-customer session(s). Findings are directional, not statistical proof.",
-            "section--accent",
+            "section--success",
         )
     if terminal_state == "self-test-complete-unvalidated":
         return (
             "UNVALIDATED — self-test complete",
             "The sprint process was exercised, but no customer validation was conducted. Assumptions, placeholders, and synthetic rehearsal remain non-observed inputs.",
-            "section--warning",
+            "section--danger",
         )
     if terminal_state == "planning-rehearsal-complete-unvalidated":
         return (
             "UNVALIDATED — planning/rehearsal complete",
             "This is a completed plan or rehearsal, not evidence that customer sessions or the planned sprint activities occurred.",
-            "section--warning",
+            "section--danger",
         )
     if terminal_state == "closed-unvalidated":
         return (
             "CLOSED UNVALIDATED",
             "This workspace closed without customer validation. Its hypotheses and decisions must not be represented as customer-tested evidence.",
-            "section--warning",
+            "section--danger",
         )
     if mode == "self-test":
         return (
             "UNVALIDATED SELF-TEST",
             "No customer validation is being conducted in self-test mode. Synthetic rehearsal may test the process but cannot create customer evidence.",
-            "section--warning",
+            "section--danger",
         )
     if mode == "planning-rehearsal":
         return (
             "UNVALIDATED PLANNING/REHEARSAL",
             "This workspace describes or rehearses planned activity; it does not establish that the activity or customer validation occurred.",
-            "section--warning",
+            "section--danger",
         )
     if usable > 0:
         return (
             "Live customer evidence recorded",
             f"{usable} usable of {completed} completed real-customer session(s) are recorded; the sprint has not yet reached its terminal decision.",
-            "section--accent",
+            "section--success",
         )
     if completed > 0:
         return (
@@ -1791,6 +1816,10 @@ def class_for_status(status: str) -> str:
         "waiting-for-customers": "status--assumption",
         "paused": "status--unknown",
         "complete": "status--complete",
+        "completed": "status--complete",
+        "stopped-deliberately": "status--complete",
+        "partially-completed": "status--assumption",
+        "not-started": "status--unknown",
         "live-customer-tested": "status--observed",
         "self-test-complete-unvalidated": "status--risk",
         "planning-rehearsal-complete-unvalidated": "status--risk",
@@ -1801,6 +1830,10 @@ def class_for_status(status: str) -> str:
         "ready-for-decision": "status--decision",
         "assigned": "status--unknown",
         "in-progress": "status--active",
+        "recruiting": "status--assumption",
+        "scheduled": "status--assumption",
+        "partial": "status--assumption",
+        "not-planned": "status--unknown",
         "returned": "status--decision",
         "accepted": "status--complete",
         "rejected": "status--risk",
@@ -1813,6 +1846,24 @@ def class_for_status(status: str) -> str:
         "decision": "status--decision",
         "unknown": "status--unknown",
         "synthetic-rehearsal": "status--synthetic",
+        "profile-followed": "status--complete",
+        "adapted-with-documented-substitutions": "status--assumption",
+        "self-test-rehearsal": "status--risk",
+        "not-applicable": "status--unknown",
+        "skipped": "status--risk",
+        "not-tested": "status--risk",
+        "early-limited": "status--assumption",
+        "partial-directional": "status--assumption",
+        "book-target-met": "status--observed",
+        "extended": "status--observed",
+        "mixed-segment": "status--assumption",
+        "mixed-quality": "status--assumption",
+        "consistent-directional": "status--observed",
+        "insufficient-to-decide": "status--risk",
+        "insufficient-for-large-or-irreversible-investment": "status--risk",
+        "sufficient-to-correct-an-observed-failure": "status--decision",
+        "sufficient-for-a-bounded-reversible-investment": "status--decision",
+        "sufficient-to-investigate-or-run-another-test": "status--assumption",
     }
     return mapping.get(normalized, "status--unknown")
 
@@ -1865,11 +1916,13 @@ def render_table(section: dict[str, Any]) -> str:
         body_rows.append(f"<tr>{cells}</tr>")
     caption = escape(section.get("caption", section.get("title", "Data table")))
     return (
+        f'<div class="table-scroll" role="region" aria-label="{caption}" tabindex="0">'
         "<table>"
         f"<caption>{caption}</caption>"
         f"<thead><tr>{headers}</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
+        "</div>"
     )
 
 
@@ -2846,9 +2899,11 @@ def build_completion_assessment(
         if data.get("status") == "blocked"
     }
     blocked_steps.discard("None")
+    current = str(state.get("currentStep", "01-intake"))
     if customer.get("status") == "blocked":
         blocked_steps.add("11-customer-sessions")
-    current = str(state.get("currentStep", "01-intake"))
+    if state.get("status") == "paused":
+        blocked_steps.add(current)
     if state.get("status") == "complete" and str(state.get("outcome", "")).lower() == "stop":
         process_status = "stopped-deliberately"
     elif state.get("status") == "complete":
@@ -2863,9 +2918,17 @@ def build_completion_assessment(
         process_status = "active"
     accounted = completed_steps | skipped_steps | not_applicable_steps | blocked_steps
     not_started_count = max(0, len(STEPS) - len(accounted) - (0 if current in accounted else 1))
+    applicable_count = max(1, len(STEPS) - len(not_applicable_steps))
+    progress_percent = min(
+        100, round((len(completed_steps - not_applicable_steps) / applicable_count) * 100)
+    )
     process = {
         "status": process_status,
         "label": display_label(process_status),
+        "currentStep": current,
+        "applicableSteps": applicable_count,
+        "progressPercent": progress_percent,
+        "blockedStepIds": sorted(blocked_steps),
         "steps": {
             "completed": len(completed_steps),
             "skipped": len(skipped_steps),
@@ -3132,24 +3195,49 @@ def build_completion_assessment(
 
 def render_completion_dimensions(assessment: dict[str, Any]) -> str:
     cards = []
-    for key, title, detail_key in (
-        ("processStatus", "Process status", "explanation"),
-        ("methodFidelity", "Method fidelity", "status"),
-        ("evidenceStrength", "Evidence strength", "description"),
-        ("decisionReadiness", "Decision readiness", "reason"),
+    for key, title in (
+        ("processStatus", "Process status"),
+        ("methodFidelity", "Method fidelity"),
+        ("evidenceStrength", "Evidence strength"),
+        ("decisionReadiness", "Decision readiness"),
     ):
         value = assessment[key]
-        detail = value.get(detail_key, "")
-        if key == "methodFidelity":
+        status_key = str(value.get("status", "unknown"))
+        extra = ""
+        if key == "processStatus":
+            steps = value.get("steps", {})
             detail = (
-                "Method adherence is derived from the selected profile, route, mode, "
-                "documented adaptations, omissions, and testing shortfall."
+                f"{steps.get('completed', 0)} completed · {steps.get('skipped', 0)} skipped · "
+                f"{steps.get('blocked', 0)} blocked · {steps.get('notApplicable', 0)} not applicable · "
+                f"{steps.get('notStarted', 0)} not started."
             )
+            progress = int(value.get("progressPercent", 0))
+            extra = (
+                f'<progress class="progress" aria-label="Process completion" value="{progress}" max="100">'
+                f'{progress}%</progress><span class="assessment-card__progress">'
+                f'{progress}% of applicable steps completed; skips do not increase completion.</span>'
+            )
+        elif key == "methodFidelity":
+            detail = (
+                f"{len(value.get('adaptations', []))} adaptation(s) and "
+                f"{len(value.get('limitations', []))} method limitation(s) recorded."
+            )
+        elif key == "evidenceStrength":
+            status_key = str(value.get("band", "not-tested"))
+            counts = assessment.get("sessionCounts", {})
+            detail = (
+                f"{counts.get('usable', 0)} usable of {counts.get('attempted', 0)} attempted; "
+                f"quality is {display_label(value.get('quality'))}."
+            )
+        else:
+            detail = str(value.get("reason", ""))
         cards.append(
-            '<article class="assessment-card">'
+            f'<article class="assessment-card" data-state="{escape(status_key)}">'
             f'<span class="metric__label">{escape(title)}</span>'
-            f'<strong>{escape(value.get("label", "Unknown"))}</strong>'
+            f'<strong class="status {class_for_status(status_key)}">'
+            f'{escape(value.get("label", "Unknown"))}</strong>'
             f'<p>{escape(detail)}</p>'
+            f'{extra}'
             "</article>"
         )
     return "\n".join(cards)
@@ -3163,6 +3251,135 @@ def render_session_counts(assessment: dict[str, Any]) -> str:
         f'<span class="metric__value">{escape(value)}</span></div>'
         for name, value in counts.items()
     )
+
+
+def dashboard_decision_summary(state: dict[str, Any]) -> dict[str, str]:
+    """Describe the current human decision or truthful terminal outcome."""
+
+    decisions = [
+        item
+        for item in state.get("decisions", [])
+        if isinstance(item, dict) and item.get("status") == "active"
+    ]
+    if state.get("status") == "complete":
+        final = next(
+            (item for item in reversed(decisions) if item.get("gate") == "gate-5"),
+            {},
+        )
+        return {
+            "label": "Final decision",
+            "title": str(state.get("outcome") or final.get("decision") or "Not recorded"),
+            "detail": str(
+                final.get("rationale")
+                or "The selected route is closed; review the outcome and owned actions."
+            ),
+            "status": str(state.get("terminalState", "closed-unvalidated")),
+        }
+    pending_gate = str(state.get("pendingGate") or "")
+    if pending_gate:
+        next_action = state.get("nextAction", {})
+        human_input = (
+            next_action.get("humanInput", "Record the pending human decision.")
+            if isinstance(next_action, dict)
+            else "Record the pending human decision."
+        )
+        return {
+            "label": "Decision required",
+            "title": GATE_NAMES.get(pending_gate, display_label(pending_gate)),
+            "detail": str(human_input),
+            "status": "waiting-for-human",
+        }
+    if decisions:
+        latest = decisions[-1]
+        return {
+            "label": "Current decision",
+            "title": str(latest.get("decision", "Decision recorded")),
+            "detail": str(
+                latest.get("rationale") or "The latest active human decision remains in force."
+            ),
+            "status": "decision",
+        }
+    route = str(state.get("route", "undecided"))
+    return {
+        "label": "Current decision",
+        "title": (
+            "Route decision pending"
+            if route == "undecided"
+            else f"{display_label(route)} route"
+        ),
+        "detail": str(
+            state.get("routeRationale")
+            or "The Decider has not yet recorded a human gate decision."
+        ),
+        "status": "unknown" if route == "undecided" else "decision",
+    }
+
+
+def customer_testing_truth(
+    state: dict[str, Any], assessment: dict[str, Any]
+) -> dict[str, str]:
+    """Summarize testing without allowing process state to imply validation."""
+
+    customer = state.get("customerTesting", {})
+    counts = assessment.get("sessionCounts", {})
+    planned = int(counts.get("planned", 0))
+    completed = int(counts.get("completed", 0))
+    usable = int(counts.get("usable", 0))
+    mode = str(state.get("executionMode", "live"))
+    customer_status = str(customer.get("status", "not-planned"))
+    testing_skipped = "11-customer-sessions" in state.get("skippedSteps", [])
+    if mode != "live":
+        return {
+            "label": (
+                f"Customer testing skipped — not conducted ({display_label(mode)})"
+                if testing_skipped
+                else f"Customer testing not conducted — {display_label(mode)}"
+            ),
+            "detail": (
+                "The customer-session step was explicitly skipped in this non-live run; no skipped activity counts toward process completion or evidence."
+                if testing_skipped
+                else "This run cannot create customer evidence. Session counts remain operational records, not validation."
+            ),
+            "status": "skipped" if testing_skipped else "not-tested",
+        }
+    if testing_skipped:
+        return {
+            "label": "Customer testing skipped — not conducted",
+            "detail": "The customer-session step was explicitly skipped; no skipped activity counts toward process completion or evidence.",
+            "status": "skipped",
+        }
+    if customer_status == "blocked":
+        return {
+            "label": "Customer testing blocked",
+            "detail": f"{completed} session(s) completed and {usable} usable; the recorded blocker still constrains the decision.",
+            "status": "blocked",
+        }
+    if usable == 0 and completed > 0:
+        return {
+            "label": "No usable customer evidence",
+            "detail": f"{completed} session(s) completed, but none are usable for synthesis or a customer-dependent decision.",
+            "status": "not-tested",
+        }
+    if usable == 0:
+        return {
+            "label": "Customer testing not conducted yet",
+            "detail": "No usable real-customer session is recorded; the work remains customer-unvalidated.",
+            "status": "not-tested",
+        }
+    if (planned and usable < planned) or customer_status != "complete":
+        return {
+            "label": "Partial customer evidence",
+            "detail": (
+                f"{usable} of {planned or usable} planned session(s) are usable; "
+                f"testing status is {display_label(customer_status)}. This is directional evidence, not statistical confidence."
+            ),
+            "status": "partial-directional",
+        }
+    return {
+        "label": "Customer testing completed",
+        "detail": f"{usable} usable of {completed} completed session(s) are recorded. Findings remain directional, not statistical proof.",
+        "status": "observed",
+    }
 
 
 def render_assessment_limitations(assessment: dict[str, Any]) -> str:
@@ -4146,8 +4363,6 @@ def render_site_navigation(site_manifest: dict[str, Any], current_page_id: str) 
     current = pages[current_page_id]
     relationships = current["relationships"]
     links: list[tuple[str, str]] = [("Home", "home")]
-    if current_page_id != "home":
-        links.append(("Current", current_page_id))
     for label, key in (
         ("Previous", "previous"),
         ("Next", "next"),
@@ -4171,9 +4386,8 @@ def render_site_navigation(site_manifest: dict[str, Any], current_page_id: str) 
         seen.add(link_key)
         target = pages[target_id]
         href = site_relative_href(str(current["path"]), str(target["path"]))
-        aria_current = ' aria-current="page"' if target_id == current_page_id else ""
         rendered_links.append(
-            f'<li><a href="{escape(href)}"{aria_current}>'
+            f'<li><a href="{escape(href)}">'
             f'{escape(label)}: {escape(target["title"])}</a></li>'
         )
     manifest_href = site_relative_href(str(current["path"]), SITE_MANIFEST_FILENAME)
@@ -4181,9 +4395,22 @@ def render_site_navigation(site_manifest: dict[str, Any], current_page_id: str) 
         f'<li><a href="{escape(manifest_href)}" download>Site manifest</a></li>'
     )
     site = site_manifest["site"]
+    home = pages["home"]
+    if current_page_id == "home":
+        breadcrumb_items = (
+            f'<li><span aria-current="page">{escape(current["title"])}</span></li>'
+        )
+    else:
+        home_href = site_relative_href(str(current["path"]), str(home["path"]))
+        breadcrumb_items = (
+            f'<li><a href="{escape(home_href)}">Home</a></li>'
+            '<li aria-hidden="true">/</li>'
+            f'<li><span aria-current="page">{escape(current["title"])}</span></li>'
+        )
     return (
         '<nav class="site-navigation" aria-label="Sprint site">'
         '<div class="shell site-navigation__inner">'
+        f'<ol class="breadcrumb" aria-label="Breadcrumb">{breadcrumb_items}</ol>'
         '<p class="site-navigation__context">'
         f'<strong>{escape(site["title"])}</strong>'
         f'<span>Current: {escape(current["title"])} · {escape(current["phase"])} · '
@@ -4510,7 +4737,9 @@ def render_artifact(
     )
 
 
-def render_steps(state: dict[str, Any]) -> str:
+def render_steps(
+    state: dict[str, Any], blocked_steps: set[str] | None = None
+) -> str:
     completed = set(state.get("completedSteps", []))
     skipped = set(state.get("skippedSteps", []))
     not_applicable = set(state.get("notApplicableSteps", []))
@@ -4520,6 +4749,7 @@ def render_steps(state: dict[str, Any]) -> str:
         if isinstance(item, dict)
     }
     current = state.get("currentStep")
+    blocked = blocked_steps or set()
     output = []
     for number, step in enumerate(STEPS, start=1):
         step_id = step["id"]
@@ -4527,31 +4757,36 @@ def render_steps(state: dict[str, Any]) -> str:
             css = "step"
             marker = "·"
             detail = "Not applicable to the selected route"
-            status = '<span class="status status--unknown">Not applicable</span>'
+            status = f'<span class="status {class_for_status("not-applicable")}">Not applicable</span>'
         elif step_id in skipped:
-            css = "step"
+            css = "step step--skipped"
             marker = "–"
             record = skip_records.get(step_id, {})
             detail = (
                 f"Skipped by {record.get('skippedBy', 'unknown')}: "
                 f"{record.get('reason', state.get('skipReasons', {}).get(step_id, 'No reason recorded'))}"
             )
-            status = '<span class="status status--unknown">Skipped</span>'
+            status = f'<span class="status {class_for_status("skipped")}">Skipped</span>'
         elif step_id in completed:
             css = "step step--complete"
             marker = "✓"
             detail = "Completed"
-            status = '<span class="status status--complete">Complete</span>'
+            status = f'<span class="status {class_for_status("complete")}">Complete</span>'
+        elif step_id in blocked:
+            css = "step step--blocked"
+            marker = "!"
+            detail = "Blocked by the current canonical evidence or artifact state"
+            status = f'<span class="status {class_for_status("blocked")}">Blocked</span>'
         elif step_id == current:
             css = "step step--active"
             marker = "→"
             detail = "Current step"
-            status = '<span class="status status--active">Active</span>'
+            status = f'<span class="status {class_for_status("active")}">Active</span>'
         else:
             css = "step"
             marker = str(number)
             detail = "Not started"
-            status = '<span class="status status--unknown">Upcoming</span>'
+            status = f'<span class="status {class_for_status("not-started")}">Upcoming</span>'
         output.append(
             f'<li class="{css}">'
             f'<span class="step__marker">{marker}</span>'
@@ -4716,18 +4951,13 @@ def render_dashboard(
     template = (HTML_KIT_DIR / "index-template.html").read_text(encoding="utf-8")
     skipped = set(state.get("skippedSteps", []))
     not_applicable = set(state.get("notApplicableSteps", []))
-    denominator = max(1, len(STEPS) - len(not_applicable))
     completed = len(
         set(state.get("completedSteps", [])) - skipped - not_applicable
     )
-    progress = min(100, round((completed / denominator) * 100))
     current = str(state.get("currentStep", "01-intake"))
     next_action = state.get("nextAction", {})
     if not isinstance(next_action, dict):
         next_action = {"title": "Continue the sprint", "body": str(next_action)}
-    customer = state.get("customerTesting", {})
-    if not isinstance(customer, dict):
-        customer = {}
     open_questions = state.get("openQuestions", [])
     if isinstance(open_questions, list) and open_questions:
         questions_html = "\n".join(f"<li>{escape(item)}</li>" for item in open_questions)
@@ -4736,6 +4966,13 @@ def render_dashboard(
     updated_at = str(state.get("updatedAt") or state.get("createdAt") or "")
     fidelity_summary = state.get("fidelity", {}).get("summary", {})
     validation_label, validation_notice, validation_class = validation_truth(state)
+    decision_summary = dashboard_decision_summary(state)
+    testing_summary = customer_testing_truth(state, assessment)
+    validation_status = str(
+        state.get("terminalState")
+        if state.get("terminalState") != "not-terminal"
+        else testing_summary["status"]
+    )
     mode_selection = state.get("executionModeSelection", {})
     if state.get("executionMode") == "live":
         evidence_boundary = "Only suitable real-customer sessions count as customer evidence."
@@ -4759,21 +4996,33 @@ def render_dashboard(
             "VALIDATION_LABEL": escape(validation_label),
             "VALIDATION_NOTICE": escape(validation_notice),
             "VALIDATION_SECTION_CLASS": validation_class,
+            "VALIDATION_STATUS": escape(display_label(validation_status)),
+            "VALIDATION_STATUS_CLASS": class_for_status(validation_status),
             "MODE_SELECTED_BY": escape(mode_selection.get("selectedBy", "unknown")),
             "MODE_SELECTION_REASON": escape(mode_selection.get("reason", "unknown")),
             "METHOD_FIDELITY": escape(
                 display_label(fidelity_summary.get("assessment"))
             ),
+            "METHOD_FIDELITY_CLASS": class_for_status(
+                str(fidelity_summary.get("assessment", "unknown"))
+            ),
             "UPDATED_ISO": escape(updated_at),
             "UPDATED_DISPLAY": escape(display_date(updated_at)),
-            "PROGRESS_PERCENT": progress,
-            "PROCESS_STATUS": escape(assessment["processStatus"]["label"]),
             "COMPLETION_DIMENSIONS": render_completion_dimensions(assessment),
             "SESSION_COUNTS": render_session_counts(assessment),
             "EVIDENCE_STRENGTH": escape(assessment["evidenceStrength"]["label"]),
             "EVIDENCE_QUALITY": escape(display_label(assessment["evidenceStrength"]["quality"])),
+            "EVIDENCE_STRENGTH_CLASS": class_for_status(
+                str(assessment["evidenceStrength"]["band"])
+            ),
+            "EVIDENCE_QUALITY_CLASS": class_for_status(
+                str(assessment["evidenceStrength"]["quality"])
+            ),
             "DECISION_READINESS": escape(assessment["decisionReadiness"]["label"]),
             "DECISION_READINESS_REASON": escape(assessment["decisionReadiness"]["reason"]),
+            "DECISION_READINESS_CLASS": class_for_status(
+                str(assessment["decisionReadiness"]["status"])
+            ),
             "ASSESSMENT_LIMITATIONS": render_assessment_limitations(assessment),
             "MATERIAL_FINDINGS": render_material_findings(assessment),
             "CURRENT_STEP": escape(f"{current}: {step_name(current)}"),
@@ -4784,10 +5033,18 @@ def render_dashboard(
             "NEXT_ACTION_BODY": escape(next_action.get("body", "Review the current step.")),
             "HUMAN_INPUT_NEEDED": escape(next_action.get("humanInput", "None right now")),
             "STEP_GUIDANCE_HTML": render_step_guidance(state),
-            "SPRINT_STEPS": render_steps(state),
-            "TEST_STATUS": escape(str(customer.get("status", "not-planned")).replace("-", " ").title()),
-            "SESSIONS_PLANNED": escape(customer.get("sessionsPlanned", 0)),
-            "SESSIONS_COMPLETED": escape(customer.get("sessionsCompleted", 0)),
+            "DECISION_LABEL": escape(decision_summary["label"]),
+            "DECISION_TITLE": escape(decision_summary["title"]),
+            "DECISION_DETAIL": escape(decision_summary["detail"]),
+            "DECISION_STATUS": escape(display_label(decision_summary["status"])),
+            "DECISION_STATUS_CLASS": class_for_status(decision_summary["status"]),
+            "SPRINT_STEPS": render_steps(
+                state,
+                set(assessment["processStatus"].get("blockedStepIds", [])),
+            ),
+            "TEST_STATUS": escape(testing_summary["label"]),
+            "TEST_STATUS_DETAIL": escape(testing_summary["detail"]),
+            "TEST_STATUS_CLASS": class_for_status(testing_summary["status"]),
             "EVIDENCE_BOUNDARY": escape(evidence_boundary),
             "RECRUITMENT_SUMMARY": render_recruitment_summary(recruitment_plan),
             "FIDELITY_ADAPTATIONS": render_fidelity_adaptations(state),
@@ -4805,7 +5062,6 @@ def render_dashboard(
             "OPEN_QUESTIONS": questions_html,
         },
     )
-    rendered = rendered.replace('value="0" max="100"', f'value="{progress}" max="100"', 1)
     return rendered
 
 
@@ -10635,6 +10891,35 @@ def site_crawl_errors(site_root: Path, site_manifest: dict[str, Any]) -> list[st
         if parser.current_page_indicators < 1:
             errors.append(
                 f"Site-manifest page {page['path']} is missing current-page indication"
+            )
+        if parser.breadcrumbs != 1:
+            errors.append(
+                f"Site-manifest page {page['path']} must contain exactly one breadcrumb"
+            )
+        if parser.main_landmarks != 1:
+            errors.append(
+                f"Site-manifest page {page['path']} must contain exactly one main landmark with id main"
+            )
+        if parser.skip_links != 1:
+            errors.append(
+                f"Site-manifest page {page['path']} must contain exactly one skip link to #main"
+            )
+        if parser.h1_count != 1:
+            errors.append(
+                f"Site-manifest page {page['path']} must contain exactly one h1"
+            )
+        if parser.duplicate_ids:
+            errors.append(
+                f"Site-manifest page {page['path']} contains duplicate IDs: "
+                + ", ".join(sorted(parser.duplicate_ids))
+            )
+        if parser.table_caption_count != parser.table_count:
+            errors.append(
+                f"Site-manifest page {page['path']} must caption every table"
+            )
+        if parser.table_headers_without_scope:
+            errors.append(
+                f"Site-manifest page {page['path']} has table headers without row or column scope"
             )
 
     all_html = sorted(site_root.rglob("*.html"))
