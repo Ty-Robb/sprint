@@ -1,0 +1,9 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "titlePrefix": "Synthetic renderer and responsive-layout contract — ",
+  "challenge": "Exercise escaped <script>synthetic-only()</script> text, tables, lists, cards, empty edges, and long content without treating rehearsal as customer evidence.",
+  "escapedText": "Synthetic <script>window.syntheticOnly = true</script> & <b>markup</b> with \"quotes\" and an apostrophe's edge.",
+  "longTokenSeed": "syntheticlayoutpressure",
+  "longTokenRepeats": 180
+}

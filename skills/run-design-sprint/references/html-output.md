@@ -157,7 +157,7 @@ Use semantic HTML:
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <header>...</header>
-    <main id="main">...</main>
+    <main id="main" tabindex="-1">...</main>
     <footer>...</footer>
   </body>
 </html>

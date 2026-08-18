@@ -1917,13 +1917,13 @@ def render_table(section: dict[str, Any]) -> str:
         body_rows.append(f"<tr>{cells}</tr>")
     caption = escape(section.get("caption", section.get("title", "Data table")))
     return (
-        f'<div class="table-scroll" role="region" aria-label="{caption}" tabindex="0">'
+        f'<section class="table-scroll" aria-label="{caption}" tabindex="0">'
         "<table>"
         f"<caption>{caption}</caption>"
         f"<thead><tr>{headers}</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
-        "</div>"
+        "</section>"
     )
 
 

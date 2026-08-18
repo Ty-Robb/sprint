@@ -1,0 +1,85 @@
+{
+  "fixtureKind": "synthetic",
+  "containsRealCustomerData": false,
+  "schemaCases": [
+    {
+      "id": "wrong-customer-count-type",
+      "operation": "replace",
+      "path": ["customerTesting", "sessionsUsable"],
+      "value": "one synthetic session",
+      "expected": "$.customerTesting.sessionsUsable"
+    },
+    {
+      "id": "missing-mode-selection-reason",
+      "operation": "remove",
+      "path": ["executionModeSelection", "reason"],
+      "expected": "$.executionModeSelection"
+    },
+    {
+      "id": "undeclared-customer-state",
+      "operation": "add",
+      "path": ["customerTesting", "syntheticContradiction"],
+      "value": true,
+      "expected": "$.customerTesting.syntheticContradiction"
+    }
+  ],
+  "semanticCases": [
+    {
+      "id": "selected-route-without-history",
+      "validator": "route_history_errors",
+      "set": {
+        "route": "full-design-sprint",
+        "routeRationale": "Synthetic route selection without its required history."
+      },
+      "expected": "requires routeHistory"
+    },
+    {
+      "id": "step-both-completed-and-skipped",
+      "validator": "validate_state",
+      "set": {
+        "completedSteps": ["01-intake"],
+        "skippedSteps": ["01-intake"]
+      },
+      "expected": "A step cannot be both completed and skipped"
+    },
+    {
+      "id": "terminal-label-on-active-workspace",
+      "validator": "terminal_state_errors",
+      "set": {
+        "terminalState": "closed-unvalidated"
+      },
+      "expected": "A non-terminal workspace must record terminalState as not-terminal"
+    },
+    {
+      "id": "attempted-count-exceeds-invited-count",
+      "validator": "customer_testing_errors",
+      "set": {
+        "customerTesting": {
+          "status": "in-progress",
+          "target": "Synthetic qualified participants",
+          "targetRationale": "Exercise count reconciliation with invented values.",
+          "sessionsPlanned": 2,
+          "sessionsInvited": 1,
+          "sessionsAttempted": 2,
+          "sessionsCompleted": 0,
+          "sessionsQualified": 1,
+          "sessionsExcluded": 0,
+          "sessionsUsable": 0
+        }
+      },
+      "expected": "Attempted customer sessions cannot exceed invited sessions"
+    },
+    {
+      "id": "skip-without-audit-record",
+      "validator": "skip_record_errors",
+      "set": {
+        "skippedSteps": ["11-customer-sessions"],
+        "skipReasons": {
+          "11-customer-sessions": "Synthetic blocked-path exercise."
+        },
+        "skipRecords": []
+      },
+      "expected": "requires exactly one auditable skip record"
+    }
+  ]
+}
