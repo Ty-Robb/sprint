@@ -12,69 +12,106 @@
 
     {{SITE_NAVIGATION_HTML}}
 
-    <header class="site-header">
-      <div class="shell hero-grid">
-        <div>
-          <p class="eyebrow">Design Sprint for One</p>
-          <h1>{{SPRINT_TITLE}}</h1>
-          <p class="lede">{{SPRINT_CHALLENGE}}</p>
-          <div class="meta-row" role="group" aria-label="Sprint metadata">
-            <span class="status {{SPRINT_STATUS_CLASS}}">Process: {{SPRINT_STATUS}}</span>
-            <span class="status {{TERMINAL_STATE_CLASS}}">Terminal: {{TERMINAL_STATE}}</span>
-            <span class="tag">Method: {{METHOD_PROFILE}}</span>
-            <span class="tag">Mode: {{EXECUTION_MODE}}</span>
-            <span class="tag">Route: {{SPRINT_ROUTE}}</span>
-            <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
+    <header class="site-header site-header--dashboard">
+      <div class="shell dashboard-overview">
+        <div class="dashboard-identity">
+          <div>
+            <p class="eyebrow">Design Sprint for One</p>
+            <h1>{{SPRINT_TITLE}}</h1>
+            <p class="lede">{{SPRINT_CHALLENGE}}</p>
           </div>
+          <dl class="dashboard-metadata" aria-label="Sprint operating context">
+            <div><dt>Execution mode</dt><dd>Mode: {{EXECUTION_MODE}}</dd></div>
+            <div><dt>Method profile</dt><dd>Method: {{METHOD_PROFILE}}</dd></div>
+            <div><dt>Route</dt><dd>Route: {{SPRINT_ROUTE}}</dd></div>
+          </dl>
+        </div>
+        <div class="meta-row" role="group" aria-label="Sprint state">
+          <span class="status {{SPRINT_STATUS_CLASS}}">Process: {{SPRINT_STATUS}}</span>
+          <span class="status {{TERMINAL_STATE_CLASS}}">Terminal: {{TERMINAL_STATE}}</span>
+          <span class="tag">Current step: {{CURRENT_STEP}}</span>
+          <span class="tag">Updated: <time datetime="{{UPDATED_ISO}}">{{UPDATED_DISPLAY}}</time></span>
         </div>
 
-        <div class="metric" role="group" aria-label="Sprint progress">
-          <span class="metric__label">Process status</span>
-          <span class="metric__value">{{PROCESS_STATUS}}</span>
-          <!-- Set the value attribute to the current numeric percentage. -->
-          <progress class="progress" value="0" max="100">
-            {{PROGRESS_PERCENT}}%
-          </progress>
-          <p>{{PROGRESS_PERCENT}}% of applicable steps completed · {{CURRENT_STEP}}</p>
+        <section class="truth-banner {{VALIDATION_SECTION_CLASS}}" aria-labelledby="validation-title">
+          <div>
+            <p class="eyebrow">Customer-validation boundary</p>
+            <h2 id="validation-title">{{VALIDATION_LABEL}}</h2>
+            <p>{{VALIDATION_NOTICE}}</p>
+            <p class="truth-banner__provenance"><strong>Mode selected by:</strong> {{MODE_SELECTED_BY}} · <strong>Reason:</strong> {{MODE_SELECTION_REASON}}</p>
+          </div>
+          <span class="status {{VALIDATION_STATUS_CLASS}}">{{VALIDATION_STATUS}}</span>
+        </section>
+
+        <div class="dashboard-decision-grid">
+          <section class="control-card" aria-labelledby="decision-title">
+            <div class="control-card__heading">
+              <p class="eyebrow">{{DECISION_LABEL}}</p>
+              <span class="status {{DECISION_STATUS_CLASS}}">{{DECISION_STATUS}}</span>
+            </div>
+            <h2 id="decision-title">{{DECISION_TITLE}}</h2>
+            <p>{{DECISION_DETAIL}}</p>
+          </section>
+
+          <section class="control-card control-card--accent" aria-labelledby="next-action-title">
+            <div class="control-card__heading">
+              <p class="eyebrow">Next action</p>
+              <span class="control-card__arrow" aria-hidden="true">→</span>
+            </div>
+            <h2 id="next-action-title">{{NEXT_ACTION_TITLE}}</h2>
+            <p>{{NEXT_ACTION_BODY}}</p>
+            <p><strong>Needed from the Decider:</strong> {{HUMAN_INPUT_NEEDED}}</p>
+          </section>
         </div>
+
+        <section class="dashboard-status" aria-labelledby="assessment-title">
+          <div class="dashboard-status__heading">
+            <p class="eyebrow">Operational status</p>
+            <h2 id="assessment-title">Four independent dimensions</h2>
+          </div>
+          <div class="assessment-grid">
+            {{COMPLETION_DIMENSIONS}}
+          </div>
+        </section>
       </div>
     </header>
 
     <main id="main" class="shell">
-      <section class="section {{VALIDATION_SECTION_CLASS}}" aria-labelledby="validation-title">
-        <p class="eyebrow">Validation status</p>
-        <h2 id="validation-title">{{VALIDATION_LABEL}}</h2>
-        <p>{{VALIDATION_NOTICE}}</p>
-        <p><strong>Mode selected by:</strong> {{MODE_SELECTED_BY}} · <strong>Reason:</strong> {{MODE_SELECTION_REASON}}</p>
-      </section>
-
-      <section class="section section--accent" aria-labelledby="next-action-title">
-        <div class="next-action">
-          <div class="next-action__number" aria-hidden="true">→</div>
-          <div>
-            <p class="eyebrow">Next action</p>
-            <h2 id="next-action-title">{{NEXT_ACTION_TITLE}}</h2>
-            <p>{{NEXT_ACTION_BODY}}</p>
-            <p><strong>Needed from the Decider:</strong> {{HUMAN_INPUT_NEEDED}}</p>
-          </div>
-        </div>
-      </section>
 
       {{STEP_GUIDANCE_HTML}}
 
-      <section class="section section--warning" aria-labelledby="privacy-title">
-        <p class="eyebrow">Private by default</p>
-        <h2 id="privacy-title">Protect the sprint record</h2>
-        <p>Keep this entire generated workspace in access-controlled private storage. Publish only a separately reviewed, sanitized export; never publish raw transcripts, participant or contact data, company-confidential material, account information, or private usage-dashboard evidence.</p>
-      </section>
+      <div class="two-column operational-grid">
+        <section class="section" aria-labelledby="progress-title">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Workflow</p>
+              <h2 id="progress-title">Sprint progress</h2>
+            </div>
+          </div>
+          <ol class="step-list">
+            {{SPRINT_STEPS}}
+          </ol>
+        </section>
 
-      <section class="section" aria-labelledby="assessment-title">
-        <p class="eyebrow">Truthful progress</p>
-        <h2 id="assessment-title">Four independent dimensions</h2>
-        <div class="assessment-grid">
-          {{COMPLETION_DIMENSIONS}}
-        </div>
-      </section>
+        <section class="section" aria-labelledby="testing-title">
+          <p class="eyebrow">Reality check</p>
+          <h2 id="testing-title">Customer testing</h2>
+          <p><span class="status {{TEST_STATUS_CLASS}}">{{TEST_STATUS}}</span></p>
+          <p>{{TEST_STATUS_DETAIL}}</p>
+          <div class="count-grid">
+            {{SESSION_COUNTS}}
+          </div>
+          <div class="callout">
+            <strong>Evidence rule:</strong> {{EVIDENCE_BOUNDARY}} Synthetic personas and AI role-play are rehearsal only.
+          </div>
+          <h3>Evidence limitations</h3>
+          <ul>{{ASSESSMENT_LIMITATIONS}}</ul>
+          <details class="guidance">
+            <summary>Show recruitment owner, deadline, and progress</summary>
+            {{RECRUITMENT_SUMMARY}}
+          </details>
+        </section>
+      </div>
 
       <section class="section" aria-labelledby="fidelity-title">
         <div class="section-header">
@@ -82,7 +119,7 @@
             <p class="eyebrow">Method record</p>
             <h2 id="fidelity-title">Method fidelity</h2>
           </div>
-          <span class="status status--decision">{{METHOD_FIDELITY}}</span>
+          <span class="status {{METHOD_FIDELITY_CLASS}}">{{METHOD_FIDELITY}}</span>
         </div>
         <div class="three-column">
           <div class="metric">
@@ -114,45 +151,19 @@
         </details>
       </section>
 
-      <div class="two-column">
-        <section class="section" aria-labelledby="progress-title">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Workflow</p>
-              <h2 id="progress-title">Sprint progress</h2>
-            </div>
-          </div>
-          <ol class="step-list">
-            {{SPRINT_STEPS}}
-          </ol>
-        </section>
-
-        <section class="section" aria-labelledby="testing-title">
-          <p class="eyebrow">Reality check</p>
-          <h2 id="testing-title">Customer testing</h2>
-          <p><span class="status status--decision">{{TEST_STATUS}}</span></p>
-          <div class="count-grid">
-            {{SESSION_COUNTS}}
-          </div>
-          <div class="callout">
-            <strong>Evidence rule:</strong> {{EVIDENCE_BOUNDARY}} Synthetic personas and AI role-play are rehearsal only.
-          </div>
-          <details class="guidance">
-            <summary>Show recruitment owner, deadline, and progress</summary>
-            {{RECRUITMENT_SUMMARY}}
-          </details>
-        </section>
-      </div>
-
       <section class="section" aria-labelledby="evidence-assessment-title">
         <div class="section-header">
           <div>
             <p class="eyebrow">Evidence, not confidence</p>
             <h2 id="evidence-assessment-title">Evidence strength and decision readiness</h2>
           </div>
-          <span class="status status--decision">{{EVIDENCE_STRENGTH}} · {{EVIDENCE_QUALITY}}</span>
+          <div class="tag-row tag-row--flush" aria-label="Evidence assessment states">
+            <span class="status {{EVIDENCE_STRENGTH_CLASS}}">Strength: {{EVIDENCE_STRENGTH}}</span>
+            <span class="status {{EVIDENCE_QUALITY_CLASS}}">Quality: {{EVIDENCE_QUALITY}}</span>
+          </div>
         </div>
-        <p><strong>{{DECISION_READINESS}}</strong> — {{DECISION_READINESS_REASON}}</p>
+        <p><span class="status {{DECISION_READINESS_CLASS}}">{{DECISION_READINESS}}</span></p>
+        <p>{{DECISION_READINESS_REASON}}</p>
         <h3>Automatically generated limitations</h3>
         <ul>{{ASSESSMENT_LIMITATIONS}}</ul>
       </section>
@@ -209,6 +220,12 @@
           </ul>
         </section>
       </div>
+
+      <section class="section section--warning" aria-labelledby="privacy-title">
+        <p class="eyebrow">Private by default</p>
+        <h2 id="privacy-title">Protect the sprint record</h2>
+        <p>Keep this entire generated workspace in access-controlled private storage. Publish only a separately reviewed, sanitized export; never publish raw transcripts, participant or contact data, company-confidential material, account information, or private usage-dashboard evidence.</p>
+      </section>
 
       <section class="section" aria-labelledby="legend-title">
         <p class="eyebrow">Provenance</p>

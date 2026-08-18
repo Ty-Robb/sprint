@@ -5365,6 +5365,308 @@ class SprintWorkspaceTests(unittest.TestCase):
         self.assertTrue(any("participantId does not match" in item for item in errors))
         self.assertTrue(any("prototypeVersion does not match" in item for item in errors))
 
+    def test_canonical_states_drive_dashboard_status_styles(self) -> None:
+        expected_by_style = {
+            "status--active": {
+                "active",
+                "in-review",
+                "in-progress",
+            },
+            "status--assumption": {
+                "waiting-for-human",
+                "waiting-for-customers",
+                "recruiting",
+                "scheduled",
+                "partial",
+                "partially-completed",
+                "adapted-with-documented-substitutions",
+                "early-limited",
+                "partial-directional",
+                "mixed-segment",
+                "mixed-quality",
+                "sufficient-to-investigate-or-run-another-test",
+            },
+            "status--complete": {
+                "complete",
+                "completed",
+                "stopped-deliberately",
+                "profile-followed",
+            },
+            "status--observed": {
+                "live-customer-tested",
+                "book-target-met",
+                "extended",
+                "consistent-directional",
+            },
+            "status--decision": {
+                "ready-for-decision",
+                "sufficient-to-correct-an-observed-failure",
+                "sufficient-for-a-bounded-reversible-investment",
+            },
+            "status--risk": {
+                "self-test-complete-unvalidated",
+                "planning-rehearsal-complete-unvalidated",
+                "closed-unvalidated",
+                "blocked",
+                "self-test-rehearsal",
+                "not-tested",
+                "insufficient-to-decide",
+                "insufficient-for-large-or-irreversible-investment",
+            },
+            "status--unknown": {
+                "paused",
+                "not-terminal",
+                "draft",
+                "not-planned",
+                "not-applicable",
+                "not-started",
+            },
+        }
+        expected = {
+            state: style
+            for style, states in expected_by_style.items()
+            for state in states
+        }
+        covered_states = (
+            WORKSPACE_MODULE.WORKSPACE_STATUSES
+            | WORKSPACE_MODULE.TERMINAL_STATES
+            | WORKSPACE_MODULE.ARTIFACT_STATUSES
+            | WORKSPACE_MODULE.CUSTOMER_STATUSES
+            | WORKSPACE_MODULE.FIDELITY_ASSESSMENTS
+            | {
+                "completed",
+                "stopped-deliberately",
+                "partially-completed",
+                "not-started",
+                "not-tested",
+                "early-limited",
+                "partial-directional",
+                "book-target-met",
+                "extended",
+                "mixed-segment",
+                "mixed-quality",
+                "consistent-directional",
+                "insufficient-to-decide",
+                "insufficient-for-large-or-irreversible-investment",
+                "sufficient-to-correct-an-observed-failure",
+                "sufficient-for-a-bounded-reversible-investment",
+                "sufficient-to-investigate-or-run-another-test",
+            }
+        )
+        self.assertEqual(covered_states - set(expected), set())
+        for state in sorted(covered_states):
+            with self.subTest(state=state):
+                self.assertEqual(
+                    WORKSPACE_MODULE.class_for_status(state), expected[state]
+                )
+
+    def test_dashboard_first_viewport_is_operational_and_unvalidated_by_default(self) -> None:
+        long_title = (
+            "A deliberately long sprint identity for a narrow operational dashboard"
+        )
+        self.run_cli(
+            "init",
+            "--title",
+            long_title,
+            "--challenge",
+            "Distinguish rehearsal, limitations, decisions, and evidence without presentation-only claims.",
+            "--execution-mode",
+            "self-test",
+            "--selected-by",
+            "Test Decider",
+            "--mode-reason",
+            "Exercise the workflow without customer validation.",
+            "--output",
+            str(self.workspace),
+        )
+        dashboard = (self.workspace / "index.html").read_text(encoding="utf-8")
+        first_view = dashboard.split("</header>", maxsplit=1)[0]
+        for required in (
+            long_title,
+            "Execution mode",
+            "Self Test",
+            "Method profile",
+            "Route",
+            "Current decision",
+            "Next action",
+            "Process status",
+            "Method fidelity",
+            "Evidence strength",
+            "Decision readiness",
+            "UNVALIDATED SELF-TEST",
+        ):
+            with self.subTest(first_view_signal=required):
+                self.assertIn(required, first_view)
+        self.assertIn("section--danger", first_view)
+        self.assertIn("data-state=\"not-tested\"", first_view)
+        self.assertIn("Customer testing not conducted — Self Test", dashboard)
+        for count in (
+            "Planned",
+            "Invited",
+            "Attempted",
+            "Completed",
+            "Qualified",
+            "Excluded",
+            "Usable",
+        ):
+            with self.subTest(session_count=count):
+                self.assertIn(f">{count}</span>", dashboard)
+
+    def test_route_and_terminal_decision_summaries_remain_truthful(self) -> None:
+        self.initialise()
+        state = self.read_json("sprint-state.json")
+        for route in sorted(WORKSPACE_MODULE.ROUTES):
+            candidate = json.loads(json.dumps(state))
+            candidate["route"] = route
+            candidate["routeRationale"] = "The canonical route record supports this choice."
+            summary = WORKSPACE_MODULE.dashboard_decision_summary(candidate)
+            with self.subTest(route=route):
+                self.assertEqual(summary["label"], "Current decision")
+                self.assertEqual(
+                    summary["status"], "unknown" if route == "undecided" else "decision"
+                )
+                self.assertIn(
+                    "Route decision pending"
+                    if route == "undecided"
+                    else WORKSPACE_MODULE.display_label(route),
+                    summary["title"],
+                )
+
+        for terminal_state in sorted(
+            WORKSPACE_MODULE.TERMINAL_STATES - {"not-terminal"}
+        ):
+            candidate = json.loads(json.dumps(state))
+            candidate.update(
+                {
+                    "status": "complete",
+                    "terminalState": terminal_state,
+                    "outcome": "Investigate",
+                    "decisions": [
+                        {
+                            "gate": "gate-5",
+                            "decision": "Investigate",
+                            "rationale": "The evidence boundary requires another learning step.",
+                            "status": "active",
+                        }
+                    ],
+                }
+            )
+            summary = WORKSPACE_MODULE.dashboard_decision_summary(candidate)
+            with self.subTest(terminal_state=terminal_state):
+                self.assertEqual(summary["label"], "Final decision")
+                self.assertEqual(summary["title"], "Investigate")
+                self.assertEqual(summary["status"], terminal_state)
+                self.assertEqual(
+                    WORKSPACE_MODULE.class_for_status(terminal_state),
+                    "status--observed"
+                    if terminal_state == "live-customer-tested"
+                    else "status--risk",
+                )
+
+    def test_testing_truth_distinguishes_skipped_partial_and_unusable_evidence(self) -> None:
+        self.initialise()
+        state = self.read_json("sprint-state.json")
+        assessment = {
+            "sessionCounts": {
+                "planned": 5,
+                "invited": 4,
+                "attempted": 3,
+                "completed": 3,
+                "qualified": 2,
+                "excluded": 1,
+                "usable": 2,
+            }
+        }
+        partial = WORKSPACE_MODULE.customer_testing_truth(state, assessment)
+        self.assertEqual(partial["label"], "Partial customer evidence")
+        self.assertEqual(partial["status"], "partial-directional")
+        self.assertIn("directional evidence, not statistical confidence", partial["detail"])
+
+        completed_state = json.loads(json.dumps(state))
+        completed_state["customerTesting"]["status"] = "complete"
+        completed_assessment = json.loads(json.dumps(assessment))
+        completed_assessment["sessionCounts"].update(
+            {"attempted": 5, "completed": 5, "qualified": 5, "usable": 5}
+        )
+        completed = WORKSPACE_MODULE.customer_testing_truth(
+            completed_state, completed_assessment
+        )
+        self.assertEqual(completed["label"], "Customer testing completed")
+        self.assertEqual(completed["status"], "observed")
+
+        skipped_state = json.loads(json.dumps(state))
+        skipped_state["skippedSteps"] = ["11-customer-sessions"]
+        skipped = WORKSPACE_MODULE.customer_testing_truth(skipped_state, assessment)
+        self.assertEqual(skipped["label"], "Customer testing skipped — not conducted")
+        self.assertEqual(skipped["status"], "skipped")
+
+        skipped_state["executionMode"] = "self-test"
+        skipped_self_test = WORKSPACE_MODULE.customer_testing_truth(
+            skipped_state, assessment
+        )
+        self.assertEqual(
+            skipped_self_test["label"],
+            "Customer testing skipped — not conducted (Self Test)",
+        )
+        self.assertEqual(skipped_self_test["status"], "skipped")
+
+        unusable = json.loads(json.dumps(assessment))
+        unusable["sessionCounts"]["usable"] = 0
+        no_evidence = WORKSPACE_MODULE.customer_testing_truth(state, unusable)
+        self.assertEqual(no_evidence["label"], "No usable customer evidence")
+        self.assertEqual(no_evidence["status"], "not-tested")
+
+        counts_html = WORKSPACE_MODULE.render_session_counts(assessment)
+        for label in assessment["sessionCounts"]:
+            self.assertIn(WORKSPACE_MODULE.display_label(label), counts_html)
+
+    def test_responsive_tables_and_generated_site_semantics_are_enforced(self) -> None:
+        self.initialise()
+        table = WORKSPACE_MODULE.render_table(
+            {
+                "title": "Dense evidence",
+                "caption": "Dense evidence across a long operational record",
+                "columns": ["Source", "Observation", "Limitation", "Next decision"],
+                "rows": [["S01", "A" * 200, "Directional only", "Retest"]],
+            }
+        )
+        self.assertIn('class="table-scroll"', table)
+        self.assertIn('role="region"', table)
+        self.assertIn('tabindex="0"', table)
+        self.assertIn("<caption>Dense evidence across a long operational record</caption>", table)
+        self.assertEqual(table.count('scope="col"'), 4)
+
+        stylesheet = (
+            REPO_ROOT
+            / "skills"
+            / "run-design-sprint"
+            / "assets"
+            / "html-kit"
+            / "sprint.css"
+        ).read_text(encoding="utf-8")
+        self.assertRegex(
+            stylesheet,
+            r"\.table-scroll\s*\{[^}]*overflow-x:\s*auto;",
+        )
+        self.assertIn("@media (max-width: 440px)", stylesheet)
+        self.assertIn("minmax(0, 1fr)", stylesheet)
+
+        manifest = self.read_json("site-manifest.json")
+        self.assertEqual(
+            WORKSPACE_MODULE.site_crawl_errors(self.workspace, manifest), []
+        )
+        for page in manifest["pages"]:
+            parser = WORKSPACE_MODULE.LocalLinkParser()
+            parser.feed((self.workspace / page["path"]).read_text(encoding="utf-8"))
+            with self.subTest(page=page["path"]):
+                self.assertEqual(parser.site_navigation_landmarks, 1)
+                self.assertEqual(parser.breadcrumbs, 1)
+                self.assertEqual(parser.current_page_indicators, 1)
+                self.assertEqual(parser.main_landmarks, 1)
+                self.assertEqual(parser.skip_links, 1)
+                self.assertEqual(parser.h1_count, 1)
+                self.assertEqual(parser.duplicate_ids, set())
+
     def test_site_manifest_drives_navigation_for_every_route_and_skips_optional_pages(self) -> None:
         self.initialise()
         for artifact_id in (
@@ -5419,6 +5721,11 @@ class SprintWorkspaceTests(unittest.TestCase):
                 )
                 navigation = WORKSPACE_MODULE.render_site_navigation(
                     manifest, "04-journey-map"
+                )
+                self.assertIn('class="breadcrumb" aria-label="Breadcrumb"', navigation)
+                self.assertIn(
+                    '<span aria-current="page">Journey and System Map</span>',
+                    navigation,
                 )
                 self.assertIn("Next: Direction Decision", navigation)
                 self.assertIn("Decision: Direction Decision", navigation)
